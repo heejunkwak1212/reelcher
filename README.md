@@ -1,3 +1,28 @@
+# Relcher Setup Notes
+
+## Required env (.env.local)
+
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+DATABASE_URL=
+APIFY_TOKEN=
+UPSTASH_REDIS_REST_URL=
+UPSTASH_REDIS_REST_TOKEN=
+NEXT_PUBLIC_TURNSTILE_SITE_KEY=
+TURNSTILE_SECRET_KEY=
+TOSS_CLIENT_KEY=
+TOSS_SECRET_KEY=
+TOSS_WEBHOOK_SECRET=
+SENTRY_DSN=
+
+## Apply Drizzle migrations on Supabase
+
+1. Open Supabase SQL Editor
+2. Run the SQL in `drizzle/migrations/0000_steady_luckman.sql`
+3. Run the SQL in `drizzle/migrations/0001_rls.sql`
+4. Verify RLS enabled on `users`, `profiles`, `credits`, `searches`
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
@@ -17,6 +42,31 @@ bun dev
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+
+### Test API from Windows PowerShell
+```
+$b = @{ keyword="재테크"; period="7d"; minViews=0; limit="30" } | ConvertTo-Json -Compress
+Invoke-RestMethod -Method POST -Uri 'http://localhost:3000/api/search' -ContentType 'application/json' -Body $b | ConvertTo-Json -Depth 6
+```
+
+## Environment Variables (.env.local)
+Copy the following keys and fill values before running integrations:
+
+```
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+DATABASE_URL=
+APIFY_TOKEN=
+TOSS_CLIENT_KEY=
+TOSS_SECRET_KEY=
+TOSS_WEBHOOK_SECRET=
+UPSTASH_REDIS_REST_URL=
+UPSTASH_REDIS_REST_TOKEN=
+NEXT_PUBLIC_TURNSTILE_SITE_KEY=
+TURNSTILE_SECRET_KEY=
+SENTRY_DSN=
+```
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 

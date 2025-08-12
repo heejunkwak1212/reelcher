@@ -1,0 +1,29 @@
+{
+  "mcpServers": {
+    "server-sequential-thinking": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@smithery/cli@latest",
+        "run",
+        "@smithery-ai/server-sequential-thinking",
+        "--key",
+        "326b3f27-5eea-49d5-8008-35bf2f2099d8"
+      ]
+    },
+    "supabase": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-supabase@0.4.5",
+        "--read-only",
+        "--project-ref=gpvwljixnwfosocvvkcp"
+      ],
+      "env": {
+        "SUPABASE_ACCESS_TOKEN": "sbp_997ed7a4a5aa4428992fdb4e22ed6c979ed42187"
+      }
+    }
+  }
+}
+
+

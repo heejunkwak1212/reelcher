@@ -1,0 +1,259 @@
+---
+alwaysApply: true
+title: Relcher SSOT Rules
+---
+
+# Relcher Architecture & Implementation Rules
+
+Use this as the single operational rulebook for Cursor. Follow PRD.MD as the product spec. Default to this file and PRD when in doubt.
+
+## Architecture Principles
+- Framework: Next.js App Router. All backend via Route Handlers in `app/api/*`.
+- Language: TypeScript. Interfaces live in `types/index.ts` with `I*` prefix.
+- Auth/DB: Supabase (Google/Kakao OAuth) + Postgres (Drizzle ORM). RLS ON, default DENY ALL.
+- UI: Tailwind + shadcn/ui (Radix). No Flowbite.
+- State: React Query (server state) + Zustand (client state).
+- Infra: Vercel Serverless, Upstash RateLimit, Cloudflare Turnstile, Sentry(optional).
+
+## Project Structure (authoritative)
+your-nextjs-project/
+- app/
+  - (marketing)/page.tsx
+  - (auth)/sign-in/page.tsx, (auth)/callback/route.ts
+  - (app)/layout.tsx, (app)/dashboard/page.tsx, (app)/onboarding/page.tsx
+  - (app)/admin/{layout.tsx,page.tsx,users/page.tsx,credits/page.tsx,payments/page.tsx,searches/page.tsx}
+  - api/
+    - search/route.ts
+    - captions/route.ts
+    - downloads/route.ts
+    - export-xlsx/route.ts
+    - onboarding/route.ts
+    - credits/consume/route.ts
+    - webhooks/toss/route.ts
+- components/ui/* (shadcn), components/search/*, components/onboarding/*
+- lib/supabase/{client.ts,server.ts}, lib/{apify.ts,ratelimit.ts,toss.ts,xlsx.ts,csp.ts}
+- utils/{fetcher.ts,validators.ts}
+- store/*, hooks/*, types/index.ts
+- db/{schema.ts,index.ts}, drizzle/migrations/*
+- middleware.ts, next.config.mjs, drizzle.config.ts, package.json, tsconfig.json
+
+## Implementation Rules
+- APIs are Route Handlers only. Validate all external inputs with Zod at entry.
+- Apply Upstash rate-limiting on costful routes (e.g., `/api/search`).
+- No `any` in exported signatures. Keep UI components small and composable.
+- Numbers in UI use thousand separators (no K/M). Default sort: views desc; toggles [views], [latest].
+
+## Search Orchestration (Apify)
+- Stage 1 (Hashtag Task):
+  - Single call with `resultsLimit = userSelected` where userSelected ∈ {30, 60, 90, 120}.
+  - Ensure `whatToScrape: 'reels'`. Deduplicate URLs. No server-side pre-filters (period/minViews/maxFollowers removed).
+- Stage 2 (Details Task):
+  - Split URLs into 30-sized batches and run all batches in parallel.
+  - Normalize fields: views, duration (floor), caption, videoUrl, thumbnail (multi-source fallback).
+- Stage 3 (Profile Task):
+  - Process usernames in 30-sized batches sequentially.
+- Abort handling: cancel all active Apify runs when client disconnects.
+- Note: On Apify Free, the hashtag task may cap at one page (~30). Higher tiers return full counts.
+
+## Result Options and Credits
+- Fixed options only: 30, 60, 90, 120 results.
+- Credits: 30→100, 60→200, 90→300, 120→400.
+- 90/120 are recommended for Pro plan or higher (to avoid 1-page cap).
+- Proration on shortfall: `actualCredits = floor((actual / 30) * 100)`. Refund the difference from reserved.
+
+## Downloads / Export
+- `/api/downloads`: single MP4 or multi ZIP. Multi uses parallel fetch; safe `Content-Disposition`.
+- `/api/export-xlsx`: build workbook via `xlsx`.
+
+## Auth & Onboarding
+- OAuth via Supabase (Google/Kakao). After first sign-in, redirect to `/onboarding` until `onboardingCompleted=true`.
+- Collect & persist: `displayName`, `howFound`, `role`. Endpoint: `app/api/onboarding`.
+- Middleware: protect (app) routes; enforce onboarding; gate admin by `role='admin'`.
+
+## Credit Transaction & Fair Use
+- Reserve → perform → commit/rollback per request. Use `/api/credits/consume`.
+- Apply proration when results < requested; reserve at start (100/200/300/400) then settle.
+
+## Security Baseline
+- RLS enabled; strict user policies using `auth.uid()`.
+- Turnstile on `/api/search` and payment flows (server verification + client widget).
+- Strict CORS/CSP; proper headers for downloads.
+- Secrets from env only; monitor with Sentry + Vercel Observability.
+
+## Env Vars (required)
+- `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
+- `APIFY_TOKEN`
+- `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`
+- `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`
+- `TOSS_CLIENT_KEY`, `TOSS_SECRET_KEY`, `TOSS_WEBHOOK_SECRET`
+- `SENTRY_DSN` (optional)
+
+## Delivery Order (default)
+1) Supabase Auth + onboarding pages/API + middleware guards
+2) Drizzle migrations + RLS policies
+3) Credits wiring (reserve→commit/rollback + proration) on costful routes
+4) Turnstile widget (server check already)
+5) Real UI pages (marketing/dashboard/onboarding/admin)
+6) Toss checkout + webhook (verify signature, idempotency)
+7) Observability/CSP; admin screens; subtitle feature later
+
+## Style
+- Use fewer comments, Be concise in your response
+---
+description: Relcher project SSOT rules (architecture, folder structure, security, deployment). Always apply to ensure consistent work across chats.
+globs:
+alwaysApply: true
+---
+
+## Architecture Principles
+- Framework: Next.js App Router. All backend logic via Route Handlers in `app/api/*`. Server Actions only for trivial form posts.
+- Language: TypeScript everywhere. Interfaces use `I*` prefix and live in `types/index.ts`.
+- Auth/DB: Supabase (OAuth Google/Kakao) + Postgres with Drizzle ORM. RLS enabled (DENY ALL by default).
+- UI: Tailwind as foundation + shadcn/ui (Radix primitives). No Flowbite.
+- State: React Query (server state) + Zustand (client state).
+- Infra: Vercel Serverless Functions, global CDN, Sentry/Vercel Observability.
+
+## Project Structure (authoritative)
+```text
+your-nextjs-project/
+├── app/
+│  ├── (marketing)/                 # 랜딩/가격 등 공개 페이지
+│  │  └── page.tsx
+│  ├── (auth)/                      # 인증 관련(공개)
+│  │  ├── sign-in/                  # 소셜 버튼 UI (Supabase OAuth)
+│  │  │  └── page.tsx
+│  │  └── callback/                 # (필요시) OAuth 콜백 처리
+│  │     └── route.ts
+│  ├── (app)/                       # 로그인 필요 구역 공통 레이아웃
+│  │  ├── layout.tsx
+│  │  ├── dashboard/                # 사용자 대시보드 (핵심 화면)
+│  │  │  ├── page.tsx
+│  │  │  └── DashboardStats.tsx     # 페이지 전용 컴포넌트
+│  │  ├── onboarding/               # 회원가입 직후 온보딩(이름+질문)
+│  │  │  ├── page.tsx               # 멀티스텝 위저드
+│  │  │  └── Steps/
+│  │  │     ├── StepWelcome.tsx
+│  │  │     ├── StepHowFound.tsx    # 스크린샷 질문(검색/유튜브/스레드/…)
+│  │  │     └── StepRole.tsx        # 직무 질문(개발자/디자이너/…)
+│  │  └── admin/                    # 운영자 대시보드(권한 보호)
+│  │     ├── layout.tsx
+│  │     ├── page.tsx               # 요약
+│  │     ├── users/page.tsx
+│  │     ├── credits/page.tsx
+│  │     ├── payments/page.tsx
+│  │     └── searches/page.tsx
+│  ├── api/                         # Route Handlers (서버 전용)
+│  │  ├── search/route.ts           # 키워드 분석 오케스트레이션(Apify 1→2&3)
+│  │  ├── captions/route.ts         # 자막 추출(액터4) + 파싱
+│  │  ├── downloads/route.ts        # 선택 릴스 zip 스트리밍
+│  │  ├── export-xlsx/route.ts      # 선택/전체 .xlsx 생성
+│  │  ├── onboarding/route.ts       # 이름/설문 저장 + 크레딧 초기화
+│  │  ├── credits/consume/route.ts  # 기능 실행 전/후 트랜잭션 처리
+│  │  └── webhooks/
+│  │     └── toss/route.ts          # 결제 웹훅(서명검증/멱등성)
+│  ├── layout.tsx
+│  └── page.tsx
+├── components/
+│  ├── ui/                          # shadcn/ui
+│  │  ├── button.tsx
+│  │  ├── input.tsx
+│  │  ├── select.tsx
+│  │  ├── toast.tsx
+│  │  └── toaster.tsx
+│  ├── layout/
+│  │  ├── header.tsx
+│  │  ├── footer.tsx
+│  │  └── sidebar.tsx
+│  ├── forms/                       # Form 컴포넌트(react-hook-form + zod)
+│  ├── onboarding/                  # 온보딩 공용 UI(카드/프로그레스/옵션)
+│  └── search/                      # 테이블/툴바/모달 등 재사용 파트
+├── hooks/
+│  ├── use-toast.ts
+│  ├── use-auth.ts                  # 클라이언트 세션 접근 헬퍼
+│  └── use-media.ts
+├── store/
+│  ├── auth.ts
+│  ├── gallery.ts
+│  ├── community.ts
+│  └── index.ts
+├── lib/                            # 서버/클라이언트 SDK, 보안 유틸
+│  ├── supabase/
+│  │  ├── client.ts                 # createBrowserClient
+│  │  └── server.ts                 # createServerClient (cookies)
+│  ├── apify.ts                     # 액터 호출 래퍼
+│  ├── ratelimit.ts                 # @upstash/ratelimit 인스턴스
+│  ├── toss.ts                      # 서명검증/멱등 헬퍼
+│  ├── xlsx.ts                      # 엑셀 생성 유틸
+│  └── csp.ts                       # CSP/CORS 설정 헬퍼
+├── utils/
+│  ├── fetcher.ts
+│  └── validators.ts                # zod 스키마 모음(입력값 검증)
+├── types/
+│  └── index.ts                     # I 접두사 인터페이스 집합
+├── db/
+│  ├── schema.ts                    # Drizzle 스키마 (users, credits, …)
+│  └── index.ts                     # DB 연결
+├── drizzle/
+│  └── migrations/*                 # 마이그레이션
+├── styles/
+│  └── globals.css
+├── public/
+│  └── favicon.ico
+├── middleware.ts                   # 인증 보호/온보딩 강제/관리자 권한 체크
+├── next.config.mjs
+├── drizzle.config.ts
+├── package.json
+└── tsconfig.json
+```
+
+## Implementation Rules
+- APIs must be Route Handlers. Validate all inputs with Zod at entry points.
+- Apply Upstash rate-limiting to costful routes (e.g., `/api/search`).
+- No `any`; exported functions have explicit return types. Keep components small; compose shadcn/ui.
+ - UI numbers use thousand separators, never K/M abbreviations. Default sort: views desc; toggles [views], [latest].
+ - MVP filters: period, minViews only (maxFollowers removed). Followers filtering may be added later with automatic backfill.
+- Selection bar activates when ≥1 row; actions: Download, Subtitle(1 only), Export.
+
+## Onboarding & Auth
+- OAuth via Supabase (Google/Kakao). After first sign-in, redirect to `/onboarding` until `onboardingCompleted=true`.
+- Collect and persist: `displayName`, `howFound`, `role`. Endpoint: `app/api/onboarding`.
+- Admin routes gated by middleware checking `role='admin'`.
+
+## Credit Transaction & Fair Use
+- Before costful operations: check balance → reserve → perform → commit/rollback in a DB transaction.
+- Proration when results < requested: `(actual / 30) * 100` credits.
+
+## Security Baseline
+- RLS enabled; users may access only their own rows via `auth.uid()` policies.
+- CAPTCHA (Turnstile or hCaptcha) on `/api/search` and payment flows.
+- Toss webhook: verify signature header; enforce idempotency on updates.
+- Strict CORS and CSP; safe `Content-Type`/`Content-Disposition` for downloads.
+- Secrets only from env (Vercel/Supabase). Monitor with Sentry + Vercel Observability.
+
+## Env Vars (required)
+- `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
+- `APIFY_TOKEN`
+- `TOSS_CLIENT_KEY`, `TOSS_SECRET_KEY`, `TOSS_WEBHOOK_SECRET`
+- `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`
+- `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`
+- `SENTRY_DSN` (optional)
+
+## Setup & Deployment
+- Tailwind: init with PostCSS/Autoprefixer; shadcn/ui via CLI. Prefer Vercel Serverless runtime.
+- Ensure RLS on; run Drizzle migrations. Configure Supabase OAuth providers.
+- Set all envs in Vercel. Apply CSP/CORS headers. Smoke test search, proration, webhook idempotency, downloads.
+
+## Pre-Prod Checklist (must complete before deploy)
+- Sentry: set `SENTRY_DSN`, init verified (client/server). Basic tracesSampleRate set.
+- CSP/CORS: minimal safe policy applied; allow only required origins (Vercel domain, Supabase, Apify, Upstash, Toss, Turnstile).
+- Env vars filled: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `DATABASE_URL`, `APIFY_TOKEN`, `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`, `TOSS_CLIENT_KEY`, `TOSS_SECRET_KEY`, `TOSS_WEBHOOK_SECRET`, `SENTRY_DSN`(opt).
+- Turnstile: client widget on search page; server verification enabled when secret exists.
+- Rate limit: `/api/search` via Upstash limiter enabled.
+
+## Post-Deploy Verification
+- OAuth redirects valid on Vercel domain; onboarding flow redirects correctly.
+- `/api/search`: reservation→proration commit/rollback works; abort cancels Apify runs.
+- `/api/downloads` and Excel export headers correct and downloadable on major browsers.
+
+@PRD.MD
+
