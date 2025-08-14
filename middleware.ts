@@ -48,6 +48,18 @@ export async function middleware(req: NextRequest) {
     } catch {}
   }
 
+  // If onboarding already completed, block manual access to /onboarding
+  if (pathname.startsWith('/onboarding')) {
+    try {
+      const { data, error } = await supabase.from('profiles').select('onboarding_completed').eq('user_id', user.id).single()
+      if (!error && data && data.onboarding_completed === true) {
+        const url = req.nextUrl.clone()
+        url.pathname = '/dashboard'
+        return NextResponse.redirect(url)
+      }
+    } catch {}
+  }
+
   // Admin gate
   if (pathname.startsWith('/admin')) {
     try {

@@ -18,12 +18,13 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    // Read body once and reuse to avoid stream re-consumption errors
+    const body = await req.json().catch(() => ({} as any))
     // Optional Turnstile token verification (env-gated)
     const turnstileSecret = process.env.TURNSTILE_SECRET_KEY
     if (turnstileSecret) {
       try {
-        const body = await req.clone().json().catch(() => ({} as any))
-        const token = body?.turnstileToken
+        const token = (body as any)?.turnstileToken
         if (!token) return new Response('CAPTCHA required', { status: 400 })
         const verify = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
           method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
@@ -38,7 +39,6 @@ export async function POST(req: Request) {
       if (!res.success) return new Response('Too Many Requests', { status: 429 })
     }
 
-    const body = await req.json()
     const input = searchSchema.parse(body)
 
     const token = process.env.APIFY_TOKEN
@@ -49,8 +49,39 @@ export async function POST(req: Request) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return new Response('Unauthorized', { status: 401 })
 
-    // Credits reservation (dev limit "5" skips reservation)
-    const reserveAmount = input.limit === '60' ? 200 : input.limit === '30' ? 100 : 0
+    // Credits reservation
+    // Dev limit '5' skips reservation; for others, map 30→100, 60→200, 90→300, 120→400
+    // Developer bypass: if user email matches DEV list -> do not consume credits
+    let isDev = false
+    try {
+      const { data } = await supabase.from('users').select('email').eq('id', user.id).single()
+      const email = (data?.email || '').toString()
+      const devList = (process.env.DEV_EMAIL_WHITELIST || '').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean)
+      if (email && devList.includes(email.toLowerCase())) isDev = true
+    } catch {}
+
+    // Plan-based limits
+    let plan: 'free' | 'starter' | 'pro' | 'business' | string = 'free'
+    try {
+      const { data: prof } = await supabase.from('profiles').select('plan').eq('user_id', user.id).single()
+      plan = (prof?.plan as any) || 'free'
+    } catch {}
+    const lim = input.limit
+    if (plan === 'free' && lim !== '30' && lim !== '5') {
+      return new Response('FREE plan allows only 30 results.', { status: 403 })
+    }
+    if (plan === 'starter' && (lim === '90' || lim === '120')) {
+      return new Response('STARTER plan allows up to 60 results.', { status: 403 })
+    }
+    if (plan === 'pro' && lim === '120') {
+      return new Response('PRO plan allows up to 90 results.', { status: 403 })
+    }
+
+    const reserveAmount = isDev ? 0 : (
+      input.limit === '30' ? 100 :
+      input.limit === '60' ? 200 :
+      input.limit === '90' ? 300 :
+      input.limit === '120' ? 400 : 0)
     const creditsEndpoint = new URL('/api/credits/consume', req.url).toString()
     let didReserve = false
     if (reserveAmount > 0) {
@@ -71,18 +102,26 @@ export async function POST(req: Request) {
       await fetch(creditsEndpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ userId: user.id, commit, rollback }) }).catch(() => {})
     }
 
-    const resultsLimit = Number(input.limit) as 30 | 60 | 90 | 120
+    const resultsLimit = Number(input.limit) as 5 | 30 | 60 | 90 | 120
     // Auto-detect region from keyword language (very simple heuristic)
     const keywordHasKorean = /[\uac00-\ud7af]/.test(input.keyword)
     const inferredRegion = keywordHasKorean ? 'KR' : undefined
     // Use Task default proxy (Automatic). We don't override proxy to avoid pool exhaustion.
     const proxyOpt: Record<string, unknown> = {}
     // sanitize hashtag for actor regex: remove leading '#', trim whitespace, drop forbidden chars
-    const plainHashtag = input.keyword
-      .replace(/^#/, '')
-      .normalize('NFKC')
-      .trim()
-      .replace(/[!?.,:;\-+=*&%$#@\/\\~^|<>()\[\]{}"'`\s]+/g, '')
+    // Multi keyword normalization (max 3). Fallback to single keyword
+    const rawKeywords: string[] = Array.isArray((input as any).keywords) && (input as any).keywords!.length
+      ? ((input as any).keywords as string[])
+      : [input.keyword]
+    const normalizedKeywords = Array.from(new Set(
+      rawKeywords.map(k => k
+        .replace(/^#/, '')
+        .normalize('NFKC')
+        .trim()
+        .replace(/[!?.,:;\-+=*&%$#@\/\\~^|<>()\[\]{}"'`\s]+/g, '')
+      ).filter(Boolean)
+    )).slice(0, 3)
+    const plainHashtag = normalizedKeywords[0]
 
     // 1) Hashtag Scraper (reels only) → collect URLs to feed into details
     // Setup abort handling: if client disconnects, abort all Apify runs (best-effort)
@@ -106,19 +145,36 @@ export async function POST(req: Request) {
     let hashtagFiltered: IHashtagItem[] = []
     // If the hashtag itself has finite items, don't loop endlessly.
     // Strategy:
-    // Single task call with requested resultsLimit (supports 15..120). We avoid repeated calls to prevent duplicates and save cost.
+    // Run Stage-1 per keyword with fair split and 1.3x oversampling cap, then dedupe/merge.
     let attempts = 0
     let totalDiscoveredUrls = 0
     {
       attempts++
       try {
-        const firstLimit = resultsLimit
-        const started1 = await startTaskRun({ taskId, token, input: { hashtags: [plainHashtag], resultsLimit: firstLimit, whatToScrape: 'reels', firstPageOnly: false } })
-        apifyRunIds.add(started1.runId)
-        const run1 = await waitForRunItems<IHashtagItem>({ token, runId: started1.runId })
-        const batch1 = Array.isArray(run1.items) ? run1.items : []
-        hashtagItems = [...hashtagItems, ...batch1]
-        for (const it of batch1) {
+        const kwCount = Math.max(1, normalizedKeywords.length)
+        const base = Math.floor(resultsLimit / kwCount)
+        let remainder = resultsLimit % kwCount
+        // Fair target per keyword
+        const perTarget = normalizedKeywords.map(() => base + (remainder-- > 0 ? 1 : 0))
+        const oversampleFactor = normalizedKeywords.length >= 2 ? 1.3 : 1.0
+        const perOversample = perTarget.map(n => Math.ceil(n * oversampleFactor))
+
+        const runs = await Promise.all(normalizedKeywords.map(async (kw, idx) => {
+          const want = Math.max(1, perOversample[idx])
+          const batches = Math.ceil(want / 30)
+          let acc: IHashtagItem[] = []
+          for (let b = 0; b < batches; b++) {
+            const slice = Math.min(30, want - b * 30)
+            if (slice <= 0) break
+            const started = await startTaskRun({ taskId, token, input: { hashtags: [kw], resultsLimit: slice, whatToScrape: 'reels', firstPageOnly: false } })
+            apifyRunIds.add(started.runId)
+            const run = await waitForRunItems<IHashtagItem>({ token, runId: started.runId })
+            acc = acc.concat(Array.isArray(run.items) ? run.items : [])
+          }
+          return acc
+        }))
+        hashtagItems = runs.flat()
+        for (const it of hashtagItems) {
           const u = getUrl(it)
           if (!u) continue
           if (!seenStage1.has(u)) totalDiscoveredUrls++
@@ -126,7 +182,6 @@ export async function POST(req: Request) {
           seenStage1.add(u)
           hashtagFiltered.push(it)
         }
-        // No second call; we depend on the single larger batch to avoid duplicate sets.
       } catch (e) { hashtagErrors.push((e as Error).message) }
     }
     // Note: No iterative re-fetch (MVP). We avoid repeated calls to control costs.
@@ -140,6 +195,7 @@ export async function POST(req: Request) {
     }
     // hashtagFiltered holds unique items from stage-1
     // Derive URL list from filtered items
+    // Deduped union URLs across keywords, then slice to requested size
     let reelUrls = Array.from(new Set(
       hashtagFiltered.map(i => getUrl(i)).filter((u): u is string => typeof u === 'string'),
     )).slice(0, resultsLimit)
@@ -174,7 +230,7 @@ export async function POST(req: Request) {
       for (let i = 0; i < maxIdx; i += batchSize) {
         batches.push(reelUrls.slice(i, i + batchSize))
       }
-      // Run all batches in parallel (account-level concurrency/RAM will naturally queue if needed)
+      // Run all batches in parallel as before; account-level concurrency will queue if needed
       await Promise.all(batches.map(async (batch) => {
         const started = await startTaskRun({ taskId: detailsTaskId, token, input: { directUrls: batch, resultsType: 'posts', addParentData: false, resultsLimit: batch.length } })
         apifyRunIds.add(started.runId)
@@ -391,6 +447,16 @@ export async function POST(req: Request) {
       const prorationSuggestion = Math.floor((finalCount / 30) * 100)
       const creditsToCharge = prorationSuggestion
       if (settle) await settle(finalCount)
+      // Log search
+      try {
+        await supabase.from('searches').insert({
+          user_id: user.id,
+          keyword: plainHashtag,
+          requested: Number(input.limit),
+          returned: finalCount,
+          cost: creditsToCharge,
+        })
+      } catch {}
       return Response.json({
         items: sorted,
         debug: {
@@ -427,6 +493,40 @@ export async function POST(req: Request) {
       const finalCount = sorted.length
       const toCharge = Math.floor((finalCount / 30) * 100)
       if (settle) await settle(finalCount)
+      // Log search + update counters + cleanup old logs (3 days retention)
+      try {
+        await supabase.from('searches').insert({
+          user_id: user.id,
+          keyword: plainHashtag,
+          requested: Number(input.limit),
+          returned: finalCount,
+          cost: toCharge,
+        })
+      } catch {}
+      try {
+        // Update counters atomically via service role to avoid RLS edge cases
+        const svc = (await import('@/lib/supabase/service')).supabaseService()
+        const todayUtc = new Date()
+        const yyyy = todayUtc.getUTCFullYear()
+        const mm = String(todayUtc.getUTCMonth() + 1).padStart(2, '0')
+        const firstOfMonth = `${yyyy}-${mm}-01`
+        const { data: row } = await svc.from('search_counters').select('month_start,month_count,today_date,today_count').eq('user_id', user.id).single()
+        let month_start = row?.month_start || firstOfMonth
+        let month_count = Number(row?.month_count || 0)
+        let today_date = row?.today_date || todayUtc.toISOString().slice(0,10)
+        let today_count = Number(row?.today_count || 0)
+        // reset if month crossed
+        if (String(month_start) !== firstOfMonth) { month_start = firstOfMonth; month_count = 0 }
+        // reset if day crossed
+        const todayStr = todayUtc.toISOString().slice(0,10)
+        if (String(today_date) !== todayStr) { today_date = todayStr; today_count = 0 }
+        month_count += 1
+        today_count += 1
+        await svc.from('search_counters').upsert({ user_id: user.id as any, month_start, month_count, today_date, today_count, updated_at: new Date().toISOString() as any })
+        // Retention: keep personal search logs only 2 days
+        const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
+        await svc.from('searches').delete().lt('created_at', twoDaysAgo).eq('user_id', user.id)
+      } catch {}
       return Response.json({ items: sorted, credits: { toCharge, basis: 100, per: 30 } })
     }
   } catch (e) {

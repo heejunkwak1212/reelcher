@@ -9,7 +9,7 @@ export const runtime = 'nodejs'
 const bodySchema = z.object({
   displayName: z.string().trim().min(1),
   howFound: z.string().trim().optional().default(''),
-  role: z.enum(['user', 'admin']),
+  role: z.literal('user'),
 })
 
 export async function POST(req: Request) {
@@ -27,18 +27,24 @@ export async function POST(req: Request) {
       await db.insert(users).values({ id: uid, email })
     }
 
-    // Upsert profile
+    // Nickname duplication check
+    if (input.displayName) {
+      const exists = await db.select().from(profiles).where(eq(profiles.displayName, input.displayName)).limit(1)
+      if (exists.length) return Response.json({ error: 'NicknameExists' }, { status: 409 })
+    }
+
+    // Upsert profile (role forced to 'user')
     const existingProfile = await db.select().from(profiles).where(eq(profiles.userId, uid as any))
     if (!existingProfile.length) {
-      await db.insert(profiles).values({ userId: uid, displayName: input.displayName, howFound: input.howFound, role: input.role, onboardingCompleted: true })
+      await db.insert(profiles).values({ userId: uid, displayName: input.displayName, howFound: input.howFound, role: 'user', onboardingCompleted: true })
     } else {
-      await db.update(profiles).set({ displayName: input.displayName, howFound: input.howFound, role: input.role, onboardingCompleted: true }).where(eq(profiles.userId, uid))
+      await db.update(profiles).set({ displayName: input.displayName, howFound: input.howFound, role: 'user', onboardingCompleted: true }).where(eq(profiles.userId, uid))
     }
 
     // Ensure credits row exists
     const existingCredits = await db.select().from(credits).where(eq(credits.userId, uid as any))
     if (!existingCredits.length) {
-      await db.insert(credits).values({ userId: uid, balance: 0, reserved: 0 })
+      await db.insert(credits).values({ userId: uid, balance: 250, reserved: 0, monthlyGrant: 250, lastGrantAt: new Date() as any })
     }
 
     return Response.json({ ok: true })
@@ -47,6 +53,14 @@ export async function POST(req: Request) {
     if (Array.isArray(err?.issues)) return Response.json({ error: 'ValidationError', issues: err.issues }, { status: 400 })
     return Response.json({ error: err?.message || 'BadRequest' }, { status: 400 })
   }
+}
+
+export async function GET(req: Request) {
+  const url = new URL(req.url)
+  const name = (url.searchParams.get('name') || '').trim()
+  if (!name) return Response.json({ ok: false })
+  const rows = await db.select().from(profiles).where(eq(profiles.displayName, name)).limit(1)
+  return Response.json({ ok: rows.length === 0 })
 }
 
 

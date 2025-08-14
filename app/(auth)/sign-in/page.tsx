@@ -23,10 +23,10 @@ export default function SignInPage() {
         <h1 className="text-lg font-semibold">로그인</h1>
         <p className="text-sm text-neutral-600">구글 또는 카카오로 로그인하세요.</p>
         <div className="space-y-2">
-          <Button className="w-full" onClick={() => signIn('google')} disabled={!!loading}>
+          <Button className="w-full" onClick={(e) => { e.preventDefault(); signIn('google') }} disabled={!!loading}>
             {loading === 'google' ? '구글로 이동 중…' : 'Google로 계속하기'}
           </Button>
-          <Button className="w-full" variant="outline" onClick={() => signIn('kakao')} disabled={!!loading}>
+          <Button className="w-full" variant="outline" onClick={(e) => { e.preventDefault(); signIn('kakao') }} disabled={!!loading}>
             {loading === 'kakao' ? '카카오로 이동 중…' : 'Kakao로 계속하기'}
           </Button>
         </div>

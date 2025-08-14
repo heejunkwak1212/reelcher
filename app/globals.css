@@ -1,8 +1,27 @@
+@import url('https://cdn.jsdelivr.net/npm/pretendard@latest/dist/web/static/pretendard.css');
 @import "tailwindcss";
 
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --prose-headings: #111827; /* neutral-900 */
+  --prose-text: #111827;
+  --color-text-primary: #0b0b0c;
+  --color-text-secondary: #3a3b3f;
+  --color-text-tertiary: #6a6b71;
+  --color-text-quaternary: #8f9097;
+  --color-selection-dim: rgba(125,125,130,.2);
+  --font-monospace: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  --font-weight-normal: 400;
+  --font-weight-medium: 600;
+  --title-2-size: 28px; --title-2-line-height: 34px; --title-2-letter-spacing: -0.01em;
+  --title-5-size: 18px; --title-5-line-height: 24px; --title-5-letter-spacing: -0.01em;
+  --title-6-size: 16px; --title-6-line-height: 22px; --title-6-letter-spacing: -0.01em;
+  --text-large-size: 16px; --text-large-line-height: 24px; --text-large-letter-spacing: 0;
+  --text-regular-size: 14px; --text-regular-line-height: 20px; --text-regular-letter-spacing: 0;
+  --text-small-size: 12px; --text-small-line-height: 16px; --text-small-letter-spacing: 0;
+  --icon-color: #6a6b71;
+  --bento-border: 1px solid rgba(12,12,13,.08);
 }
 
 @theme inline {
@@ -19,8 +38,61 @@
   }
 }
 
+html {
+  font-family: Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
+    Ubuntu, Cantarell, "Helvetica Neue", Arial, "Apple SD Gothic Neo", "Noto Sans KR",
+    "Malgun Gothic", sans-serif !important;
+}
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: inherit;
 }
+html { scroll-behavior: smooth; }
+
+/* Buttons hover/active micro-interactions */
+.btn-animate { transition: transform .18s ease, box-shadow .18s ease; will-change: transform; }
+.btn-animate:hover { transform: translateY(-2px) scale(1.02); box-shadow: 0 6px 20px rgba(0,0,0,.06); }
+.btn-animate:active { transform: translateY(0) scale(.98); box-shadow: 0 3px 10px rgba(0,0,0,.05); }
+*, :where(button, input, select, textarea) {
+  font-family: inherit;
+}
+
+/* Policy pages typography (inspired by clean docs sites) */
+.prose {
+  line-height: 1.8;
+  color: var(--prose-text);
+}
+.prose h1 { font-size: 2rem; font-weight: 800; color: var(--prose-headings); margin: 1.25rem 0; }
+.prose h2 { font-size: 1.5rem; font-weight: 700; color: var(--prose-headings); margin: 1.25rem 0; }
+.prose h3 { font-size: 1.25rem; font-weight: 700; color: var(--prose-headings); margin: 1rem 0; }
+.prose p { font-size: 1rem; margin: 0.75rem 0; }
+.prose ul, .prose ol { padding-left: 1.25rem; margin: 0.75rem 0; }
+.prose strong { font-weight: 700; }
+.prose a { color: #2563eb; text-decoration: underline; }
+.prose code { font-family: var(--font-geist-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace); background:#f3f4f6; padding:0 0.25rem; border-radius:4px }
+
+/* Inline editor textarea */
+textarea { outline: none; }
+
+/* Global animations */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translate3d(0, 24px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+.reveal { opacity: 0; transform: translate3d(0, 16px, 0); transition: opacity .6s ease, transform .6s ease; }
+.reveal-visible { opacity: 1; transform: translate3d(0, 0, 0); }
+
+/* Text staged reveal */
+@keyframes textReveal {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.text-reveal { animation: textReveal .6s ease both; }
+.anim-2 { animation-delay: .2s; }
+.anim-4 { animation-delay: .4s; }
+
+/* Soft feather mask for image edges */
+.feather-mask { -webkit-mask-image: radial-gradient(120% 120% at 50% 50%, #000 70%, transparent 100%); mask-image: radial-gradient(120% 120% at 50% 50%, #000 70%, transparent 100%); }
+

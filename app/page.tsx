@@ -1,103 +1,183 @@
-import Image from "next/image";
+import Link from 'next/link'
+import SiteHeader from '@/components/layout/SiteHeader'
+import { Button } from '@/components/ui/button'
+import Reveal from '@/components/ux/Reveal'
+import { supabaseServer } from '@/lib/supabase/server'
+// no styled-jsx; animations are defined in globals.css
 
-export default function Home() {
+export default async function Home() {
+  const supabase = supabaseServer()
+  const { data } = await supabase.auth.getUser().catch(() => ({ data: { user: null } as any }))
+  const user = data?.user
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+    <main className="min-h-screen bg-white">
+      <SiteHeader />
+      <section id="top" className="relative overflow-hidden">
+        <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden>
+          <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-[80vw] h-[80vw] rounded-full opacity-[0.06]" style={{ background: 'radial-gradient(closest-side, #0B0C0E, transparent 70%)' }} />
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
-  );
+        <div className="max-w-6xl mx-auto px-6 py-24 text-center">
+          <Reveal>
+        <div className="space-y-2 md:space-y-3">
+          <div className="text-3xl md:text-6xl font-semibold tracking-tight text-reveal" style={{ color: '#3A3B3F' }}>
+            Stop scrolling,
+          </div>
+          <h1
+            className="text-5xl md:text-7xl font-extrabold tracking-tight text-reveal anim-2"
+            style={{
+              background: 'linear-gradient(to right, #0B0C0E, transparent 80%), #9C9DA1',
+              WebkitBackgroundClip: 'text',
+              backgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              color: 'unset'
+            }}
+          >
+            Reelcher is here.
+          </h1>
+        </div>
+          <p className="mt-4 text-[15px] leading-6" style={{ color: '#3A3B3F' }}>
+          키워드만 입력하세요. 인기 릴스와 데이터, 다 찾아드릴게요.
+          </p>
+          <div className="mt-8 flex gap-3 justify-center">
+            {!user ? (
+              <>
+                <Link href="/sign-in" prefetch={false}>
+                  <Button className="h-10 px-5 rounded-full bg-black text-white hover:bg-black/90 btn-animate">무료로 시작하기</Button>
+                </Link>
+                <Link href="/sign-in" prefetch={false}>
+                  <Button variant="outline" className="h-10 px-5 rounded-full btn-animate">로그인</Button>
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link href="/dashboard" prefetch={false}>
+                  <Button variant="outline" className="h-10 px-5 rounded-full btn-animate">대시보드</Button>
+                </Link>
+                <Link href="/search" prefetch={false}>
+                  <Button className="h-10 px-5 rounded-full bg-black text-white hover:bg-black/90 btn-animate">검색 바로가기</Button>
+                </Link>
+              </>
+            )}
+          </div>
+          </Reveal>
+        </div>
+      </section>
+      {/* Removed showcase images per request */}
+
+      <section id="features" className="max-w-6xl mx-auto px-6 pb-24">
+        <Reveal>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="rounded-xl border p-5" style={{ borderColor: 'color-mix(in lab, #9C9DA1 16%, transparent)', background: 'color-mix(in lab, #9C9DA1 5%, transparent)' }}>
+            <div className="text-sm font-semibold mb-2" style={{ color: '#3A3B3F' }}>키워드 기반 분석</div>
+            <p className="text-[15px] leading-6" style={{ color: '#0B0C0E' }}>해시태그만 입력하면 릴스 핵심 지표를 한 번에 수집합니다.</p>
+          </div>
+          <div className="rounded-xl border p-5" style={{ borderColor: 'color-mix(in lab, #9C9DA1 16%, transparent)', background: 'color-mix(in lab, #9C9DA1 5%, transparent)' }}>
+            <div className="text-sm font-semibold mb-2" style={{ color: '#3A3B3F' }}>빠른 배치 처리</div>
+            <p className="text-[15px] leading-6" style={{ color: '#0B0C0E' }}>요청 건을 자동 배치로 병렬 처리해 기다림을 최소화합니다.</p>
+          </div>
+          <div className="rounded-xl border p-5" style={{ borderColor: 'color-mix(in lab, #9C9DA1 16%, transparent)', background: 'color-mix(in lab, #9C9DA1 5%, transparent)' }}>
+            <div className="text-sm font-semibold mb-2" style={{ color: '#3A3B3F' }}>다운로드 / 엑셀</div>
+            <p className="text-[15px] leading-6" style={{ color: '#0B0C0E' }}>원하는 항목만 선택해 MP4/ZIP, .xlsx로 바로 내보낼 수 있습니다.</p>
+          </div>
+        </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+            <div className="rounded-xl border p-5" style={{ borderColor: 'color-mix(in lab, #9C9DA1 16%, transparent)', background: 'color-mix(in lab, #9C9DA1 5%, transparent)' }}>
+              <div className="text-sm font-semibold mb-2" style={{ color: '#3A3B3F' }}>RLS 보안</div>
+              <p className="text-[15px] leading-6" style={{ color: '#0B0C0E' }}>Row Level Security와 엄격한 권한 정책으로 데이터 보호.</p>
+            </div>
+            <div className="rounded-xl border p-5" style={{ borderColor: 'color-mix(in lab, #9C9DA1 16%, transparent)', background: 'color-mix(in lab, #9C9DA1 5%, transparent)' }}>
+              <div className="text-sm font-semibold mb-2" style={{ color: '#3A3B3F' }}>캡션/자막 추출</div>
+              <p className="text-[15px] leading-6" style={{ color: '#0B0C0E' }}>자막 추출로 카피/스크립트 분석을 자동화합니다.</p>
+            </div>
+            <div className="rounded-xl border p-5" style={{ borderColor: 'color-mix(in lab, #9C9DA1 16%, transparent)', background: 'color-mix(in lab, #9C9DA1 5%, transparent)' }}>
+              <div className="text-sm font-semibold mb-2" style={{ color: '#3A3B3F' }}>크레딧/결제</div>
+              <p className="text-[15px] leading-6" style={{ color: '#0B0C0E' }}>공정 사용 정책과 토스 결제 연동으로 예측 가능한 비용.</p>
+            </div>
+          </div>
+        </Reveal>
+      </section>
+
+      <section id="how" className="max-w-6xl mx-auto px-6 pb-24">
+        <Reveal>
+          <div className="text-center mb-8">
+            <h2 className="text-2xl font-bold" style={{ color: '#0B0C0E' }}>3단계로 끝나는 워크플로우</h2>
+            <p className="mt-2 text-[15px]" style={{ color: '#3A3B3F' }}>검색 → 심층 분석 → 내보내기</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="rounded-xl border p-6" style={{ borderColor: 'color-mix(in lab, #9C9DA1 16%, transparent)' }}>
+              <div className="text-sm font-semibold" style={{ color: '#3A3B3F' }}>1. 검색</div>
+              <p className="mt-2 text-[15px] leading-6" style={{ color: '#0B0C0E' }}>해시태그를 입력하고 결과 개수를 선택합니다(30/60/90/120).</p>
+            </div>
+            <div className="rounded-xl border p-6" style={{ borderColor: 'color-mix(in lab, #9C9DA1 16%, transparent)' }}>
+              <div className="text-sm font-semibold" style={{ color: '#3A3B3F' }}>2. 심층 분석</div>
+              <p className="mt-2 text-[15px] leading-6" style={{ color: '#0B0C0E' }}>세부/프로필을 자동 배치로 처리해 조회수·길이·다운로드 URL을 확보.</p>
+            </div>
+            <div className="rounded-xl border p-6" style={{ borderColor: 'color-mix(in lab, #9C9DA1 16%, transparent)' }}>
+              <div className="text-sm font-semibold" style={{ color: '#3A3B3F' }}>3. 내보내기</div>
+              <p className="mt-2 text-[15px] leading-6" style={{ color: '#0B0C0E' }}>선택 항목을 MP4/ZIP 또는 .xlsx로 내보내고, 인사이트를 공유하세요.</p>
+            </div>
+          </div>
+        </Reveal>
+      </section>
+
+      <section id="pricing" className="max-w-6xl mx-auto px-6 pb-24">
+        <Reveal>
+        <div className="rounded-2xl border overflow-hidden">
+          <div className="grid grid-cols-1 md:grid-cols-4">
+            <div className="p-6 md:border-r border-b md:border-b-0" style={{ borderColor: 'color-mix(in lab, #9C9DA1 16%, transparent)' }}>
+              <div className="text-sm font-semibold mb-1" style={{ color: '#3A3B3F' }}>FREE</div>
+              <div className="text-2xl font-bold">0원</div>
+              <ul className="mt-3 text-[15px] leading-6" style={{ color: '#0B0C0E' }}>
+                <li>250 크레딧/월</li>
+              </ul>
+            </div>
+            <div className="p-6 md:border-r border-b md:border-b-0" style={{ borderColor: 'color-mix(in lab, #9C9DA1 16%, transparent)' }}>
+              <div className="text-sm font-semibold mb-1" style={{ color: '#3A3B3F' }}>STARTER</div>
+              <div className="text-2xl font-bold">19,000원</div>
+              <ul className="mt-3 text-[15px] leading-6" style={{ color: '#0B0C0E' }}>
+                <li>3,000 크레딧/월</li>
+              </ul>
+            </div>
+            <div className="p-6 md:border-r border-b md:border-b-0" style={{ borderColor: 'color-mix(in lab, #9C9DA1 16%, transparent)' }}>
+              <div className="text-sm font-semibold mb-1" style={{ color: '#3A3B3F' }}>PRO</div>
+              <div className="text-2xl font-bold">49,000원</div>
+              <ul className="mt-3 text-[15px] leading-6" style={{ color: '#0B0C0E' }}>
+                <li>10,000 크레딧/월</li>
+              </ul>
+            </div>
+            <div className="p-6" style={{ borderColor: 'color-mix(in lab, #9C9DA1 16%, transparent)' }}>
+              <div className="text-sm font-semibold mb-1" style={{ color: '#3A3B3F' }}>BUSINESS</div>
+              <div className="text-2xl font-bold">109,000원</div>
+              <ul className="mt-3 text-[15px] leading-6" style={{ color: '#0B0C0E' }}>
+                <li>30,000 크레딧/월</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        </Reveal>
+      </section>
+
+      <section id="cta" className="max-w-6xl mx-auto px-6 pb-28">
+        <Reveal>
+          <div className="rounded-2xl border p-8 text-center" style={{ borderColor: 'color-mix(in lab, #9C9DA1 16%, transparent)', background: 'color-mix(in lab, #9C9DA1 5%, transparent)' }}>
+            <h3 className="text-2xl font-bold" style={{ color: '#0B0C0E' }}>지금 바로 릴스 분석을 시작해보세요</h3>
+            <p className="mt-2 text-[15px]" style={{ color: '#3A3B3F' }}>무료로 가입하고, 첫 분석을 1분 내에 완료하세요.</p>
+            <div className="mt-6 flex justify-center gap-3">
+              {!user ? (
+                <Link href="/sign-in">
+                  <Button className="h-10 px-6 rounded-full bg-black text-white hover:bg-black/90 btn-animate">무료로 시작하기</Button>
+                </Link>
+              ) : (
+                <Link href="/search">
+                  <Button className="h-10 px-6 rounded-full bg-black text-white hover:bg-black/90 btn-animate">검색 바로가기</Button>
+                </Link>
+              )}
+            </div>
+          </div>
+        </Reveal>
+      </section>
+
+      {/* animation keyframes moved to app/globals.css */}
+    </main>
+  )
 }

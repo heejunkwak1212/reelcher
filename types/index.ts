@@ -39,3 +39,54 @@ export interface ISearchRow {
   takenDate?: string
 }
 
+export interface IThemeTypographyScale {
+  size: string
+  lineHeight: string
+  letterSpacing: string
+}
+
+export interface IThemeDefinition {
+  mode: string
+  htmlAttr?: Record<string, string>
+  breakpoints: { sm: string; md: string }
+  colors: {
+    text: {
+      primary: string
+      secondary: string
+      tertiary: string
+      quaternary: string
+    }
+    selection: { dim: string }
+    accentsObserved: {
+      green: string
+      gold: string
+      cyan: string
+      orangeAlpha: string
+      redAlpha: string
+    }
+  }
+  typography: {
+    fonts: { monospace: string }
+    weights: { normal: string; medium: string }
+    scale: {
+      title2: IThemeTypographyScale
+      title5: IThemeTypographyScale
+      title6: IThemeTypographyScale
+      textLarge: IThemeTypographyScale
+      textRegular: IThemeTypographyScale
+      textSmall: IThemeTypographyScale
+    }
+  }
+  radii: { full: string }
+  spacingObservedPx: number[]
+  gradients: { textPrimaryToTransparent: string }
+  icon: { color: string }
+  misc: { bentoBorder: string }
+}
+
+export interface IThemePayload {
+  source: string
+  theme: IThemeDefinition
+  variableNamesObserved: string[]
+}
+

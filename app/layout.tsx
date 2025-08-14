@@ -2,6 +2,11 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { defaultCsp } from '@/lib/csp'
+import ThemeProvider from '@/components/ThemeProvider'
+import { siteBusiness } from '@/lib/site'
+
+// Ensure this layout renders on the Node runtime to avoid edge manifest issues
+export const runtime = 'nodejs'
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -29,9 +34,42 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {/* Apply minimal CSP */}
-        <script dangerouslySetInnerHTML={{ __html: '' }} />
+        <ThemeProvider />
+        {/* Toss SDK */}
+        <script src="https://js.tosspayments.com/v1" async defer></script>
+        {/* prevent noisy unhandled Promise popups in dev; we log and continue */}
+        {process.env.NODE_ENV === 'development' ? (
+          <script
+            dangerouslySetInnerHTML={{
+              __html:
+                "window.addEventListener('unhandledrejection',function(e){console.warn('unhandledrejection',e?.reason); e.preventDefault && e.preventDefault();});",
+            }}
+          />
+        ) : null}
         {children}
+        <footer className="mt-16 border-t">
+          <div className="max-w-6xl mx-auto px-4 py-6 text-[13px] text-neutral-600">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <div>© {new Date().getFullYear()} Reelcher. All rights reserved.</div>
+              <span aria-hidden>·</span>
+              <a href="/privacy" className="hover:underline">개인정보처리방침</a>
+              <span aria-hidden>·</span>
+              <a href="/terms" className="hover:underline">이용약관</a>
+              <span aria-hidden>·</span>
+              <a href="/faq" className="hover:underline">FAQ</a>
+              <span aria-hidden>·</span>
+              <a href="/contact" className="hover:underline">문의</a>
+              <span aria-hidden>·</span>
+              <div>상호 {siteBusiness.name}</div>
+              <span aria-hidden>·</span>
+              <div>대표자명 {siteBusiness.owner}</div>
+              <span aria-hidden>·</span>
+              <div>사업장 주소 {siteBusiness.address}</div>
+              <span aria-hidden>·</span>
+              <div>연락처 <a href={`tel:${siteBusiness.phone}`} className="hover:underline">{siteBusiness.phone}</a></div>
+            </div>
+          </div>
+        </footer>
       </body>
     </html>
   );
