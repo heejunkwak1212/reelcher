@@ -3,6 +3,9 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 
+// Avoid static prerendering issues with useSearchParams
+export const dynamic = 'force-dynamic'
+
 export default function TossSuccessPage() {
   const sp = useSearchParams()
   const router = useRouter()

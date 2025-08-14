@@ -2,6 +2,9 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 
+// Avoid static prerendering issues with useSearchParams
+export const dynamic = 'force-dynamic'
+
 export default function TossBillingReturn() {
   const sp = useSearchParams()
   const router = useRouter()
