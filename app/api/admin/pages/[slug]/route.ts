@@ -1,5 +1,4 @@
 import { z } from 'zod'
-import type { NextRequest } from 'next/server'
 // Next 15 App Router passes `{ params }` as the second arg. Type it inline to avoid version-specific imports.
 import { supabaseServer } from '@/lib/supabase/server'
 import { db } from '@/db'
@@ -8,22 +7,22 @@ import { eq } from 'drizzle-orm'
 
 export const runtime = 'nodejs'
 
-export async function GET(_req: NextRequest, ctx: { params: { slug: string } }) {
-  const slug = ctx.params.slug
+export async function GET(_req: Request, ctx: any) {
+  const slug = (ctx?.params?.slug as string) || ''
   const rows = await db.select().from(pages).where(eq(pages.slug, slug)).limit(1)
   const row = rows[0] || null
   return Response.json({ slug, content: row?.content || '' })
 }
 
 const putSchema = z.object({ content: z.string().max(200_000) })
-export async function PUT(req: Request, ctx: { params: { slug: string } }) {
+export async function PUT(req: Request, ctx: any) {
   const input = putSchema.parse(await req.json())
   const ssr = supabaseServer()
   const { data: { user } } = await ssr.auth.getUser()
   if (!user) return new Response('Unauthorized', { status: 401 })
   const { data: prof } = await ssr.from('profiles').select('role').eq('user_id', user.id).single()
   if (prof?.role !== 'admin') return new Response('Forbidden', { status: 403 })
-  const slug = ctx.params.slug
+  const slug = (ctx?.params?.slug as string) || ''
   const exists = await db.select().from(pages).where(eq(pages.slug, slug)).limit(1)
   if (exists.length) {
     await db.update(pages).set({ content: input.content, updatedBy: user.id as any }).where(eq(pages.slug, slug))
