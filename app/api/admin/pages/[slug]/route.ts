@@ -1,4 +1,6 @@
 import { z } from 'zod'
+import type { NextRequest } from 'next/server'
+// Next 15 App Router passes `{ params }` as the second arg. Type it inline to avoid version-specific imports.
 import { supabaseServer } from '@/lib/supabase/server'
 import { db } from '@/db'
 import { pages } from '@/db/schema'
@@ -6,9 +8,7 @@ import { eq } from 'drizzle-orm'
 
 export const runtime = 'nodejs'
 
-type RouteCtx = { params: { slug: string } }
-
-export async function GET(_req: Request, ctx: RouteCtx) {
+export async function GET(_req: NextRequest, ctx: { params: { slug: string } }) {
   const slug = ctx.params.slug
   const rows = await db.select().from(pages).where(eq(pages.slug, slug)).limit(1)
   const row = rows[0] || null
@@ -16,7 +16,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
 }
 
 const putSchema = z.object({ content: z.string().max(200_000) })
-export async function PUT(req: Request, ctx: RouteCtx) {
+export async function PUT(req: Request, ctx: { params: { slug: string } }) {
   const input = putSchema.parse(await req.json())
   const ssr = supabaseServer()
   const { data: { user } } = await ssr.auth.getUser()
