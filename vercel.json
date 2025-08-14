@@ -2,8 +2,7 @@
   "crons": [
     {
       "path": "/api/toss/billing",
-      "schedule": "0 0 1 * *",
-      "method": "PUT"
+      "schedule": "0 0 1 * *"
     }
   ]
 }
