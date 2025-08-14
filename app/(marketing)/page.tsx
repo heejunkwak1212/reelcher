@@ -1,6 +1,9 @@
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 
+// Avoid static export bugs on this route by forcing dynamic rendering
+export const dynamic = 'force-dynamic'
+
 export default function MarketingPage() {
   return (
     <main className="min-h-screen bg-white">
@@ -60,8 +63,7 @@ export default function MarketingPage() {
           </div>
         </div>
       </footer>
-      {/* Toss SDK (lazy) */}
-      <script src="https://js.tosspayments.com/v1" async defer></script>
+      {/* Toss SDK is already included in app/layout.tsx */}
     </main>
   )
 }
