@@ -3,7 +3,6 @@
     {
       "path": "/api/toss/billing",
       "schedule": "0 0 1 * *",
-      "method": "PUT"
     }
   ]
 }
