@@ -3,7 +3,7 @@ import type { NextConfig } from 'next'
 const nextConfig: NextConfig = {
   experimental: { 
     serverActions: { allowedOrigins: ['localhost:3000', 'localhost:3001'] },
-    // Disable client reference manifest optimization that causes build issues
+    // Optimize Supabase imports to reduce bundle size
     optimizePackageImports: ['@supabase/supabase-js']
   },
   eslint: {
@@ -11,8 +11,8 @@ const nextConfig: NextConfig = {
     // We'll fix types incrementally without blocking deploys.
     ignoreDuringBuilds: true,
   },
-  // Optimize build output and reduce bundle analysis complexity
-  outputFileTracingIgnores: ['**/.git/**', '**/node_modules/.cache/**'],
+  // Force standalone output to avoid client manifest issues
+  output: 'standalone',
   headers: async () => {
     const isDev = process.env.NODE_ENV !== 'production'
     const devScript = "'self' https: 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'"
