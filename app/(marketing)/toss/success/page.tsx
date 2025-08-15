@@ -1,12 +1,12 @@
 "use client"
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 
 // Avoid static prerendering issues with useSearchParams
 export const dynamic = 'force-dynamic'
 
-export default function TossSuccessPage() {
+function TossSuccessContent() {
   const sp = useSearchParams()
   const router = useRouter()
   const [msg, setMsg] = useState('결제 확인 중…')
@@ -32,6 +32,14 @@ export default function TossSuccessPage() {
     <div className="min-h-screen grid place-items-center p-6">
       <div className="text-center text-sm text-neutral-700">{msg}</div>
     </div>
+  )
+}
+
+export default function TossSuccessPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen grid place-items-center p-6"><div className="text-center text-sm text-neutral-700">로딩 중...</div></div>}>
+      <TossSuccessContent />
+    </Suspense>
   )
 }
 

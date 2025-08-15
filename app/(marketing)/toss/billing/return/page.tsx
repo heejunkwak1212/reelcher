@@ -1,14 +1,15 @@
 "use client"
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 
 // Avoid static prerendering issues with useSearchParams
 export const dynamic = 'force-dynamic'
 
-export default function TossBillingReturn() {
+function BillingReturnContent() {
   const sp = useSearchParams()
   const router = useRouter()
   const [msg, setMsg] = useState('처리 중…')
+  
   useEffect(() => {
     const authKey = sp.get('authKey')
     const customerKey = sp.get('customerKey')
@@ -33,6 +34,14 @@ export default function TossBillingReturn() {
     <div className="min-h-screen grid place-items-center p-6">
       <div className="text-sm text-neutral-700">{msg}</div>
     </div>
+  )
+}
+
+export default function TossBillingReturn() {
+  return (
+    <Suspense fallback={<div className="min-h-screen grid place-items-center p-6"><div className="text-sm text-neutral-700">로딩 중...</div></div>}>
+      <BillingReturnContent />
+    </Suspense>
   )
 }
 
