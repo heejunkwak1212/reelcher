@@ -2,7 +2,9 @@ import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
   experimental: { 
-    serverActions: { allowedOrigins: ['localhost:3000', 'localhost:3001'] }
+    serverActions: { allowedOrigins: ['localhost:3000', 'localhost:3001'] },
+    // Optimize Supabase imports to reduce bundle size
+    optimizePackageImports: ['@supabase/supabase-js']
   },
   eslint: {
     // Allow Vercel build to pass even if ESLint errors exist.
