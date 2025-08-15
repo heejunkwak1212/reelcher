@@ -1,21 +1,42 @@
-import Link from 'next/link'
+'use client'
+
+import { AdminSidebar } from '@/components/ui/admin-sidebar'
+import { useEffect, useState } from 'react'
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<any>(null)
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true)
+
+  useEffect(() => {
+    async function loadUserData() {
+      try {
+        const userRes = await fetch('/api/me')
+        
+        if (userRes.ok) {
+          const userData = await userRes.json()
+          setUser(userData)
+        }
+      } catch (error) {
+        console.error('Failed to load user data:', error)
+      }
+    }
+
+    loadUserData()
+  }, [])
+
+  const handleSidebarChange = (isCollapsed: boolean) => {
+    setIsSidebarCollapsed(isCollapsed);
+  };
+
   return (
-    <div className="min-h-screen grid grid-rows-[auto_1fr]">
-      <header className="border-b">
-        <div className="max-w-6xl mx-auto flex items-center justify-between px-4 py-3">
-          <Link href="/" className="font-semibold" prefetch={false}>Relcher Admin</Link>
-          <nav className="flex items-center gap-4 text-sm">
-            <Link href="/admin" prefetch={false}>요약</Link>
-            <Link href="/admin/users" prefetch={false}>사용자</Link>
-            <Link href="/admin/searches" prefetch={false}>검색</Link>
-            <Link href="/admin/credits" prefetch={false}>크레딧</Link>
-            <Link href="/admin/payments" prefetch={false}>결제</Link>
-          </nav>
-        </div>
-      </header>
-      <main>
+    <div className="min-h-screen flex">
+      <AdminSidebar 
+        user={user} 
+        onSidebarChange={handleSidebarChange}
+      />
+      <main className={`flex-1 transition-all duration-200 p-4 md:p-6 ${
+        isSidebarCollapsed ? 'ml-12' : 'ml-60'
+      }`}>
         {children}
       </main>
     </div>

@@ -9,7 +9,7 @@ export const runtime = 'nodejs'
 
 export default async function ContactPage() {
   const row = (await db.select().from(pages).where(eq(pages.slug, 'contact')).limit(1))[0]
-  const ssr = supabaseServer()
+  const ssr = await supabaseServer()
   const { data: { user } } = await ssr.auth.getUser().catch(()=>({ data:{ user:null }} as any))
   let isAdmin = false
   if (user) {

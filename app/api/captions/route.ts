@@ -17,7 +17,7 @@ export async function POST(req: Request) {
     const input = schema.parse(body)
 
     // Require auth and reserve credits (20) per PRD
-    const ssr = supabaseServer()
+    const ssr = await supabaseServer()
     const { data: { user } } = await ssr.auth.getUser()
     if (!user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
     const creditsEndpoint = new URL('/api/credits/consume', req.url).toString()
@@ -34,7 +34,7 @@ export async function POST(req: Request) {
     // Sanitize: strip query/hash to avoid actor mis-detection
     const urlObj = new URL(input.url)
     const cleanUrl = `${urlObj.origin}${urlObj.pathname}`
-    const taskId = 'waxen_space/tiktok-instagram-facebook-transcriber-task'
+    const taskId = 'upscale_jiminy/tiktok-instagram-facebook-transcriber-task'
     // This actor expects 'start_urls' not 'directUrls'. If the param is wrong, it falls back to example URL.
     const started = await startTaskRun({ taskId, token, input: { start_urls: cleanUrl, normalizeLanguageTo: input.lang || 'ko' } })
     const out = await waitForRunItems<any[]>({ token, runId: started.runId })
@@ -53,7 +53,7 @@ export async function POST(req: Request) {
   } catch (e: any) {
     // Rollback reserved credits on failure if possible
     try {
-      const ssr = supabaseServer()
+      const ssr = await supabaseServer()
       const { data: { user } } = await ssr.auth.getUser()
       if (user) {
         const creditsEndpoint = new URL('/api/credits/consume', (e as any)?.req?.url || 'http://localhost').toString()

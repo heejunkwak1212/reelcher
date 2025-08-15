@@ -14,7 +14,7 @@ export async function POST(req: Request) {
   try {
     const payload = saveSchema.safeParse(await req.json())
     if (!payload.success) return new Response('Bad Request', { status: 400 })
-    const ssr = supabaseServer()
+    const ssr = await supabaseServer()
     const { data: { user } } = await ssr.auth.getUser()
     if (!user) return new Response('Unauthorized', { status: 401 })
     const svc = supabaseService()
@@ -62,7 +62,7 @@ export async function PUT(req: Request) {
 // Cancel subscription: stop auto charge; keep plan usable until next_charge_at
 export async function DELETE(req: Request) {
   try {
-    const ssr = supabaseServer()
+    const ssr = await supabaseServer()
     const { data: { user } } = await ssr.auth.getUser()
     if (!user) return new Response('Unauthorized', { status: 401 })
     const svc = supabaseService()

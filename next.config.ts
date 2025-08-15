@@ -4,7 +4,17 @@ const nextConfig: NextConfig = {
   experimental: { 
     serverActions: { allowedOrigins: ['localhost:3000', 'localhost:3001'] },
     // Optimize Supabase imports to reduce bundle size
-    optimizePackageImports: ['@supabase/supabase-js']
+    optimizePackageImports: ['@supabase/supabase-js'],
+    // Enable faster page transitions
+    optimisticClientCache: true,
+    // Enable parallel route prefetching
+    parallelServerBuildTraces: true,
+  },
+  // Enable compression for faster loading
+  compress: true,
+  // Optimize images for better performance
+  images: {
+    formats: ['image/webp', 'image/avif'],
   },
   eslint: {
     // Allow Vercel build to pass even if ESLint errors exist.

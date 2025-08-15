@@ -5,11 +5,11 @@ export const runtime = 'nodejs'
 
 export async function GET(req: Request) {
   try {
-    const ssr = supabaseServer()
+    const ssr = await supabaseServer()
     const { data: { user } } = await ssr.auth.getUser()
     if (!user) return new Response('Unauthorized', { status: 401 })
     const svc = supabaseService()
-    const { data: prof } = await svc.from('profiles').select('role, plan').eq('user_id', user.id).single()
+    const { data: prof } = await svc.from('profiles').select('role, plan, display_name').eq('user_id', user.id).single()
     // Auto-upgrade admin to business plan
     if ((prof?.role || 'user') === 'admin' && prof?.plan !== 'business') {
       await svc.from('profiles').update({ plan: 'business' }).eq('user_id', user.id)
@@ -39,7 +39,7 @@ export async function GET(req: Request) {
       const monthCredits = (monthRows || []).reduce((sum, r: any) => sum + (Number(r?.cost || 0) || 0), 0)
       return Response.json({ today: Number(todayQuery.count || 0), month: Number(monthQuery.count || 0), recent, monthCredits })
     }
-    return Response.json({ id: user.id, role: prof?.role || 'user', plan: prof?.plan || 'free', credits: (cr?.balance || 0) as number })
+    return Response.json({ id: user.id, email: user.email, role: prof?.role || 'user', plan: prof?.plan || 'free', display_name: prof?.display_name, credits: (cr?.balance || 0) as number })
   } catch {
     return new Response('Bad Request', { status: 400 })
   }

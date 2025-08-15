@@ -45,7 +45,7 @@ export async function POST(req: Request) {
     if (!token) return new Response('APIFY_TOKEN missing', { status: 500 })
 
     // Require auth for costful operation
-    const supabase = supabaseServer()
+    const supabase = await supabaseServer()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return new Response('Unauthorized', { status: 401 })
 
@@ -136,7 +136,7 @@ export async function POST(req: Request) {
       return x?.url || x?.postUrl || x?.link || (sc ? `https://www.instagram.com/p/${sc}/` : undefined)
     }
     // Use Task configured for reels; override hashtags/limit only
-    const taskId = 'waxen_space/instagram-hashtag-scraper-task'
+    const taskId = 'upscale_jiminy/instagram-hashtag-scraper-task'
     let hashtagItems: IHashtagItem[] = []
     const hashtagErrors: string[] = []
     // Date filter disabled in stage-1 (MVP). Keep helper stub for future use.
@@ -224,7 +224,7 @@ export async function POST(req: Request) {
     let cursorRounds = 0
     if (reelUrls.length > 0) {
       const batchSize = 30
-      const detailsTaskId = 'waxen_space/instagram-scraper-task'
+      const detailsTaskId = 'upscale_jiminy/instagram-scraper-task'
       const maxIdx = Math.min(reelUrls.length, target)
       const batches: string[][] = []
       for (let i = 0; i < maxIdx; i += batchSize) {
@@ -257,7 +257,7 @@ export async function POST(req: Request) {
       const chunkSize = 30
       for (let i = 0; i < usernames.length; i += chunkSize) {
         const slice = usernames.slice(i, i + chunkSize)
-        const started = await startTaskRun({ taskId: 'waxen_space/instagram-profile-scraper-task', token, input: { usernames: slice, ...proxyOpt } })
+        const started = await startTaskRun({ taskId: 'upscale_jiminy/instagram-profile-scraper-task', token, input: { usernames: slice, ...proxyOpt } })
         apifyRunIds.add(started.runId)
         const res = await waitForRunItems<IProfileSummary>({ token, runId: started.runId })
         profiles.push(...res.items)
@@ -368,7 +368,7 @@ export async function POST(req: Request) {
         .map(r => r.username as string)
       const uniqueMissing = Array.from(new Set(missingUsernames)).filter(u => !profiles.some(p => p.username === u))
       if (uniqueMissing.length === 0) break
-      const started = await startTaskRun({ taskId: 'waxen_space/instagram-profile-scraper-task', token, input: { usernames: uniqueMissing.slice(0, 20), ...proxyOpt } })
+      const started = await startTaskRun({ taskId: 'upscale_jiminy/instagram-profile-scraper-task', token, input: { usernames: uniqueMissing.slice(0, 20), ...proxyOpt } })
       apifyRunIds.add(started.runId)
       const more = await waitForRunItems<IProfileSummary>({ token, runId: started.runId })
       const moreProfiles = more.items

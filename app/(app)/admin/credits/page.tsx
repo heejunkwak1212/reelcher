@@ -33,21 +33,21 @@ export default function AdminCredits() {
       <div className="flex items-end gap-2">
         <label className="flex-1">
           <span className="block text-xs mb-1">이메일</span>
-          <input className="w-full border rounded px-2 py-1" value={email} onChange={e=>setEmail(e.target.value)} placeholder="user@example.com" />
+          <input className="w-full border border-gray-200 rounded px-2 py-1" value={email} onChange={e=>setEmail(e.target.value)} placeholder="user@example.com" />
         </label>
         <label>
           <span className="block text-xs mb-1">충전 크레딧</span>
-          <input type="number" className="w-32 border rounded px-2 py-1 text-right" value={delta} onChange={e=>setDelta(Number(e.target.value||'0'))} />
+          <input type="number" className="w-32 border border-gray-200 rounded px-2 py-1 text-right" value={delta} onChange={e=>setDelta(Number(e.target.value||'0'))} />
         </label>
-        <button className="px-3 py-2 border rounded" onClick={charge}>충전</button>
+        <button className="px-3 py-2 border border-gray-200 rounded" onClick={charge}>충전</button>
       </div>
-      <div className="overflow-x-auto border rounded">
+      <div className="overflow-x-auto border border-gray-200 rounded">
         <table className="min-w-full text-sm">
           <thead className="bg-neutral-50">
             <tr>
-              <th className="p-2 border">User</th>
-              <th className="p-2 border">Balance</th>
-              <th className="p-2 border">Reserved</th>
+              <th className="p-2 border border-gray-200">User</th>
+              <th className="p-2 border border-gray-200">Balance</th>
+              <th className="p-2 border border-gray-200">Reserved</th>
             </tr>
           </thead>
           <tbody>
@@ -55,9 +55,9 @@ export default function AdminCredits() {
               const c = creditMap.get(u.id) || {}
               return (
                 <tr key={u.id} className="odd:bg-white even:bg-neutral-50">
-                  <td className="p-2 border whitespace-nowrap">{u.email || u.id}</td>
-                  <td className="p-2 border text-right">{c.balance ?? 0}</td>
-                  <td className="p-2 border text-right">{c.reserved ?? 0}</td>
+                  <td className="p-2 border border-gray-200 whitespace-nowrap">{u.email || u.id}</td>
+                  <td className="p-2 border border-gray-200 text-right">{c.balance ?? 0}</td>
+                  <td className="p-2 border border-gray-200 text-right">{c.reserved ?? 0}</td>
                 </tr>
               )
             })}

@@ -4,7 +4,7 @@ import { supabaseService } from '@/lib/supabase/service'
 export const runtime = 'nodejs'
 
 export async function GET() {
-  const supaSSR = supabaseServer()
+  const supaSSR = await supabaseServer()
   const {
     data: { user },
   } = await supaSSR.auth.getUser()

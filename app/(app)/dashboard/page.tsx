@@ -23,15 +23,15 @@ export default function DashboardPage() {
       <h1 className="text-xl font-semibold">대시보드</h1>
       <SubscriptionManager />
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="border rounded p-4">
+        <div className="border border-gray-200 rounded p-4">
           <div className="text-sm text-neutral-600">최근 검색 수</div>
           <div className="text-2xl font-bold">{recent ?? '-'}</div>
         </div>
-        <div className="border rounded p-4">
+        <div className="border border-gray-200 rounded p-4">
           <div className="text-sm text-neutral-600">잔여 크레딧</div>
           <div className="text-2xl font-bold">{credit ?? '-'}</div>
         </div>
-        <div className="border rounded p-4">
+        <div className="border border-gray-200 rounded p-4">
           <div className="text-sm text-neutral-600">이번 달 사용량</div>
           <div className="text-2xl font-bold">-</div>
         </div>
@@ -68,14 +68,14 @@ function SubscriptionManager() {
     } catch(e:any){ alert(e?.message||'취소 실패') } finally { setLoading(false) }
   }
   return (
-    <div className="border rounded p-4">
+    <div className="border border-gray-200 rounded p-4">
       <h2 className="font-medium mb-2">구독 관리</h2>
       <div className="text-sm text-neutral-700 mb-2">현재 플랜: {me?.plan || '-'}</div>
       <div className="flex items-center gap-2">
-        <button className="px-3 py-2 border rounded" onClick={()=>changePlan('starter')} disabled={loading}>스타터로 변경</button>
-        <button className="px-3 py-2 border rounded" onClick={()=>changePlan('pro')} disabled={loading}>프로로 변경</button>
-        <button className="px-3 py-2 border rounded" onClick={()=>changePlan('business')} disabled={loading}>비즈니스로 변경</button>
-        <button className="px-3 py-2 border rounded bg-black text-white" onClick={cancel} disabled={loading}>구독 취소</button>
+        <button className="px-3 py-2 border border-gray-200 rounded hover:border-gray-300 transition-colors" onClick={()=>changePlan('starter')} disabled={loading}>스타터로 변경</button>
+        <button className="px-3 py-2 border border-gray-200 rounded hover:border-gray-300 transition-colors" onClick={()=>changePlan('pro')} disabled={loading}>프로로 변경</button>
+        <button className="px-3 py-2 border border-gray-200 rounded hover:border-gray-300 transition-colors" onClick={()=>changePlan('business')} disabled={loading}>비즈니스로 변경</button>
+        <button className="px-3 py-2 border border-gray-200 rounded bg-black text-white hover:bg-gray-800 transition-colors" onClick={cancel} disabled={loading}>구독 취소</button>
       </div>
     </div>
   )

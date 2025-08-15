@@ -6,7 +6,7 @@ import CancelSubscriptionButton from '@/components/billing/CancelSubscriptionBut
 export const runtime = 'nodejs'
 
 export default async function BillingPage() {
-  const ssr = supabaseServer()
+  const ssr = await supabaseServer()
   const { data: { user } } = await ssr.auth.getUser()
   if (!user) return null
   const { data: prof } = await ssr.from('profiles').select('plan').eq('user_id', user.id).single()
@@ -17,14 +17,14 @@ export default async function BillingPage() {
     <div className="space-y-4">
       <h1 className="text-lg font-semibold">구독 관리</h1>
       <div className="grid gap-4 md:grid-cols-2">
-        <div className="border rounded-lg p-4">
+        <div className="border border-gray-200 rounded-lg p-4">
           <div className="text-sm text-neutral-500">현재 플랜</div>
           <div className="text-xl font-semibold capitalize">{plan}</div>
           <div className="mt-4 flex gap-2">
             <Link className="px-3 py-2 rounded-md bg-neutral-900 text-white text-sm" href="/pricing">플랜 변경</Link>
           </div>
         </div>
-        <div className="border rounded-lg p-4">
+        <div className="border border-gray-200 rounded-lg p-4">
           <div className="text-sm text-neutral-500">크레딧 잔액</div>
           <div className="text-xl font-semibold">{balance.toLocaleString()}</div>
           <div className="mt-4 flex gap-2">

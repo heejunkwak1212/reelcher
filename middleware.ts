@@ -46,35 +46,31 @@ export async function middleware(req: NextRequest) {
 
   // --- 여기서부터는 로그인한 사용자만 실행됩니다. ---
 
-  // 4. 사용자의 프로필 정보(온보딩 여부, 역할)를 한 번에 가져옵니다.
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('onboarding_completed, role')
-    .eq('user_id', user.id)
-    .single()
+  // 4. 특정 경로에서만 프로필 정보를 조회합니다 (성능 최적화)
+  let profile = null
+  const needsProfileCheck = pathname.startsWith('/onboarding') || pathname.startsWith('/admin')
+  
+  if (needsProfileCheck) {
+    const { data: profileData } = await supabase
+      .from('profiles')
+      .select('onboarding_completed, role')
+      .eq('user_id', user.id)
+      .single()
+    profile = profileData
+  }
 
   // 5. 온보딩(Onboarding) 관련 로직을 처리합니다.
-  const onboardingCompleted = profile?.onboarding_completed === true
-
-  if (onboardingCompleted) {
-    // 온보딩을 마친 사용자가 /onboarding 페이지에 접근하면 대시보드로 보냅니다.
-    if (pathname.startsWith('/onboarding')) {
+  if (pathname.startsWith('/onboarding')) {
+    const onboardingCompleted = profile?.onboarding_completed === true
+    if (onboardingCompleted) {
       const url = req.nextUrl.clone()
       url.pathname = '/dashboard'
-      return NextResponse.redirect(url)
-    }
-  } else {
-    // 온보딩을 마치지 않은 사용자는 /onboarding 페이지로 강제 이동시킵니다.
-    if (!pathname.startsWith('/onboarding')) {
-      const url = req.nextUrl.clone()
-      url.pathname = '/onboarding'
       return NextResponse.redirect(url)
     }
   }
 
   // 6. 관리자(Admin) 페이지 접근을 제어합니다.
   if (pathname.startsWith('/admin')) {
-    // 프로필 역할이 'admin'이 아니면 홈페이지로 보냅니다.
     if (profile?.role !== 'admin') {
       const url = req.nextUrl.clone()
       url.pathname = '/'

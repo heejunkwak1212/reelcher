@@ -12,7 +12,7 @@ export async function GET(req: Request) {
   const fromDate = url.searchParams.get('from')
   const toDate = url.searchParams.get('to')
 
-  const ssr = supabaseServer()
+  const ssr = await supabaseServer()
   const { data: { user } } = await ssr.auth.getUser()
   if (!user) return new Response('Unauthorized', { status: 401 })
   const { data: prof } = await ssr.from('profiles').select('role').eq('user_id', user.id).single()

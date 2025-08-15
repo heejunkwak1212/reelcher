@@ -30,7 +30,7 @@ export async function POST(req: Request) {
     }
 
     // Credit user balance
-    const ssr = supabaseServer()
+    const ssr = await supabaseServer()
     const { data: { user } } = await ssr.auth.getUser()
     if (!user) return new Response('Unauthorized', { status: 401 })
     const svc = supabaseService()

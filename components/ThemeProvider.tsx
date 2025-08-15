@@ -9,20 +9,31 @@ export default function ThemeProvider() {
     // Dev-only lightweight error listeners; avoid triggering Next.js overlay
     if (process.env.NODE_ENV !== 'production') {
       const onUR = (e: PromiseRejectionEvent) => {
-        try { e.preventDefault() } catch {}
-        const reason = (e && (e as any).reason) as unknown
-        if (!reason) return
-        const msg = typeof reason === 'string' ? reason : (reason as any)?.message
-        if (!msg) return
-        // eslint-disable-next-line no-console
-        console.warn('[relcher] Unhandled rejection (suppressed):', msg)
+        try { 
+          e.preventDefault() 
+          const reason = e?.reason
+          if (reason && typeof reason === 'object' && reason !== null) {
+            const stack = (reason as any)?.stack
+            const message = (reason as any)?.message
+            if (stack || message) {
+              // eslint-disable-next-line no-console
+              console.warn('[relcher] Unhandled rejection (suppressed):', message || 'Unknown error')
+            }
+          }
+        } catch (err) {
+          // Silently handle any error in error handler
+        }
       }
       const onErr = (e: ErrorEvent) => {
-        try { e.preventDefault() } catch {}
-        const err = (e?.error as any) || e?.message
-        if (!err) return
-        // eslint-disable-next-line no-console
-        console.warn('[relcher] Global error (suppressed):', err)
+        try { 
+          e.preventDefault()
+          if (e?.message && e.message !== '') {
+            // eslint-disable-next-line no-console
+            console.warn('[relcher] Global error (suppressed):', e.message)
+          }
+        } catch (err) {
+          // Silently handle any error in error handler
+        }
       }
       window.addEventListener('unhandledrejection', onUR)
       window.addEventListener('error', onErr, true)

@@ -1,0 +1,306 @@
+"use client";
+
+import { cn } from "@/lib/utils";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { motion } from "framer-motion";
+import { Badge } from "@/components/ui/badge"
+import {
+  History,
+  CreditCard,
+  Settings,
+  LogOut,
+  Search,
+  BarChart3,
+} from "lucide-react";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Separator } from "@/components/ui/separator";
+import { CaretSortIcon } from "@radix-ui/react-icons";
+
+const sidebarVariants = {
+  open: {
+    width: "15rem",
+  },
+  closed: {
+    width: "3.05rem",
+  },
+};
+
+const contentVariants = {
+  open: { display: "block", opacity: 1 },
+  closed: { display: "block", opacity: 1 },
+};
+
+const variants = {
+  open: {
+    x: 0,
+    opacity: 1,
+    transition: {
+      x: { stiffness: 1000, velocity: -100 },
+    },
+  },
+  closed: {
+    x: -20,
+    opacity: 0,
+    transition: {
+      x: { stiffness: 100 },
+    },
+  },
+};
+
+const transitionProps = {
+  type: "tween" as const,
+  ease: "easeOut" as const,
+  duration: 0.2,
+};
+
+const staggerVariants = {
+  open: {
+    transition: { staggerChildren: 0.03, delayChildren: 0.02 },
+  },
+};
+
+interface DashboardSidebarProps {
+  user?: any;
+  plan?: string;
+  balance?: number;
+  onSidebarChange?: (isCollapsed: boolean) => void;
+}
+
+export function DashboardSidebar({ user, plan = 'free', balance = 0, onSidebarChange }: DashboardSidebarProps) {
+  const [isCollapsed, setIsCollapsed] = useState(true);
+  const pathname = usePathname();
+  
+  const handleExpand = () => {
+    setIsCollapsed(false);
+    onSidebarChange?.(false);
+  };
+  
+  const handleCollapse = () => {
+    setIsCollapsed(true);
+    onSidebarChange?.(true);
+  };
+  
+  return (
+    <motion.div
+      className={cn(
+        "sidebar fixed left-0 z-40 h-full shrink-0 border-r"
+      )}
+      initial={isCollapsed ? "closed" : "open"}
+      animate={isCollapsed ? "closed" : "open"}
+      variants={sidebarVariants}
+      transition={transitionProps}
+      onMouseEnter={handleExpand}
+      onMouseLeave={handleCollapse}
+    >
+      <motion.div
+        className={`relative z-40 flex text-muted-foreground h-full shrink-0 flex-col bg-white transition-all`}
+        variants={contentVariants}
+      >
+        <motion.ul variants={staggerVariants} className="flex h-full flex-col">
+          <div className="flex grow flex-col items-center">
+            {/* 사용자 프로필 섹션 */}
+            <div className="flex h-[54px] w-full shrink-0 border-b border-gray-200 p-2">
+              <div className="mt-[1.5px] flex w-full">
+                <div className="flex w-full items-center gap-2 px-2 py-1">
+                  <Avatar className="w-4 h-4 flex-shrink-0">
+                    <AvatarFallback className="text-xs bg-gray-100 text-gray-600">
+                      {user?.display_name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || 'U'}
+                    </AvatarFallback>
+                  </Avatar>
+                  <motion.div variants={variants}>
+                    {!isCollapsed && (
+                      <p className="text-sm font-semibold text-gray-900 truncate">
+                        {user?.display_name || user?.email || '사용자'}
+                      </p>
+                    )}
+                  </motion.div>
+                </div>
+              </div>
+            </div>
+
+            {/* 네비게이션 메뉴 */}
+            <div className="flex h-full w-full flex-col">
+              <div className="flex grow flex-col gap-4">
+                <ScrollArea className="h-16 grow p-2">
+                  <div className={cn("flex w-full flex-col gap-1")}>
+                    <Link
+                      href="/search"
+                      prefetch={true}
+                      className={cn(
+                        "flex h-8 w-full flex-row items-center rounded-md px-2 py-1.5 transition hover:bg-gray-100 hover:text-gray-900",
+                        pathname?.includes("search") && "bg-gray-100 text-gray-900",
+                      )}
+                    >
+                      <Search className="h-4 w-4" />
+                      <motion.li variants={variants}>
+                        {!isCollapsed && (
+                          <p className="ml-2 text-sm font-medium">검색</p>
+                        )}
+                      </motion.li>
+                    </Link>
+                    
+                    <Link
+                      href="/dashboard"
+                      prefetch={true}
+                      className={cn(
+                        "flex h-8 w-full flex-row items-center rounded-md px-2 py-1.5 transition hover:bg-gray-100 hover:text-gray-900",
+                        pathname === "/dashboard" && "bg-gray-100 text-gray-900",
+                      )}
+                    >
+                      <BarChart3 className="h-4 w-4" />
+                      <motion.li variants={variants}>
+                        {!isCollapsed && (
+                          <p className="ml-2 text-sm font-medium">대시보드</p>
+                        )}
+                      </motion.li>
+                    </Link>
+
+                    <Separator className="w-full my-2 opacity-30" />
+
+                    <Link
+                      href="/dashboard/history"
+                      prefetch={true}
+                      className={cn(
+                        "flex h-8 w-full flex-row items-center rounded-md px-2 py-1.5 transition hover:bg-gray-100 hover:text-gray-900",
+                        pathname?.includes("history") && "bg-gray-100 text-gray-900",
+                      )}
+                    >
+                      <History className="h-4 w-4" />
+                      <motion.li variants={variants}>
+                        {!isCollapsed && (
+                          <p className="ml-2 text-sm font-medium">사용 이력</p>
+                        )}
+                      </motion.li>
+                    </Link>
+                    
+                    <Link
+                      href="/dashboard/billing"
+                      prefetch={true}
+                      className={cn(
+                        "flex h-8 w-full flex-row items-center rounded-md px-2 py-1.5 transition hover:bg-gray-100 hover:text-gray-900",
+                        pathname?.includes("billing") && "bg-gray-100 text-gray-900",
+                      )}
+                    >
+                      <CreditCard className="h-4 w-4" />
+                      <motion.li variants={variants}>
+                        {!isCollapsed && (
+                          <p className="ml-2 text-sm font-medium">구독 관리</p>
+                        )}
+                      </motion.li>
+                    </Link>
+                  </div>
+                </ScrollArea>
+              </div>
+              
+              {/* 하단 정보 및 계정 */}
+              <div className="flex flex-col p-2 space-y-2">
+                {/* 설정 링크 */}
+                <Link
+                  href="/dashboard/settings"
+                  prefetch={true}
+                  className={cn(
+                    "flex h-8 w-full flex-row items-center rounded-md px-2 py-1.5 transition hover:bg-gray-100 hover:text-gray-900",
+                    pathname?.includes("settings") && "bg-gray-100 text-gray-900",
+                  )}
+                >
+                  <Settings className="h-4 w-4" />
+                  <motion.li variants={variants}>
+                    {!isCollapsed && (
+                      <p className="ml-2 text-sm font-medium">설정</p>
+                    )}
+                  </motion.li>
+                </Link>
+
+                {/* 플랜/크레딧 정보 */}
+                <motion.div 
+                  variants={variants}
+                  className="bg-gray-50 rounded-lg p-2"
+                >
+                  {!isCollapsed && (
+                    <div className="text-xs space-y-1">
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">플랜</span>
+                        <span className="font-medium capitalize">{plan}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">잔액</span>
+                        <span className="font-semibold">{balance.toLocaleString()}</span>
+                      </div>
+                    </div>
+                  )}
+                </motion.div>
+
+                {/* 계정 드롭다운 */}
+                <DropdownMenu modal={false}>
+                  <DropdownMenuTrigger className="w-full">
+                    <div className="flex h-8 w-full flex-row items-center gap-2 rounded-md px-2 py-1.5 transition hover:bg-gray-100 hover:text-gray-900">
+                      <Avatar className="size-4">
+                        <AvatarFallback>
+                          {user?.email?.charAt(0).toUpperCase() || 'U'}
+                        </AvatarFallback>
+                      </Avatar>
+                      <motion.li
+                        variants={variants}
+                        className="flex w-full items-center gap-2"
+                      >
+                        {!isCollapsed && (
+                          <>
+                            <p className="text-sm font-medium">계정</p>
+                            <CaretSortIcon className="ml-auto h-4 w-4 text-gray-400" />
+                          </>
+                        )}
+                      </motion.li>
+                    </div>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent side="right" sideOffset={15}>
+                    <div className="flex flex-row items-center gap-2 p-2">
+                      <Avatar className="size-6">
+                        <AvatarFallback>
+                          {user?.email?.charAt(0).toUpperCase() || 'U'}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex flex-col text-left">
+                        <span className="text-sm font-medium">
+                          {user?.email || '사용자'}
+                        </span>
+                        <span className="line-clamp-1 text-xs text-gray-500 capitalize">
+                          {plan} 플랜
+                        </span>
+                      </div>
+                    </div>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild className="flex items-center gap-2">
+                      <Link href="/dashboard/settings" prefetch={true}>
+                        <Settings className="h-4 w-4" /> 설정
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild className="flex items-center gap-2">
+                      <Link href="/dashboard/billing" prefetch={true}>
+                        <CreditCard className="h-4 w-4" /> 구독/충전
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem className="flex items-center gap-2 text-red-600">
+                      <LogOut className="h-4 w-4" /> 로그아웃
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
+          </div>
+        </motion.ul>
+      </motion.div>
+    </motion.div>
+  );
+}

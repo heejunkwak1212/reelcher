@@ -17,7 +17,7 @@ export async function GET(_req: Request, ctx: any) {
 const putSchema = z.object({ content: z.string().max(200_000) })
 export async function PUT(req: Request, ctx: any) {
   const input = putSchema.parse(await req.json())
-  const ssr = supabaseServer()
+  const ssr = await supabaseServer()
   const { data: { user } } = await ssr.auth.getUser()
   if (!user) return new Response('Unauthorized', { status: 401 })
   const { data: prof } = await ssr.from('profiles').select('role').eq('user_id', user.id).single()

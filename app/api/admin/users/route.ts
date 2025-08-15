@@ -10,7 +10,7 @@ export async function GET(req: Request) {
   const from = (page - 1) * pageSize
   const to = from + pageSize - 1
 
-  const ssr = supabaseServer()
+  const ssr = await supabaseServer()
   const { data: { user } } = await ssr.auth.getUser()
   if (!user) return new Response('Unauthorized', { status: 401 })
   const { data: prof } = await ssr.from('profiles').select('role').eq('user_id', user.id).single()
@@ -19,15 +19,35 @@ export async function GET(req: Request) {
   const svc = supabaseService()
   const { data: users, count } = await svc.from('users').select('*', { count: 'exact' }).order('created_at', { ascending: false }).range(from, to)
   const ids = (users || []).map(u => u.id)
-  const [{ data: profiles }, { data: credits }] = await Promise.all([
+  const [{ data: profiles }, { data: credits }, { data: searches }] = await Promise.all([
     ids.length ? svc.from('profiles').select('*').in('user_id', ids) : Promise.resolve({ data: [] as any[] }),
     ids.length ? svc.from('credits').select('*').in('user_id', ids) : Promise.resolve({ data: [] as any[] }),
+    ids.length ? svc.from('searches').select('user_id, cost').in('user_id', ids) : Promise.resolve({ data: [] as any[] }),
   ])
-  return Response.json({ items: users || [], profiles: profiles || [], credits: credits || [], total: count || 0, page, pageSize })
+
+  // 각 유저별 총 크레딧 사용량 계산
+  const searchStats = (searches || []).reduce((acc, search) => {
+    if (!acc[search.user_id]) {
+      acc[search.user_id] = { totalCost: 0, searchCount: 0 }
+    }
+    acc[search.user_id].totalCost += search.cost || 0
+    acc[search.user_id].searchCount += 1
+    return acc
+  }, {} as Record<string, { totalCost: number; searchCount: number }>)
+
+  return Response.json({ 
+    items: users || [], 
+    profiles: profiles || [], 
+    credits: credits || [], 
+    searchStats,
+    total: count || 0, 
+    page, 
+    pageSize 
+  })
 }
 
 export async function POST(req: Request) {
-  const ssr = supabaseServer()
+  const ssr = await supabaseServer()
   const { data: { user } } = await ssr.auth.getUser()
   if (!user) return new Response('Unauthorized', { status: 401 })
   const { data: prof } = await ssr.from('profiles').select('role').eq('user_id', user.id).single()
@@ -43,7 +63,7 @@ export async function POST(req: Request) {
 }
 
 export async function PUT(req: Request) {
-  const ssr = supabaseServer()
+  const ssr = await supabaseServer()
   const { data: { user } } = await ssr.auth.getUser()
   if (!user) return new Response('Unauthorized', { status: 401 })
   const { data: prof } = await ssr.from('profiles').select('role').eq('user_id', user.id).single()

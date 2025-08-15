@@ -60,7 +60,7 @@ export default async function TermsPage() {
 부칙
 본 약관은 2025년 8월 16일로부터 적용합니다.`
   const row = (await db.select().from(pages).where(eq(pages.slug, 'terms')).limit(1))[0]
-  const ssr = supabaseServer()
+  const ssr = await supabaseServer()
   const { data: { user } } = await ssr.auth.getUser().catch(()=>({ data:{ user:null }} as any))
   let isAdmin = false
   if (user) {

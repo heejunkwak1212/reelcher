@@ -1,70 +1,22 @@
 import Link from 'next/link'
-import SiteHeader from '@/components/layout/SiteHeader'
 import { Button } from '@/components/ui/button'
+import SiteHeader from '@/components/layout/SiteHeader'
+import RelcherHero from '@/components/layout/RelcherHero'
+import { RelcherPricing } from '@/components/ui/relcher-pricing'
 import Reveal from '@/components/ux/Reveal'
 import { supabaseServer } from '@/lib/supabase/server'
-// no styled-jsx; animations are defined in globals.css
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic';
 
 export default async function Home() {
-  const supabase = supabaseServer()
+  const supabase = await supabaseServer()
   const { data } = await supabase.auth.getUser().catch(() => ({ data: { user: null } as any }))
   const user = data?.user
   return (
     <main className="min-h-screen bg-white">
       <SiteHeader />
-      <section id="top" className="relative overflow-hidden">
-        <div className="pointer-events-none absolute inset-0 -z-10" aria-hidden>
-          <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-[80vw] h-[80vw] rounded-full opacity-[0.06]" style={{ background: 'radial-gradient(closest-side, #0B0C0E, transparent 70%)' }} />
-        </div>
-        <div className="max-w-6xl mx-auto px-6 py-24 text-center">
-          <Reveal>
-        <div className="space-y-2 md:space-y-3">
-          <div className="text-3xl md:text-6xl font-semibold tracking-tight text-reveal" style={{ color: '#3A3B3F' }}>
-            Stop scrolling,
-          </div>
-          <h1
-            className="text-5xl md:text-7xl font-extrabold tracking-tight text-reveal anim-2"
-            style={{
-              background: 'linear-gradient(to right, #0B0C0E, transparent 80%), #9C9DA1',
-              WebkitBackgroundClip: 'text',
-              backgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              color: 'unset'
-            }}
-          >
-            Reelcher is here.
-          </h1>
-        </div>
-          <p className="mt-4 text-[15px] leading-6" style={{ color: '#3A3B3F' }}>
-          키워드만 입력하세요. 인기 릴스와 데이터, 다 찾아드릴게요.
-          </p>
-          <div className="mt-8 flex gap-3 justify-center">
-            {!user ? (
-              <>
-                <Link href="/sign-in" prefetch={false}>
-                  <Button className="h-10 px-5 rounded-full bg-black text-white hover:bg-black/90 btn-animate">무료로 시작하기</Button>
-                </Link>
-                <Link href="/sign-in" prefetch={false}>
-                  <Button variant="outline" className="h-10 px-5 rounded-full btn-animate">로그인</Button>
-                </Link>
-              </>
-            ) : (
-              <>
-                <Link href="/dashboard" prefetch={false}>
-                  <Button variant="outline" className="h-10 px-5 rounded-full btn-animate">대시보드</Button>
-                </Link>
-                <Link href="/search" prefetch={false}>
-                  <Button className="h-10 px-5 rounded-full bg-black text-white hover:bg-black/90 btn-animate">검색 바로가기</Button>
-                </Link>
-              </>
-            )}
-          </div>
-          </Reveal>
-        </div>
-      </section>
+      <RelcherHero user={user} />
       {/* Removed showcase images per request */}
 
       <section id="features" className="max-w-6xl mx-auto px-6 pb-24">
@@ -123,41 +75,9 @@ export default async function Home() {
         </Reveal>
       </section>
 
-      <section id="pricing" className="max-w-6xl mx-auto px-6 pb-24">
-        <Reveal>
-        <div className="rounded-2xl border overflow-hidden">
-          <div className="grid grid-cols-1 md:grid-cols-4">
-            <div className="p-6 md:border-r border-b md:border-b-0" style={{ borderColor: 'color-mix(in lab, #9C9DA1 16%, transparent)' }}>
-              <div className="text-sm font-semibold mb-1" style={{ color: '#3A3B3F' }}>FREE</div>
-              <div className="text-2xl font-bold">0원</div>
-              <ul className="mt-3 text-[15px] leading-6" style={{ color: '#0B0C0E' }}>
-                <li>250 크레딧/월</li>
-              </ul>
-            </div>
-            <div className="p-6 md:border-r border-b md:border-b-0" style={{ borderColor: 'color-mix(in lab, #9C9DA1 16%, transparent)' }}>
-              <div className="text-sm font-semibold mb-1" style={{ color: '#3A3B3F' }}>STARTER</div>
-              <div className="text-2xl font-bold">19,000원</div>
-              <ul className="mt-3 text-[15px] leading-6" style={{ color: '#0B0C0E' }}>
-                <li>3,000 크레딧/월</li>
-              </ul>
-            </div>
-            <div className="p-6 md:border-r border-b md:border-b-0" style={{ borderColor: 'color-mix(in lab, #9C9DA1 16%, transparent)' }}>
-              <div className="text-sm font-semibold mb-1" style={{ color: '#3A3B3F' }}>PRO</div>
-              <div className="text-2xl font-bold">49,000원</div>
-              <ul className="mt-3 text-[15px] leading-6" style={{ color: '#0B0C0E' }}>
-                <li>10,000 크레딧/월</li>
-              </ul>
-            </div>
-            <div className="p-6" style={{ borderColor: 'color-mix(in lab, #9C9DA1 16%, transparent)' }}>
-              <div className="text-sm font-semibold mb-1" style={{ color: '#3A3B3F' }}>BUSINESS</div>
-              <div className="text-2xl font-bold">109,000원</div>
-              <ul className="mt-3 text-[15px] leading-6" style={{ color: '#0B0C0E' }}>
-                <li>30,000 크레딧/월</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-        </Reveal>
+      {/* 가격 섹션 */}
+      <section id="pricing" className="bg-gray-50">
+        <RelcherPricing />
       </section>
 
       <section id="cta" className="max-w-6xl mx-auto px-6 pb-28">
