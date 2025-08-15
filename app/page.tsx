@@ -6,6 +6,7 @@ import { supabaseServer } from '@/lib/supabase/server'
 // no styled-jsx; animations are defined in globals.css
 
 export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic';
 
 export default async function Home() {
   const supabase = supabaseServer()

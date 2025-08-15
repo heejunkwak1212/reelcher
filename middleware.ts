@@ -1,15 +1,30 @@
-import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs'
+import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 export async function middleware(req: NextRequest) {
   // 1. 응답(response) 객체를 생성하고, Edge에 최적화된 Supabase 클라이언트를 초기화합니다.
   const res = NextResponse.next()
-  const supabase = createMiddlewareClient({ req, res })
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return req.cookies.get(name)?.value
+        },
+        set(name: string, value: string, options: any) {
+          res.cookies.set({ name, value, ...options })
+        },
+        remove(name: string, options: any) {
+          res.cookies.set({ name, value: '', ...options, maxAge: 0 })
+        },
+      },
+    }
+  )
 
   // 2. 사용자의 세션 정보를 가져옵니다.
-  const { data: { session } } = await supabase.auth.getSession()
-  const user = session?.user
+  const { data: { user } } = await supabase.auth.getUser()
 
   const { pathname } = req.nextUrl
 
