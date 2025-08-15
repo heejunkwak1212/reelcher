@@ -1,9 +1,6 @@
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 
-// Avoid static export bugs on this route by forcing dynamic rendering
-export const dynamic = 'force-dynamic'
-
 export default function MarketingPage() {
   return (
     <main className="min-h-screen bg-white">

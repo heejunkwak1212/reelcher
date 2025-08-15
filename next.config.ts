@@ -11,8 +11,6 @@ const nextConfig: NextConfig = {
     // We'll fix types incrementally without blocking deploys.
     ignoreDuringBuilds: true,
   },
-  // Force standalone output to avoid client manifest issues
-  output: 'standalone',
   headers: async () => {
     const isDev = process.env.NODE_ENV !== 'production'
     const devScript = "'self' https: 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'"
