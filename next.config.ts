@@ -1,12 +1,18 @@
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-  experimental: { serverActions: { allowedOrigins: ['localhost:3000', 'localhost:3001'] } },
+  experimental: { 
+    serverActions: { allowedOrigins: ['localhost:3000', 'localhost:3001'] },
+    // Disable client reference manifest optimization that causes build issues
+    optimizePackageImports: ['@supabase/supabase-js']
+  },
   eslint: {
     // Allow Vercel build to pass even if ESLint errors exist.
     // We'll fix types incrementally without blocking deploys.
     ignoreDuringBuilds: true,
   },
+  // Optimize build output and reduce bundle analysis complexity
+  outputFileTracingIgnores: ['**/.git/**', '**/node_modules/.cache/**'],
   headers: async () => {
     const isDev = process.env.NODE_ENV !== 'production'
     const devScript = "'self' https: 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'"
