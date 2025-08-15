@@ -5,6 +5,8 @@ import Reveal from '@/components/ux/Reveal'
 import { supabaseServer } from '@/lib/supabase/server'
 // no styled-jsx; animations are defined in globals.css
 
+export const runtime = 'nodejs'
+
 export default async function Home() {
   const supabase = supabaseServer()
   const { data } = await supabase.auth.getUser().catch(() => ({ data: { user: null } as any }))

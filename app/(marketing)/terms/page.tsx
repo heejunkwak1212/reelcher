@@ -4,6 +4,8 @@ import { eq } from 'drizzle-orm'
 import { supabaseServer } from '@/lib/supabase/server'
 import InlineEditor from '@/components/admin/InlineEditor'
 
+export const runtime = 'nodejs'
+
 export default async function TermsPage() {
   const defaultTerms = `이용약관
 

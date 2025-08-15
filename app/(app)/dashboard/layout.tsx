@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { supabaseServer } from '@/lib/supabase/server'
 
+export const runtime = 'nodejs'
+
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const ssr = supabaseServer()
   const { data: { user } } = await ssr.auth.getUser()

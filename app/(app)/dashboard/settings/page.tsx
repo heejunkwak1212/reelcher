@@ -1,5 +1,7 @@
 import { supabaseServer } from '@/lib/supabase/server'
 
+export const runtime = 'nodejs'
+
 export default async function SettingsPage() {
   const ssr = supabaseServer()
   const { data: { user } } = await ssr.auth.getUser()

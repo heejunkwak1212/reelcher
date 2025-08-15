@@ -5,6 +5,8 @@ import { supabaseServer } from '@/lib/supabase/server'
 import InlineEditor from '@/components/admin/InlineEditor'
 import ContactForm from '@/components/layout/ContactForm'
 
+export const runtime = 'nodejs'
+
 export default async function ContactPage() {
   const row = (await db.select().from(pages).where(eq(pages.slug, 'contact')).limit(1))[0]
   const ssr = supabaseServer()

@@ -3,6 +3,8 @@ import { supabaseServer } from '@/lib/supabase/server'
 import TossPayButton from '@/components/payments/TossPayButton'
 import CancelSubscriptionButton from '@/components/billing/CancelSubscriptionButton'
 
+export const runtime = 'nodejs'
+
 export default async function BillingPage() {
   const ssr = supabaseServer()
   const { data: { user } } = await ssr.auth.getUser()

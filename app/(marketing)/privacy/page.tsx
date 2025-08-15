@@ -4,6 +4,8 @@ import { eq } from 'drizzle-orm'
 import { supabaseServer } from '@/lib/supabase/server'
 import InlineEditor from '@/components/admin/InlineEditor'
 
+export const runtime = 'nodejs'
+
 export default async function PrivacyPage() {
   const defaultPrivacy = `개인정보처리방침
 
