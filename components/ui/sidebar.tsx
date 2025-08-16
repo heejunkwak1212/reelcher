@@ -2,7 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { motion } from "framer-motion";
+import { motion, Transition } from "framer-motion";
 import { Badge } from "@/components/ui/badge"
 import {
   Blocks,
@@ -65,7 +65,7 @@ const variants = {
   },
 };
 
-const transitionProps = {
+const transitionProps: Transition = {
   type: "tween",
   ease: "easeOut",
   duration: 0.2,
