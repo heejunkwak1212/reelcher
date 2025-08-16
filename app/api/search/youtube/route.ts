@@ -11,7 +11,7 @@ const youtubeSearchSchema = z.object({
   query: z.string().min(1),
   url: z.string().optional(),
   apiKey: z.string().min(1, 'YouTube API 키가 필요합니다'),
-  resultsLimit: z.union([z.literal(30), z.literal(60), z.literal(90), z.literal(120)]),
+  resultsLimit: z.union([z.literal(5), z.literal(30), z.literal(60), z.literal(90), z.literal(120)]),
   filters: z.object({
     period: z.enum(['day', 'week', 'month', 'month2', 'month3', 'month6', 'year', 'all']).optional(),
     minViews: z.number().min(0).optional(),
@@ -54,33 +54,59 @@ export async function POST(request: NextRequest) {
     // YouTube API 키는 스키마 검증에서 확인됨
     const youtubeApiKey = searchRequest.apiKey
 
-    // 크레딧 계산 (YouTube는 Instagram보다 저렴하게)
-    const creditCosts = {
-      30: 50,   // Instagram 100 → YouTube 50
-      60: 100,  // Instagram 200 → YouTube 100
-      90: 150,  // Instagram 300 → YouTube 150
-      120: 200  // Instagram 400 → YouTube 200
-    }
-    const requiredCredits = creditCosts[searchRequest.resultsLimit]
+    // 사용자 정보 조회 (관리자 확인용) - profiles 테이블 사용
+    const { data: userData, error: userError } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('user_id', user.id)
+      .single()
 
-    // 크레딧 예약
-    const { data: reservationData, error: reservationError } = await supabase.rpc(
-      'reserve_credits',
-      { 
-        user_id: user.id, 
-        amount: requiredCredits,
-        source: `youtube_${searchRequest.searchType}_search`
+    console.log('사용자 정보 확인:', {
+      userId: user.id,
+      userData,
+      userError,
+      userRole: userData?.role
+    })
+
+    const isAdmin = userData?.role === 'admin'
+    let transactionId = null
+
+    console.log('관리자 여부:', isAdmin, 'resultsLimit:', searchRequest.resultsLimit)
+
+    // 관리자가 아닌 경우에만 크레딧 처리
+    if (!isAdmin) {
+      // 크레딧 계산 (YouTube는 Instagram보다 저렴하게)
+      const creditCosts: Record<number, number> = {
+        5: 0,     // 개발용 - 무료
+        30: 50,   // Instagram 100 → YouTube 50
+        60: 100,  // Instagram 200 → YouTube 100
+        90: 150,  // Instagram 300 → YouTube 150
+        120: 200  // Instagram 400 → YouTube 200
       }
-    )
+      const requiredCredits = creditCosts[searchRequest.resultsLimit] || 0
 
-    if (reservationError || !reservationData) {
-      return NextResponse.json(
-        { error: '크레딧이 부족합니다.' },
-        { status: 402 }
-      )
+      // 크레딧이 필요한 경우에만 예약
+      if (requiredCredits > 0) {
+        // 크레딧 예약
+        const { data: reservationData, error: reservationError } = await supabase.rpc(
+          'reserve_credits',
+          { 
+            user_id: user.id, 
+            amount: requiredCredits,
+            source: `youtube_${searchRequest.searchType}_search`
+          }
+        )
+
+        if (reservationError || !reservationData) {
+          return NextResponse.json(
+            { error: '크레딧이 부족합니다.' },
+            { status: 402 }
+          )
+        }
+
+        transactionId = reservationData.transaction_id
+      }
     }
-
-    const transactionId = reservationData.transaction_id
 
     try {
       // YouTube API 클라이언트 생성
@@ -94,35 +120,38 @@ export async function POST(request: NextRequest) {
         searchResponse = await youtubeClient.searchByKeyword(searchRequest)
       }
 
-      // 실제 결과 수에 따른 크레딧 정산
+      // 실제 결과 수 계산 (관리자/일반 사용자 공통)
       const actualResults = searchResponse.results.length
-      const actualCredits = Math.floor((actualResults / 30) * 50) // 30개당 50크레딧
+      const actualCredits = isAdmin ? 0 : Math.floor((actualResults / 30) * 50) // 30개당 50크레딧, 관리자는 0
 
-      // 크레딧 커밋 (정산)
-      const { error: commitError } = await supabase.rpc(
-        'commit_credits',
-        {
-          transaction_id: transactionId,
-          actual_amount: actualCredits,
-          metadata: {
-            platform: 'youtube',
-            searchType: searchRequest.searchType,
-            query: searchRequest.query,
-            actualResults,
-            requestedResults: searchRequest.resultsLimit
+      // 관리자가 아닌 경우에만 크레딧 정산
+      if (!isAdmin && transactionId) {
+        // 크레딧 커밋 (정산)
+        const { error: commitError } = await supabase.rpc(
+          'commit_credits',
+          {
+            transaction_id: transactionId,
+            actual_amount: actualCredits,
+            metadata: {
+              platform: 'youtube',
+              searchType: searchRequest.searchType,
+              query: searchRequest.query,
+              actualResults,
+              requestedResults: searchRequest.resultsLimit
+            }
           }
-        }
-      )
-
-      if (commitError) {
-        console.error('크레딧 커밋 실패:', commitError)
-        // 롤백
-        await supabase.rpc('rollback_credits', { transaction_id: transactionId })
-        
-        return NextResponse.json(
-          { error: '크레딧 처리 중 오류가 발생했습니다.' },
-          { status: 500 }
         )
+
+        if (commitError) {
+          console.error('크레딧 커밋 실패:', commitError)
+          // 롤백
+          await supabase.rpc('rollback_credits', { transaction_id: transactionId })
+          
+          return NextResponse.json(
+            { error: '크레딧 처리 중 오류가 발생했습니다.' },
+            { status: 500 }
+          )
+        }
       }
 
       // 검색 기록 저장
@@ -155,8 +184,20 @@ export async function POST(request: NextRequest) {
       })
 
     } catch (searchError) {
-      // 검색 실패 시 크레딧 롤백
-      await supabase.rpc('rollback_credits', { transaction_id: transactionId })
+      // 오류 로깅 추가
+      console.error('YouTube 검색 오류 상세:', {
+        error: searchError,
+        message: searchError instanceof Error ? searchError.message : 'Unknown error',
+        stack: searchError instanceof Error ? searchError.stack : undefined,
+        searchRequest,
+        isAdmin,
+        transactionId
+      })
+
+      // 검색 실패 시 크레딧 롤백 (관리자가 아닌 경우에만)
+      if (!isAdmin && transactionId) {
+        await supabase.rpc('rollback_credits', { transaction_id: transactionId })
+      }
 
       if (searchError instanceof YouTubeAPIError) {
         let errorMessage = searchError.message

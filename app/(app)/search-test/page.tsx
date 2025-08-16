@@ -123,6 +123,63 @@ export default function SearchTestPage() {
   const [savedApiKeys, setSavedApiKeys] = useState<string[]>([])
   const [newApiKey, setNewApiKey] = useState<string>('')
 
+  // 플랫폼 전환 경고 기능
+  const handlePlatformSwitch = (newPlatform: 'instagram' | 'youtube' | 'tiktok') => {
+    // 현재 검색 결과가 있고, 다른 플랫폼으로 전환하려는 경우
+    if (baseItems && baseItems.length > 0 && newPlatform !== platform) {
+      // 7일 동안 보지 않기 체크 확인
+      const optKey = 'reelcher.platform.switch.warning.optout.until'
+      const until = typeof window !== 'undefined' ? Number(localStorage.getItem(optKey) || 0) : 0
+      const now = Date.now()
+      
+      // 7일이 지나지 않았으면 팝업 건너뛰기
+      if (until > now) {
+        setPlatform(newPlatform)
+        setBaseItems(null) // 검색 결과 초기화
+        return
+      }
+      
+      // 경고 팝업 표시
+      const modal = document.createElement('div')
+      modal.className = 'fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4'
+      modal.innerHTML = `
+        <div class="bg-white rounded shadow-lg w-full max-w-md p-5">
+          <div class="text-base font-semibold mb-3">검색 결과가 초기화돼요</div>
+          <div class="text-sm text-neutral-700 mb-4">다른 플랫폼으로 전환하면 현재 검색 결과가 사라집니다.</div>
+          <div class="flex items-center gap-2 mb-4">
+            <input type="checkbox" id="opt7days" class="rounded">
+            <label for="opt7days" class="text-sm text-neutral-600">7일 동안 보지 않기</label>
+          </div>
+          <div class="flex items-center justify-end gap-2">
+            <button id="cancel" class="px-3 py-2 border rounded text-sm">취소</button>
+            <button id="confirm" class="px-3 py-2 border rounded bg-black text-white text-sm">확인</button>
+          </div>
+        </div>`
+      
+      document.body.appendChild(modal)
+      
+      const cleanup = () => modal.remove()
+      
+      modal.querySelector('#cancel')?.addEventListener('click', cleanup)
+      modal.querySelector('#confirm')?.addEventListener('click', () => {
+        const checkbox = modal.querySelector('#opt7days') as HTMLInputElement
+        if (checkbox?.checked) {
+          const sevenDays = 7 * 24 * 60 * 60 * 1000
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(optKey, String(Date.now() + sevenDays))
+          }
+        }
+        
+        setPlatform(newPlatform)
+        setBaseItems(null) // 검색 결과 초기화
+        cleanup()
+      })
+    } else {
+      // 검색 결과가 없거나 같은 플랫폼이면 바로 전환
+      setPlatform(newPlatform)
+    }
+  }
+
   // Load saved API keys from localStorage on mount
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -697,7 +754,7 @@ export default function SearchTestPage() {
             <h2 className="text-xl font-semibold text-gray-800 mb-4">플랫폼 선택</h2>
             <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-lg w-fit">
               <button
-                onClick={() => setPlatform('instagram')}
+                onClick={() => handlePlatformSwitch('instagram')}
                 className={`px-6 py-3 rounded-md text-sm font-medium transition-all ${
                   platform === 'instagram'
                     ? 'bg-white text-gray-900 shadow-sm'
@@ -707,7 +764,7 @@ export default function SearchTestPage() {
                 📷 Instagram
               </button>
               <button
-                onClick={() => setPlatform('youtube')}
+                onClick={() => handlePlatformSwitch('youtube')}
                 className={`px-6 py-3 rounded-md text-sm font-medium transition-all ${
                   platform === 'youtube'
                     ? 'bg-white text-gray-900 shadow-sm'
@@ -717,7 +774,7 @@ export default function SearchTestPage() {
                 🎥 YouTube
               </button>
               <button
-                onClick={() => setPlatform('tiktok')}
+                onClick={() => handlePlatformSwitch('tiktok')}
                 className={`px-6 py-3 rounded-md text-sm font-medium transition-all ${
                   platform === 'tiktok'
                     ? 'bg-white text-gray-900 shadow-sm'
@@ -1453,15 +1510,35 @@ function ExportButtons({ items, onProgress }: { items: SearchRow[]; onProgress: 
     if (!guardSelected()) return
     onProgress.open('영상을 준비하고 있습니다…', 5)
     onProgress.tick(92, 1, 450)
-    const urls = items.filter(i => selected.has(i.url)).map(i => (i as any).videoUrl).filter(u => typeof u === 'string' && u.startsWith('http')) as string[]
-    if (!urls.length) return alert('다운로드 가능한 영상 URL이 없습니다')
+    
+    const selectedItems = items.filter(i => selected.has(i.url))
+    let urls: string[] = []
+    
+    if (platform === 'youtube') {
+      // YouTube의 경우 item.url (YouTube URL) 사용
+      urls = selectedItems.map(i => i.url).filter(u => typeof u === 'string' && u.includes('youtube.com'))
+    } else {
+      // Instagram/TikTok의 경우 videoUrl 사용
+      urls = selectedItems.map(i => (i as any).videoUrl).filter(u => typeof u === 'string' && u.startsWith('http'))
+    }
+    
+    if (!urls.length) {
+      return alert('다운로드 가능한 영상 URL이 없습니다')
+    }
+    
     const res = await fetch('/api/downloads', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ urls }) })
-    if (!res.ok) return alert('영상 다운로드 실패')
+    if (!res.ok) {
+      const errorText = await res.text()
+      return alert(`영상 다운로드 실패: ${errorText}`)
+    }
+    
     const blob = await res.blob()
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = urls.length === 1 ? 'reel.mp4' : 'reels.zip'
+    a.download = urls.length === 1 ? 
+      (platform === 'youtube' ? 'youtube-video.mp4' : 'reel.mp4') : 
+      (platform === 'youtube' ? 'youtube-videos.zip' : 'reels.zip')
     a.click()
     URL.revokeObjectURL(url)
     onProgress.finish()

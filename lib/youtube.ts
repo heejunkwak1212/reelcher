@@ -162,6 +162,12 @@ export class YouTubeClient {
       }
     })
 
+    console.log('YouTube API 요청:', {
+      endpoint,
+      url: url.toString(),
+      params
+    })
+
     const response = await fetch(url.toString(), {
       method: 'GET',
       headers: {
@@ -172,6 +178,14 @@ export class YouTubeClient {
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
       const reason = errorData?.error?.errors?.[0]?.reason || 'unknown'
+      
+      console.error('YouTube API 오류:', {
+        status: response.status,
+        statusText: response.statusText,
+        errorData,
+        reason,
+        url: url.toString()
+      })
       
       if (reason === 'quotaExceeded') {
         throw new YouTubeAPIError('API quota exceeded', 'QUOTA_EXCEEDED', response.status)
@@ -186,7 +200,14 @@ export class YouTubeClient {
       }
     }
 
-    return response.json()
+    const data = await response.json()
+    console.log('YouTube API 응답:', {
+      endpoint,
+      itemsCount: data?.items?.length || 0,
+      totalResults: data?.pageInfo?.totalResults || 0
+    })
+
+    return data
   }
 
   /**
@@ -282,7 +303,11 @@ export class YouTubeClient {
    */
   async searchByKeyword(request: IYouTubeSearchRequest): Promise<IYouTubeSearchResponse> {
     const { query, resultsLimit, filters } = request
-    const maxPages = Math.ceil(resultsLimit / 50) // 최대 페이지 수 계산
+    
+    // 필터가 있으면 더 많은 결과를 가져와서 필터링
+    const hasFilters = filters.minViews || filters.maxSubscribers
+    const fetchLimit = hasFilters ? Math.max(resultsLimit * 3, 150) : resultsLimit
+    const maxPages = Math.ceil(fetchLimit / 50) // 최대 페이지 수 계산
 
     let allVideoIds: string[] = []
     let nextPageToken: string | undefined
@@ -310,7 +335,7 @@ export class YouTubeClient {
     }
 
     // 페이지별로 검색 수행
-    for (let page = 0; page < maxPages && allVideoIds.length < resultsLimit; page++) {
+    for (let page = 0; page < maxPages && allVideoIds.length < fetchLimit; page++) {
       if (nextPageToken) {
         searchParams.pageToken = nextPageToken
       }
@@ -328,7 +353,7 @@ export class YouTubeClient {
     }
 
     // 중복 제거 및 제한
-    allVideoIds = [...new Set(allVideoIds)].slice(0, resultsLimit)
+    allVideoIds = [...new Set(allVideoIds)].slice(0, fetchLimit)
 
     // 비디오 상세 정보 가져오기
     let videos = await this.getVideoDetails(allVideoIds)
@@ -373,9 +398,12 @@ export class YouTubeClient {
       }
     }
 
+    // 최종 결과 수 제한
+    const finalResults = videos.slice(0, resultsLimit)
+
     return {
-      results: videos,
-      totalCount: videos.length,
+      results: finalResults,
+      totalCount: finalResults.length,
       searchType: 'keyword'
     }
   }
