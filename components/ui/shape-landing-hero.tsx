@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, useMotionValue, useTransform, animate } from "framer-motion";
+import { motion, useMotionValue, useTransform, animate, Variants } from "framer-motion";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { DotFilledIcon } from "@radix-ui/react-icons";
@@ -35,7 +35,7 @@ function ElegantShape({
             transition={{
                 duration: 2.4,
                 delay,
-                ease: [0.23, 0.86, 0.39, 0.96],
+                ease: [0.23, 0.86, 0.39, 0.96] as const,
                 opacity: { duration: 1.2 },
             }}
             className={cn("absolute", className)}
@@ -80,7 +80,7 @@ function HeroGeometric({
     title1?: string;
     title2?: string;
 }) {
-    const fadeUpVariants = {
+    const fadeUpVariants: Variants = {
         hidden: { opacity: 0, y: 30 },
         visible: (i: number) => ({
             opacity: 1,
@@ -88,7 +88,7 @@ function HeroGeometric({
             transition: {
                 duration: 1,
                 delay: 0.5 + i * 0.2,
-                ease: [0.25, 0.4, 0.25, 1],
+                ease: [0.25, 0.4, 0.25, 1] as const,
             },
         }),
     };
