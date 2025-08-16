@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase/server'
+import { supabaseServer } from '@/lib/supabase/server'
 import { YouTubeClient, YouTubeAPIError } from '@/lib/youtube'
 import { z } from 'zod'
 
@@ -7,13 +7,14 @@ import { z } from 'zod'
 const contributionSchema = z.object({
   channelId: z.string().min(1),
   videoId: z.string().min(1),
-  viewCount: z.number().min(0)
+  viewCount: z.number().min(0),
+  apiKey: z.string().min(1, 'YouTube API 키가 필요합니다')
 })
 
 export async function POST(request: NextRequest) {
   try {
     // 사용자 인증 확인
-    const supabase = createServerClient()
+    const supabase = await supabaseServer()
     const { data: { user } } = await supabase.auth.getUser()
 
     if (!user) {
@@ -25,16 +26,10 @@ export async function POST(request: NextRequest) {
 
     // 요청 본문 파싱 및 검증
     const body = await request.json()
-    const { channelId, videoId, viewCount } = contributionSchema.parse(body)
+    const { channelId, videoId, viewCount, apiKey } = contributionSchema.parse(body)
 
-    // YouTube API 키 확인
-    const youtubeApiKey = process.env.YOUTUBE_API_KEY
-    if (!youtubeApiKey) {
-      return NextResponse.json(
-        { error: 'YouTube API 키가 설정되지 않았습니다.' },
-        { status: 500 }
-      )
-    }
+    // YouTube API 키는 스키마 검증에서 확인됨
+    const youtubeApiKey = apiKey
 
     // YouTube API 클라이언트 생성
     const youtubeClient = new YouTubeClient(youtubeApiKey)

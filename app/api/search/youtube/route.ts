@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase/server'
-import { rateLimit } from '@/lib/ratelimit'
+import { supabaseServer } from '@/lib/supabase/server'
+import { searchLimiter } from '@/lib/ratelimit'
 import { YouTubeClient, YouTubeAPIError } from '@/lib/youtube'
 import { IYouTubeSearchRequest } from '@/types'
 import { z } from 'zod'
@@ -10,7 +10,8 @@ const youtubeSearchSchema = z.object({
   searchType: z.enum(['keyword', 'url']),
   query: z.string().min(1),
   url: z.string().optional(),
-  resultsLimit: z.enum([30, 60, 90, 120]),
+  apiKey: z.string().min(1, 'YouTube API 키가 필요합니다'),
+  resultsLimit: z.union([z.literal(30), z.literal(60), z.literal(90), z.literal(120)]),
   filters: z.object({
     period: z.enum(['day', 'week', 'month', 'month2', 'month3', 'month6', 'year', 'all']).optional(),
     minViews: z.number().min(0).optional(),
@@ -23,8 +24,8 @@ const youtubeSearchSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     // Rate limiting
-    const rateLimitResult = await rateLimit(request)
-    if (rateLimitResult.limited) {
+    const rateLimitResult = searchLimiter ? await searchLimiter.limit(request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown') : { success: true }
+    if (!rateLimitResult.success) {
       return NextResponse.json(
         { error: '요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요.' },
         { status: 429 }
@@ -32,7 +33,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 사용자 인증 확인
-    const supabase = createServerClient()
+    const supabase = await supabaseServer()
     const { data: { user } } = await supabase.auth.getUser()
 
     if (!user) {
@@ -44,16 +45,14 @@ export async function POST(request: NextRequest) {
 
     // 요청 본문 파싱 및 검증
     const body = await request.json()
-    const searchRequest = youtubeSearchSchema.parse(body) as IYouTubeSearchRequest
-
-    // YouTube API 키 확인
-    const youtubeApiKey = process.env.YOUTUBE_API_KEY
-    if (!youtubeApiKey) {
-      return NextResponse.json(
-        { error: 'YouTube API 키가 설정되지 않았습니다.' },
-        { status: 500 }
-      )
+    const validatedData = youtubeSearchSchema.parse(body)
+    const searchRequest: IYouTubeSearchRequest = {
+      ...validatedData,
+      resultsLimit: validatedData.resultsLimit as 30 | 60 | 90 | 120
     }
+
+    // YouTube API 키는 스키마 검증에서 확인됨
+    const youtubeApiKey = searchRequest.apiKey
 
     // 크레딧 계산 (YouTube는 Instagram보다 저렴하게)
     const creditCosts = {
@@ -193,7 +192,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        { error: '잘못된 요청 형식입니다.', details: error.errors },
+        { error: '잘못된 요청 형식입니다.', details: error.issues },
         { status: 400 }
       )
     }

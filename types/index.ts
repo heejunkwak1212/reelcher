@@ -121,6 +121,7 @@ export interface IYouTubeSearchRequest {
   searchType: 'keyword' | 'url' // URL은 유사영상 검색
   query: string
   url?: string // 유사영상 검색용 URL
+  apiKey: string // 사용자가 제공하는 YouTube Data API v3 키
   resultsLimit: 30 | 60 | 90 | 120
   filters: {
     period?: 'day' | 'week' | 'month' | 'month2' | 'month3' | 'month6' | 'year' | 'all'
