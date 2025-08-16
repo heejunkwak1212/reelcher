@@ -112,10 +112,82 @@ export default function SearchTestPage() {
   // period UI removed for MVP
   const [limit, setLimit] = useState<'5' | '30' | '60' | '90' | '120'>('30')
   // YouTube 전용 필터
-  const [maxSubscribers, setMaxSubscribers] = useState<number>(100000)
+  const [maxSubscribers, setMaxSubscribers] = useState<number>(0)
   const [videoDuration, setVideoDuration] = useState<'any' | 'short' | 'long'>('any')
-  const [minViews, setMinViews] = useState<number>(1000)
+  const [minViews, setMinViews] = useState<number>(0)
   const [period, setPeriod] = useState<'day' | 'week' | 'month' | 'month2' | 'month3' | 'month6' | 'year' | 'all'>('month2')
+  
+  // YouTube API 키 관리
+  const [youtubeApiKey, setYoutubeApiKey] = useState<string>('')
+  const [savedApiKeysOpen, setSavedApiKeysOpen] = useState(false)
+  const [savedApiKeys, setSavedApiKeys] = useState<string[]>([])
+  const [newApiKey, setNewApiKey] = useState<string>('')
+
+  // Load saved API keys from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('reelcher.youtube.savedApiKeys')
+      if (saved) {
+        try {
+          const keys = JSON.parse(saved)
+          if (Array.isArray(keys)) {
+            setSavedApiKeys(keys)
+          }
+        } catch (e) {
+          console.error('Failed to parse saved API keys:', e)
+        }
+      }
+      
+      // Load last used API key
+      const lastKey = localStorage.getItem('reelcher.youtube.lastApiKey')
+      if (lastKey) {
+        setYoutubeApiKey(lastKey)
+      }
+    }
+  }, [])
+
+  // API 키 관련 유틸리티 함수들
+  const saveApiKeys = (keys: string[]) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('reelcher.youtube.savedApiKeys', JSON.stringify(keys))
+      setSavedApiKeys(keys)
+    }
+  }
+
+  const saveLastUsedApiKey = (key: string) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('reelcher.youtube.lastApiKey', key)
+    }
+  }
+
+  const addNewApiKey = () => {
+    if (!newApiKey.trim()) {
+      alert('API 키를 입력해주세요.')
+      return
+    }
+    
+    const trimmedKey = newApiKey.trim()
+    if (savedApiKeys.includes(trimmedKey)) {
+      alert('이미 저장된 API 키입니다.')
+      return
+    }
+    
+    const updatedKeys = [...savedApiKeys, trimmedKey]
+    saveApiKeys(updatedKeys)
+    setNewApiKey('')
+    alert('API 키가 저장되었습니다.')
+  }
+
+  const deleteApiKey = (keyToDelete: string) => {
+    const updatedKeys = savedApiKeys.filter(key => key !== keyToDelete)
+    saveApiKeys(updatedKeys)
+  }
+
+  const useApiKey = (key: string) => {
+    setYoutubeApiKey(key)
+    saveLastUsedApiKey(key)
+    setSavedApiKeysOpen(false)
+  }
 
   // Load user data immediately from Supabase client + API
   useEffect(() => {
@@ -319,15 +391,24 @@ export default function SearchTestPage() {
       let apiEndpoint: string
       
       if (platform === 'youtube') {
+        // YouTube API 키 확인
+        if (!youtubeApiKey.trim()) {
+          alert('YouTube API 키를 입력해주세요.')
+          setLoading(false)
+          setProgressOpen(false)
+          return
+        }
+        
         // YouTube 검색 페이로드
         payload = {
           searchType,
           query: keywords[0] || '',
           resultsLimit: Number(limit),
+          apiKey: youtubeApiKey.trim(),
           filters: {
             period,
-            minViews: minViews || undefined,
-            maxSubscribers: maxSubscribers || undefined,
+            minViews: minViews > 0 ? minViews : undefined,
+            maxSubscribers: maxSubscribers > 0 ? maxSubscribers : undefined,
             videoDuration
           }
         }
@@ -675,6 +756,36 @@ export default function SearchTestPage() {
                 </div>
               </div>
             )}
+
+            {/* YouTube API Key Input */}
+            {platform === 'youtube' && (
+              <div className="mt-4">
+                <h3 className="text-sm font-medium text-gray-700 mb-2">YouTube API 키</h3>
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="password"
+                    className="flex-1 h-10 border border-gray-300 rounded-lg px-3 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-all bg-white" 
+                    placeholder="YouTube Data API v3 키를 입력하세요"
+                    value={youtubeApiKey} 
+                    onChange={(e) => {
+                      setYoutubeApiKey(e.target.value)
+                      saveLastUsedApiKey(e.target.value)
+                    }} 
+                  />
+                  <button
+                    onClick={() => setSavedApiKeysOpen(true)}
+                    className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-50 text-gray-700 font-medium transition-all whitespace-nowrap"
+                  >
+                    저장된 API 키
+                  </button>
+                </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  <a href="https://console.developers.google.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800">
+                    Google Cloud Console
+                  </a>에서 YouTube Data API v3 키를 발급받으세요
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -759,78 +870,63 @@ export default function SearchTestPage() {
 
           {/* YouTube 전용 고급 필터 */}
           {platform === 'youtube' && searchType === 'keyword' && (
-            <div className="space-y-5">
+            <div className="space-y-4">
               <div className="text-base font-semibold text-gray-700" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>고급 필터</div>
               
-              {/* 기간 필터 */}
-              <div>
-                <div className="text-sm font-medium text-gray-700 mb-2">업로드 기간</div>
-                <select 
-                  className="w-full h-10 border border-gray-300 rounded-lg px-3 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-all bg-white" 
-                  value={period} 
-                  onChange={(e)=>setPeriod(e.target.value as any)}
-                >
-                  <option value="day">최근 하루</option>
-                  <option value="week">최근 일주일</option>
-                  <option value="month">최근 한 달</option>
-                  <option value="month2">최근 2개월</option>
-                  <option value="month3">최근 3개월</option>
-                  <option value="month6">최근 6개월</option>
-                  <option value="year">최근 1년</option>
-                  <option value="all">전체</option>
-                </select>
-              </div>
+              {/* 그리드 레이아웃으로 필터들 배치 */}
+              <div className="grid grid-cols-2 gap-4">
+                {/* 업로드 기간 */}
+                <div>
+                  <div className="text-sm font-medium text-gray-700 mb-2">업로드 기간</div>
+                  <select 
+                    className="w-full h-10 border border-gray-300 rounded-lg px-3 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-all bg-white" 
+                    value={period} 
+                    onChange={(e)=>setPeriod(e.target.value as any)}
+                  >
+                    <option value="day">최근 하루</option>
+                    <option value="week">최근 일주일</option>
+                    <option value="month">최근 한 달</option>
+                    <option value="month2">최근 2개월</option>
+                    <option value="month3">최근 3개월</option>
+                    <option value="month6">최근 6개월</option>
+                    <option value="year">최근 1년</option>
+                    <option value="all">전체</option>
+                  </select>
+                </div>
 
-              {/* 최소 조회수 */}
-              <div>
-                <div className="text-sm font-medium text-gray-700 mb-2">최소 조회수</div>
-                <select 
-                  className="w-full h-10 border border-gray-300 rounded-lg px-3 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-all bg-white" 
-                  value={minViews} 
-                  onChange={(e)=>setMinViews(Number(e.target.value))}
-                >
-                  <option value={0}>제한 없음</option>
-                  <option value={1000}>1,000회 이상</option>
-                  <option value={5000}>5,000회 이상</option>
-                  <option value={10000}>10,000회 이상</option>
-                  <option value={50000}>50,000회 이상</option>
-                  <option value={100000}>100,000회 이상</option>
-                  <option value={500000}>500,000회 이상</option>
-                  <option value={1000000}>1,000,000회 이상</option>
-                </select>
-              </div>
+                {/* 영상 길이 */}
+                <div>
+                  <div className="text-sm font-medium text-gray-700 mb-2">영상 길이</div>
+                  <select 
+                    className="w-full h-10 border border-gray-300 rounded-lg px-3 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-all bg-white" 
+                    value={videoDuration} 
+                    onChange={(e)=>setVideoDuration(e.target.value as any)}
+                  >
+                    <option value="any">모든 길이</option>
+                    <option value="short">짧은 동영상 (4분 미만)</option>
+                    <option value="long">긴 동영상 (20분 이상)</option>
+                  </select>
+                </div>
 
-              {/* 최대 구독자 수 */}
-              <div>
-                <div className="text-sm font-medium text-gray-700 mb-2">최대 구독자 수</div>
-                <select 
-                  className="w-full h-10 border border-gray-300 rounded-lg px-3 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-all bg-white" 
-                  value={maxSubscribers} 
-                  onChange={(e)=>setMaxSubscribers(Number(e.target.value))}
-                >
-                  <option value={0}>제한 없음</option>
-                  <option value={1000}>1,000명 이하</option>
-                  <option value={5000}>5,000명 이하</option>
-                  <option value={10000}>10,000명 이하</option>
-                  <option value={50000}>50,000명 이하</option>
-                  <option value={100000}>100,000명 이하</option>
-                  <option value={500000}>500,000명 이하</option>
-                  <option value={1000000}>1,000,000명 이하</option>
-                </select>
-              </div>
+                {/* 최소 조회수 - 입력 필드 */}
+                <div>
+                  <div className="text-sm font-medium text-gray-700 mb-2">최소 조회수</div>
+                  <NumberInput
+                    value={minViews}
+                    onChange={setMinViews}
+                    placeholder="예: 10,000 (빈 값: 제한 없음)"
+                  />
+                </div>
 
-              {/* 영상 길이 */}
-              <div>
-                <div className="text-sm font-medium text-gray-700 mb-2">영상 길이</div>
-                <select 
-                  className="w-full h-10 border border-gray-300 rounded-lg px-3 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-all bg-white" 
-                  value={videoDuration} 
-                  onChange={(e)=>setVideoDuration(e.target.value as any)}
-                >
-                  <option value="any">모든 길이</option>
-                  <option value="short">짧은 동영상 (4분 미만)</option>
-                  <option value="long">긴 동영상 (20분 이상)</option>
-                </select>
+                {/* 최대 구독자 수 - 입력 필드 */}
+                <div>
+                  <div className="text-sm font-medium text-gray-700 mb-2">최대 구독자 수</div>
+                  <NumberInput
+                    value={maxSubscribers}
+                    onChange={setMaxSubscribers}
+                    placeholder="예: 100,000 (빈 값: 제한 없음)"
+                  />
+                </div>
               </div>
             </div>
           )}
@@ -1106,6 +1202,91 @@ export default function SearchTestPage() {
             </div>
             <div className="mt-2 text-sm text-neutral-600">{Math.round(progressPercent)}%</div>
             <div className="mt-3 text-xs text-neutral-500">창을 닫지 말아주세요</div>
+          </div>
+        </div>
+      )}
+
+      {/* Saved API Keys Modal */}
+      {savedApiKeysOpen && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setSavedApiKeysOpen(false)}>
+          <div className="bg-white rounded shadow-lg w-full max-w-md p-5 max-h-[80vh] overflow-auto" onClick={(e)=>e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold">저장된 API 키 관리</h2>
+              <button 
+                className="text-gray-500 hover:text-gray-700"
+                onClick={() => setSavedApiKeysOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+            
+            {/* 새 API 키 추가 */}
+            <div className="mb-4 p-3 border border-gray-200 rounded-lg bg-gray-50">
+              <div className="text-sm font-medium text-gray-700 mb-2">새 API 키 추가</div>
+              <div className="flex gap-2">
+                <input 
+                  type="text"
+                  className="flex-1 h-8 border border-gray-300 rounded px-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
+                  placeholder="새 API 키를 입력하세요..."
+                  value={newApiKey}
+                  onChange={(e) => setNewApiKey(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && addNewApiKey()}
+                />
+                <button 
+                  className="px-3 py-1 text-sm bg-black text-white rounded hover:bg-gray-800"
+                  onClick={addNewApiKey}
+                >
+                  추가
+                </button>
+              </div>
+            </div>
+
+            {/* 저장된 키 목록 */}
+            <div className="space-y-2">
+              <div className="text-sm font-medium text-gray-700">저장된 API 키들</div>
+              {savedApiKeys.length === 0 ? (
+                <div className="text-sm text-gray-500 text-center py-4">저장된 API 키가 없습니다</div>
+              ) : (
+                savedApiKeys.map((key, index) => (
+                  <div key={index} className="flex items-center gap-2 p-2 border border-gray-200 rounded bg-white">
+                    <div className="flex-1 text-sm font-mono">
+                      {key.length > 20 ? `${key.substring(0, 20)}...` : key}
+                    </div>
+                    <button 
+                      className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
+                      onClick={() => useApiKey(key)}
+                    >
+                      사용
+                    </button>
+                    <button 
+                      className="px-2 py-1 text-xs bg-gray-600 text-white rounded hover:bg-gray-700"
+                      onClick={() => {
+                        navigator.clipboard.writeText(key)
+                        alert('API 키가 클립보드에 복사되었습니다')
+                      }}
+                    >
+                      복사
+                    </button>
+                    <button 
+                      className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+                      onClick={() => {
+                        if (confirm('이 API 키를 삭제하시겠습니까?')) {
+                          deleteApiKey(key)
+                        }
+                      }}
+                    >
+                      삭제
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="mt-4 text-xs text-gray-500">
+              • 선택한 API 키를 복사하거나 삭제할 수 있습니다.<br/>
+              • '사용' 버튼을 누르면 메인 화면의 API 키 입력란에 자동으로 입력됩니다.<br/>
+              • 저장된 키는 브라우저에만 저장되며 외부로 전송되지 않습니다.
+            </div>
           </div>
         </div>
       )}
@@ -1590,6 +1771,78 @@ function CommaInput({ value, onChange }: { value: number; onChange: (v: number) 
     }
   }
   return <input inputMode="numeric" pattern="[0-9,]*" className="border rounded px-2 py-1 w-1/2 text-right" value={text} onChange={onInput} />
+}
+
+// YouTube 필터용 숫자 입력 컴포넌트 (천단위 콤마, 숫자만 입력)
+function NumberInput({ value, onChange, placeholder, className }: { 
+  value: number; 
+  onChange: (v: number) => void; 
+  placeholder?: string;
+  className?: string;
+}) {
+  const [text, setText] = useState<string>('')
+
+  useEffect(() => {
+    // value가 0이 아닐 때만 포맷팅해서 표시
+    if (value && value > 0) {
+      setText(new Intl.NumberFormat('en-US').format(value))
+    } else {
+      setText('')
+    }
+  }, [value])
+
+  const onInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target.value
+    
+    // 빈 문자열인 경우
+    if (input === '') {
+      setText('')
+      onChange(0)
+      return
+    }
+    
+    // 숫자와 콤마만 허용
+    const numericOnly = input.replace(/[^0-9,]/g, '')
+    
+    // 콤마 제거하고 숫자로 변환
+    const raw = numericOnly.replace(/,/g, '')
+    const num = Number(raw)
+    
+    if (Number.isFinite(num) && num >= 0) {
+      onChange(num)
+      // 숫자가 0이 아닐 때만 콤마 포맷팅
+      if (num > 0) {
+        setText(new Intl.NumberFormat('en-US').format(num))
+      } else {
+        setText('')
+      }
+    } else {
+      // 잘못된 입력인 경우 이전 값 유지
+      setText(text)
+    }
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // 허용된 키: 숫자, 백스페이스, 삭제, 탭, 화살표 키
+    const allowedKeys = ['Backspace', 'Delete', 'Tab', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']
+    const isNumber = e.key >= '0' && e.key <= '9'
+    
+    if (!isNumber && !allowedKeys.includes(e.key)) {
+      e.preventDefault()
+    }
+  }
+
+  return (
+    <input 
+      inputMode="numeric" 
+      pattern="[0-9,]*" 
+      className={className || "w-full h-10 border border-gray-300 rounded-lg px-3 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-all bg-white"} 
+      value={text} 
+      onChange={onInput}
+      onKeyDown={handleKeyDown}
+      placeholder={placeholder}
+    />
+  )
 }
 
 
