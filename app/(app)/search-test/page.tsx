@@ -105,10 +105,17 @@ type SearchRow = {
 }
 
 export default function SearchTestPage() {
+  const [platform, setPlatform] = useState<'instagram' | 'youtube' | 'tiktok'>('instagram')
+  const [searchType, setSearchType] = useState<'keyword' | 'url'>('keyword')
   const [keywords, setKeywords] = useState<string[]>(['재테크'])
   const [user, setUser] = useState<any>(null)
   // period UI removed for MVP
   const [limit, setLimit] = useState<'5' | '30' | '60' | '90' | '120'>('30')
+  // YouTube 전용 필터
+  const [maxSubscribers, setMaxSubscribers] = useState<number>(100000)
+  const [videoDuration, setVideoDuration] = useState<'any' | 'short' | 'long'>('any')
+  const [minViews, setMinViews] = useState<number>(1000)
+  const [period, setPeriod] = useState<'day' | 'week' | 'month' | 'month2' | 'month3' | 'month6' | 'year' | 'all'>('month2')
 
   // Load user data immediately from Supabase client + API
   useEffect(() => {
@@ -252,8 +259,18 @@ export default function SearchTestPage() {
     const optKey = 'relcher.search.confirm.optout.until'
     const until = typeof window !== 'undefined' ? Number(localStorage.getItem(optKey) || 0) : 0
     const now = Date.now()
-    const creditMap: Record<string, number> = { '30': 100, '60': 200, '90': 300, '120': 400, '5': 0 }
-    const nCredits = creditMap[String(limit)] ?? 0
+    
+    // 플랫폼별 크레딧 계산
+    const getCreditCost = () => {
+      if (platform === 'instagram') {
+        return { '30': 100, '60': 200, '90': 300, '120': 400, '5': 0 }[String(limit)] ?? 0
+      } else if (platform === 'youtube' || platform === 'tiktok') {
+        return { '30': 50, '60': 100, '90': 150, '120': 200, '5': 0 }[String(limit)] ?? 0
+      }
+      return 0
+    }
+    
+    const nCredits = getCreditCost()
     // Always show confirmation (restore behavior), with 7-day opt-out
       const ok = await new Promise<boolean>((resolve) => {
         const modal = document?.createElement('div') as HTMLDivElement
@@ -298,17 +315,49 @@ export default function SearchTestPage() {
     openProgress('검색을 진행 중입니다…', 5)
     tickProgress(92, 1, 500)
     try {
-      // multi keywords parse (max 3)
-      const list = keywords.map(s=>s.trim()).filter(Boolean).slice(0,3)
-      const payload: any = { keyword: (list[0] || '재테크'), limit, debug: true }
-      if (list.length) payload.keywords = list
+      let payload: any
+      let apiEndpoint: string
+      
+      if (platform === 'youtube') {
+        // YouTube 검색 페이로드
+        payload = {
+          searchType,
+          query: keywords[0] || '',
+          resultsLimit: Number(limit),
+          filters: {
+            period,
+            minViews: minViews || undefined,
+            maxSubscribers: maxSubscribers || undefined,
+            videoDuration
+          }
+        }
+        if (searchType === 'url') {
+          payload.url = keywords[0] || ''
+        }
+        apiEndpoint = '/api/search/youtube'
+      } else if (platform === 'tiktok') {
+        // TikTok 검색 페이로드 (추후 구현)
+        payload = {
+          keyword: keywords[0] || '',
+          limit,
+          debug: true
+        }
+        apiEndpoint = '/api/search/tiktok' // 추후 구현
+      } else {
+        // Instagram 검색 (기존)
+        const list = keywords.map(s=>s.trim()).filter(Boolean).slice(0,3)
+        payload = { keyword: (list[0] || '재테크'), limit, debug: true }
+        if (list.length) payload.keywords = list
+        apiEndpoint = '/api/search'
+      }
+      
       if (turnstileSiteKey) payload.turnstileToken = turnstileToken
 
-      const res = await fetch('/api/search', {
+      const res = await fetch(apiEndpoint, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(payload),
-          signal: abortRef.current?.signal,
+        body: JSON.stringify(payload),
+        signal: abortRef.current?.signal,
       })
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
@@ -335,7 +384,27 @@ export default function SearchTestPage() {
         return
       }
       const json = await res.json()
-      const arr: SearchRow[] = Array.isArray(json.items) ? json.items : []
+      let arr: SearchRow[] = []
+      
+      if (platform === 'youtube') {
+        // YouTube 응답 처리
+        arr = Array.isArray(json.results) ? json.results.map((item: any) => ({
+          url: `https://www.youtube.com/watch?v=${item.videoId}`,
+          username: item.channelTitle,
+          views: item.viewCount,
+          likes: item.likeCount,
+          comments: item.commentCount,
+          followers: item.subscriberCount,
+          thumbnailUrl: item.thumbnails?.high?.url || item.thumbnails?.medium?.url,
+          caption: item.title + (item.description ? '\n\n' + item.description : ''),
+          duration: item.durationSeconds,
+          takenDate: item.publishedAt?.split('T')[0]
+        })) : []
+      } else {
+        // Instagram/TikTok 응답 처리 (기존 방식)
+        arr = Array.isArray(json.items) ? json.items : []
+      }
+      
       // default sort: views desc
       arr.sort((a, b) => (b.views || 0) - (a.views || 0))
       setBaseItems(arr)
@@ -540,91 +609,271 @@ export default function SearchTestPage() {
 
       {/* Main Content */}
       <div className="max-w-[1320px] mx-auto p-6 pt-8 space-y-8">
+        
+        {/* Platform Selection Tabs */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
+          <div className="p-6 border-b border-gray-200">
+            <h2 className="text-xl font-semibold text-gray-800 mb-4">플랫폼 선택</h2>
+            <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-lg w-fit">
+              <button
+                onClick={() => setPlatform('instagram')}
+                className={`px-6 py-3 rounded-md text-sm font-medium transition-all ${
+                  platform === 'instagram'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                📷 Instagram
+              </button>
+              <button
+                onClick={() => setPlatform('youtube')}
+                className={`px-6 py-3 rounded-md text-sm font-medium transition-all ${
+                  platform === 'youtube'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                🎥 YouTube
+              </button>
+              <button
+                onClick={() => setPlatform('tiktok')}
+                className={`px-6 py-3 rounded-md text-sm font-medium transition-all ${
+                  platform === 'tiktok'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                🎵 TikTok
+              </button>
+            </div>
+            
+            {/* Search Type Selection for YouTube */}
+            {platform === 'youtube' && (
+              <div className="mt-4">
+                <h3 className="text-sm font-medium text-gray-700 mb-2">검색 방식</h3>
+                <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-lg w-fit">
+                  <button
+                    onClick={() => setSearchType('keyword')}
+                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                      searchType === 'keyword'
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    키워드 검색
+                  </button>
+                  <button
+                    onClick={() => setSearchType('url')}
+                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                      searchType === 'url'
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    유사 영상 검색
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
 
       {/* Main Content - Two Column Layout */}
       <div className="flex gap-10">
         {/* Left Column: Search Controls */}
         <div className="w-[420px] space-y-7" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>
-          {/* 키워드 */}
+          {/* 검색 입력 */}
           <div>
-            <div className="text-base font-semibold text-gray-700 mb-3" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>키워드</div>
-            <div className="flex items-center gap-3">
-              <input 
-                className="flex-1 h-12 border border-gray-300 rounded-lg px-4 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-all" 
-                style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}
-                placeholder="예: 맛집, 여행, 패션..."
-                value={keywords[0]} 
-                onChange={(e)=>setKeywords([e.target.value, ...keywords.slice(1)])} 
-              />
-              {keywords.length < 3 && (
-                <button 
-                  className="h-12 px-4 border border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 text-gray-700 text-sm font-medium transition-all" 
-                  style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}
-                  onClick={(e)=>{e.preventDefault(); if (plan==='free'){ showUpgradeModal('여러 키워드 검색은 스타터 플랜부터 이용이 가능해요'); return } setKeywords(prev=>[...prev,''])}}
-                >
-                  + 키워드 추가
-                </button>
-              )}
+            <div className="text-base font-semibold text-gray-700 mb-3" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>
+              {platform === 'youtube' && searchType === 'url' ? 'YouTube 영상 URL' : '키워드'}
             </div>
-            {keywords.slice(1).map((kw, idx)=> (
-              <div key={idx} className="flex items-center gap-3 mt-2">
-                <input 
-                  className="flex-1 h-12 border border-gray-300 rounded-lg px-4 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-all" 
-                  style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}
-                  placeholder={`키워드 ${idx + 2}`}
-                  value={kw} 
-                  onChange={(e)=>setKeywords(prev=>prev.map((v,i)=>i===idx+1?e.target.value:v))} 
-                />
-                <button 
-                  className="h-12 px-4 border border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 text-gray-700 text-sm font-medium transition-all" 
-                  style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}
-                  onClick={(e)=>{e.preventDefault(); setKeywords(prev=>prev.filter((_,i)=>i!==idx+1))}}
-                >
-                  삭제
-                </button>
-              </div>
-            ))}
+            {platform === 'youtube' && searchType === 'url' ? (
+              <input 
+                className="w-full h-12 border border-gray-300 rounded-lg px-4 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-all" 
+                style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}
+                placeholder="예: https://www.youtube.com/watch?v=..."
+                value={keywords[0]} 
+                onChange={(e)=>setKeywords([e.target.value])} 
+              />
+            ) : (
+              <>
+                <div className="flex items-center gap-3">
+                  <input 
+                    className="flex-1 h-12 border border-gray-300 rounded-lg px-4 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-all" 
+                    style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}
+                    placeholder={`예: ${platform === 'youtube' ? '요리, 게임, 뷰티...' : platform === 'tiktok' ? '춤, 음식, 패션...' : '맛집, 여행, 패션...'}`}
+                    value={keywords[0]} 
+                    onChange={(e)=>setKeywords([e.target.value, ...keywords.slice(1)])} 
+                  />
+                  {keywords.length < 3 && platform !== 'youtube' && (
+                    <button 
+                      className="h-12 px-4 border border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 text-gray-700 text-sm font-medium transition-all" 
+                      style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}
+                      onClick={(e)=>{e.preventDefault(); if (plan==='free'){ showUpgradeModal('여러 키워드 검색은 스타터 플랜부터 이용이 가능해요'); return } setKeywords(prev=>[...prev,''])}}
+                    >
+                      + 키워드 추가
+                    </button>
+                  )}
+                </div>
+                {platform !== 'youtube' && keywords.slice(1).map((kw, idx)=> (
+                  <div key={idx} className="flex items-center gap-3 mt-2">
+                    <input 
+                      className="flex-1 h-12 border border-gray-300 rounded-lg px-4 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-all" 
+                      style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}
+                      placeholder={`키워드 ${idx + 2}`}
+                      value={kw} 
+                      onChange={(e)=>setKeywords(prev=>prev.map((v,i)=>i===idx+1?e.target.value:v))} 
+                    />
+                    <button 
+                      className="h-12 px-4 border border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 text-gray-700 text-sm font-medium transition-all" 
+                      style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}
+                      onClick={(e)=>{e.preventDefault(); setKeywords(prev=>prev.filter((_,i)=>i!==idx+1))}}
+                    >
+                      삭제
+                    </button>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
           
           {/* 주제별 키워드 추천 */}
-          <div>
-            <Button 
-              variant="outline" 
-              size="sm"
-              className="text-sm h-10 border border-gray-200 font-normal" 
-              style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}
-              onClick={(e)=>{e.preventDefault(); setTemplateOpen(v=>!v)}}
-            >
-              주제별 추천 키워드 {templateOpen ? '닫기' : '열기'}
-            </Button>
-            {templateOpen && (
-              <div className="mt-3 p-4 border border-gray-200 rounded-lg bg-white shadow-sm">
-                <TemplatePicker selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} onPick={(kw)=>{ setKeywords([kw]); setTemplateOpen(false) }} />
+          {platform !== 'youtube' && (
+            <div>
+              <Button 
+                variant="outline" 
+                size="sm"
+                className="text-sm h-10 border border-gray-200 font-normal" 
+                style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}
+                onClick={(e)=>{e.preventDefault(); setTemplateOpen(v=>!v)}}
+              >
+                주제별 추천 키워드 {templateOpen ? '닫기' : '열기'}
+              </Button>
+              {templateOpen && (
+                <div className="mt-3 p-4 border border-gray-200 rounded-lg bg-white shadow-sm">
+                  <TemplatePicker selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} onPick={(kw)=>{ setKeywords([kw]); setTemplateOpen(false) }} />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* YouTube 전용 고급 필터 */}
+          {platform === 'youtube' && searchType === 'keyword' && (
+            <div className="space-y-5">
+              <div className="text-base font-semibold text-gray-700" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>고급 필터</div>
+              
+              {/* 기간 필터 */}
+              <div>
+                <div className="text-sm font-medium text-gray-700 mb-2">업로드 기간</div>
+                <select 
+                  className="w-full h-10 border border-gray-300 rounded-lg px-3 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-all bg-white" 
+                  value={period} 
+                  onChange={(e)=>setPeriod(e.target.value as any)}
+                >
+                  <option value="day">최근 하루</option>
+                  <option value="week">최근 일주일</option>
+                  <option value="month">최근 한 달</option>
+                  <option value="month2">최근 2개월</option>
+                  <option value="month3">최근 3개월</option>
+                  <option value="month6">최근 6개월</option>
+                  <option value="year">최근 1년</option>
+                  <option value="all">전체</option>
+                </select>
               </div>
-            )}
-          </div>
+
+              {/* 최소 조회수 */}
+              <div>
+                <div className="text-sm font-medium text-gray-700 mb-2">최소 조회수</div>
+                <select 
+                  className="w-full h-10 border border-gray-300 rounded-lg px-3 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-all bg-white" 
+                  value={minViews} 
+                  onChange={(e)=>setMinViews(Number(e.target.value))}
+                >
+                  <option value={0}>제한 없음</option>
+                  <option value={1000}>1,000회 이상</option>
+                  <option value={5000}>5,000회 이상</option>
+                  <option value={10000}>10,000회 이상</option>
+                  <option value={50000}>50,000회 이상</option>
+                  <option value={100000}>100,000회 이상</option>
+                  <option value={500000}>500,000회 이상</option>
+                  <option value={1000000}>1,000,000회 이상</option>
+                </select>
+              </div>
+
+              {/* 최대 구독자 수 */}
+              <div>
+                <div className="text-sm font-medium text-gray-700 mb-2">최대 구독자 수</div>
+                <select 
+                  className="w-full h-10 border border-gray-300 rounded-lg px-3 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-all bg-white" 
+                  value={maxSubscribers} 
+                  onChange={(e)=>setMaxSubscribers(Number(e.target.value))}
+                >
+                  <option value={0}>제한 없음</option>
+                  <option value={1000}>1,000명 이하</option>
+                  <option value={5000}>5,000명 이하</option>
+                  <option value={10000}>10,000명 이하</option>
+                  <option value={50000}>50,000명 이하</option>
+                  <option value={100000}>100,000명 이하</option>
+                  <option value={500000}>500,000명 이하</option>
+                  <option value={1000000}>1,000,000명 이하</option>
+                </select>
+              </div>
+
+              {/* 영상 길이 */}
+              <div>
+                <div className="text-sm font-medium text-gray-700 mb-2">영상 길이</div>
+                <select 
+                  className="w-full h-10 border border-gray-300 rounded-lg px-3 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-all bg-white" 
+                  value={videoDuration} 
+                  onChange={(e)=>setVideoDuration(e.target.value as any)}
+                >
+                  <option value="any">모든 길이</option>
+                  <option value="short">짧은 동영상 (4분 미만)</option>
+                  <option value="long">긴 동영상 (20분 이상)</option>
+                </select>
+              </div>
+            </div>
+          )}
 
           {/* 결과 개수 */}
           <div>
             <div className="text-base font-semibold text-gray-700 mb-3" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>결과 개수</div>
             <select 
-              className="w-48 h-12 border border-gray-300 rounded-lg px-4 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-all bg-white" 
+              className="w-full h-12 border border-gray-300 rounded-lg px-4 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-all bg-white" 
               style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}
               value={limit} 
               onChange={(e)=>{
-              const v = e.target.value as any
-              // Plan-based locking
-              if (plan==='free' && (v==='60'||v==='90'||v==='120')) { e.preventDefault(); (e.target as HTMLSelectElement).value = prevLimitRef.current as any; showUpgradeModal('FREE 플랜은 30개만 가능합니다'); return }
-              if (plan==='starter' && (v==='90'||v==='120')) { e.preventDefault(); (e.target as HTMLSelectElement).value = prevLimitRef.current as any; showUpgradeModal('STARTER 플랜은 60개까지만 가능합니다'); return }
-              if (plan==='pro' && v==='120') { e.preventDefault(); (e.target as HTMLSelectElement).value = prevLimitRef.current as any; showUpgradeModal('PRO 플랜은 90개까지만 가능합니다'); return }
-              prevLimitRef.current = v; setLimit(v)
+                const v = e.target.value as any
+                // Plan-based locking
+                if (plan==='free' && (v==='60'||v==='90'||v==='120')) { e.preventDefault(); (e.target as HTMLSelectElement).value = prevLimitRef.current as any; showUpgradeModal('FREE 플랜은 30개만 가능합니다'); return }
+                if (plan==='starter' && (v==='90'||v==='120')) { e.preventDefault(); (e.target as HTMLSelectElement).value = prevLimitRef.current as any; showUpgradeModal('STARTER 플랜은 60개까지만 가능합니다'); return }
+                if (plan==='pro' && v==='120') { e.preventDefault(); (e.target as HTMLSelectElement).value = prevLimitRef.current as any; showUpgradeModal('PRO 플랜은 90개까지만 가능합니다'); return }
+                prevLimitRef.current = v; setLimit(v)
               }}
-              >
+            >
               {isAdmin && <option value="5">5 (개발용)</option>}
-              <option value="30">30개 (100크레딧)</option>
-                <option value="60">60개 (200크레딧){plan==='free'?' 🔒':''}</option>
-                <option value="90">90개 (300크레딧){(plan==='free'||plan==='starter')?' 🔒':''}</option>
-                <option value="120">120개 (400크레딧){(plan==='free'||plan==='starter'||plan==='pro')?' 🔒':''}</option>
+              {platform === 'instagram' ? (
+                <>
+                  <option value="30">30개 (100크레딧)</option>
+                  <option value="60">60개 (200크레딧){plan==='free'?' 🔒':''}</option>
+                  <option value="90">90개 (300크레딧){(plan==='free'||plan==='starter')?' 🔒':''}</option>
+                  <option value="120">120개 (400크레딧){(plan==='free'||plan==='starter'||plan==='pro')?' 🔒':''}</option>
+                </>
+              ) : platform === 'youtube' ? (
+                <>
+                  <option value="30">30개 (50크레딧)</option>
+                  <option value="60">60개 (100크레딧){plan==='free'?' 🔒':''}</option>
+                  <option value="90">90개 (150크레딧){(plan==='free'||plan==='starter')?' 🔒':''}</option>
+                  <option value="120">120개 (200크레딧){(plan==='free'||plan==='starter'||plan==='pro')?' 🔒':''}</option>
+                </>
+              ) : (
+                <>
+                  <option value="30">30개 (50크레딧)</option>
+                  <option value="60">60개 (100크레딧){plan==='free'?' 🔒':''}</option>
+                  <option value="90">90개 (150크레딧){(plan==='free'||plan==='starter')?' 🔒':''}</option>
+                  <option value="120">120개 (200크레딧){(plan==='free'||plan==='starter'||plan==='pro')?' 🔒':''}</option>
+                </>
+              )}
             </select>
           </div>
 
@@ -778,7 +1027,9 @@ export default function SearchTestPage() {
                 <th className="p-3 text-center font-semibold text-gray-700 w-[80px]">길이</th>
                 <th className="p-3 text-center font-semibold text-gray-700 w-[100px]">좋아요</th>
                 <th className="p-3 text-center font-semibold text-gray-700 w-[100px]">댓글</th>
-                <th className="p-3 text-left font-semibold text-gray-700 w-[180px]">계정</th>
+                <th className="p-3 text-left font-semibold text-gray-700 w-[180px]">
+                  {platform === 'youtube' ? '채널' : platform === 'tiktok' ? '계정' : '계정'}
+                </th>
                 <th className="p-3 text-center font-semibold text-gray-700 w-[120px]">기능</th>
               </tr>
             </thead>
@@ -795,8 +1046,24 @@ export default function SearchTestPage() {
                   <td className="p-3 text-left align-middle">
                     {r.username ? (
                         <div className="flex flex-col">
-                          <a className="text-gray-900 hover:text-gray-700 font-medium" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }} href={`https://www.instagram.com/${r.username}/`} target="_blank" rel="noreferrer">@{r.username}</a>
-                          <div className="text-xs text-gray-500" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>{typeof r.followers === 'number' ? new Intl.NumberFormat('en-US').format(r.followers) : '-'} 팔로워</div>
+                          <a 
+                            className="text-gray-900 hover:text-gray-700 font-medium" 
+                            style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }} 
+                            href={
+                              platform === 'youtube' 
+                                ? `https://www.youtube.com/channel/${r.username}` 
+                                : platform === 'tiktok' 
+                                  ? `https://www.tiktok.com/@${r.username}` 
+                                  : `https://www.instagram.com/${r.username}/`
+                            } 
+                            target="_blank" 
+                            rel="noreferrer"
+                          >
+                            {platform === 'youtube' ? r.username : `@${r.username}`}
+                          </a>
+                          <div className="text-xs text-gray-500" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>
+                            {typeof r.followers === 'number' ? new Intl.NumberFormat('en-US').format(r.followers) : '-'} {platform === 'youtube' ? '구독자' : '팔로워'}
+                          </div>
                       </div>
                     ) : <span className="text-gray-400">-</span>}
                   </td>

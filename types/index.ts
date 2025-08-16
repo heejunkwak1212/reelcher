@@ -90,3 +90,90 @@ export interface IThemePayload {
   variableNamesObserved: string[]
 }
 
+// YouTube API 관련 타입 정의
+export interface IYouTubeVideo {
+  videoId: string
+  title: string
+  description?: string
+  channelId: string
+  channelTitle: string
+  publishedAt: string
+  thumbnails: {
+    default?: { url: string; width: number; height: number }
+    medium?: { url: string; width: number; height: number }
+    high?: { url: string; width: number; height: number }
+    maxres?: { url: string; width: number; height: number }
+  }
+  duration: string
+  viewCount: number
+  likeCount: number
+  commentCount: number
+  subscriberCount: number
+  tags?: string[]
+  categoryId?: string
+  defaultAudioLanguage?: string
+  license?: 'youtube' | 'creativeCommon'
+  engagementRate: number
+  reactionRate: number
+}
+
+export interface IYouTubeSearchRequest {
+  searchType: 'keyword' | 'url' // URL은 유사영상 검색
+  query: string
+  url?: string // 유사영상 검색용 URL
+  resultsLimit: 30 | 60 | 90 | 120
+  filters: {
+    period?: 'day' | 'week' | 'month' | 'month2' | 'month3' | 'month6' | 'year' | 'all'
+    minViews?: number
+    maxSubscribers?: number
+    videoDuration?: 'any' | 'short' | 'long'
+    sortBy?: 'viewCount' | 'engagement_rate' | 'reaction_rate' | 'date_desc' | 'date_asc'
+  }
+}
+
+export interface IYouTubeSearchResponse {
+  results: IYouTubeVideo[]
+  totalCount: number
+  searchType: 'keyword' | 'url'
+  metadata?: {
+    originalVideoId?: string
+    originalVideoTitle?: string
+    languageDetected?: string
+  }
+}
+
+export interface IYouTubeContributionData {
+  contributionScore: number
+  channelAvgViews: number
+  totalVideosAnalyzed: number
+  error?: string
+}
+
+// 통합 플랫폼 검색 요청
+export interface IUniversalSearchRequest {
+  platform: 'instagram' | 'tiktok' | 'youtube'
+  searchType: 'keyword' | 'url'
+  keyword?: string
+  url?: string
+  resultsLimit: 30 | 60 | 90 | 120
+  filters: {
+    // 공통 필터
+    period?: string
+    minViews?: number
+    
+    // YouTube 전용 필터
+    maxSubscribers?: number
+    videoDuration?: 'any' | 'short' | 'long'
+    sortBy?: string
+  }
+}
+
+export interface IUniversalSearchResponse {
+  platform: 'instagram' | 'tiktok' | 'youtube'
+  results: ISearchRow[] | IYouTubeVideo[]
+  totalCount: number
+  creditsUsed: number
+  searchType: 'keyword' | 'url'
+  metadata?: any
+}
+
