@@ -5,7 +5,10 @@ export const searchSchema = z.object({
   // Fixed options in production: 30/60/90/120. In development, allow '5' for quick testing.
   limit: z
     .union([z.enum(['30', '60', '90', '120']), z.literal('5')])
-    .refine((val) => val !== '5' || process.env.NODE_ENV !== 'production', {
+    .refine((val) => {
+      console.log('Validating limit:', val, 'NODE_ENV:', process.env.NODE_ENV)
+      return val !== '5' || process.env.NODE_ENV !== 'production'
+    }, {
       message: 'Dev limit 5 is not allowed in production',
     }),
   debug: z.boolean().optional(),

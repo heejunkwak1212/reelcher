@@ -122,7 +122,7 @@ export interface IYouTubeSearchRequest {
   query: string
   url?: string // 유사영상 검색용 URL
   apiKey: string // 사용자가 제공하는 YouTube Data API v3 키
-  resultsLimit: 5 | 30 | 60 | 90 | 120
+  resultsLimit: 5 | 15 | 30 | 50 | 60 | 90 | 120
   filters: {
     period?: 'day' | 'week' | 'month' | 'month2' | 'month3' | 'month6' | 'year' | 'all'
     minViews?: number
@@ -153,7 +153,7 @@ export interface IYouTubeContributionData {
 // 통합 플랫폼 검색 요청
 export interface IUniversalSearchRequest {
   platform: 'instagram' | 'tiktok' | 'youtube'
-  searchType: 'keyword' | 'url'
+  searchType: 'keyword' | 'url' | 'profile'
   keyword?: string
   url?: string
   resultsLimit: 5 | 30 | 60 | 90 | 120
@@ -162,6 +162,9 @@ export interface IUniversalSearchRequest {
     period?: string
     minViews?: number
     
+    // TikTok 전용 필터
+    minLikes?: number // TikTok 최소 좋아요 수 (프로필 검색 시 사용)
+    
     // YouTube 전용 필터
     maxSubscribers?: number
     videoDuration?: 'any' | 'short' | 'long'
@@ -169,12 +172,57 @@ export interface IUniversalSearchRequest {
   }
 }
 
+// TikTok API 관련 타입 정의
+export interface ITikTokVideo {
+  videoId: string
+  title: string
+  description?: string
+  username: string
+  authorName: string
+  publishedAt: string
+  thumbnailUrl?: string
+  videoUrl?: string
+  duration: number
+  viewCount: number
+  likeCount: number
+  commentCount: number
+  shareCount: number
+  followersCount: number
+  hashtags?: string[]
+  musicInfo?: {
+    musicName: string
+    musicAuthor: string
+  }
+}
+
+export interface ITikTokSearchRequest {
+  searchType: 'keyword' | 'hashtag' | 'url' | 'profile' // 프로필 검색 추가
+  query: string
+  resultsLimit: 5 | 30 | 60 | 90 | 120
+  filters: {
+    period?: 'day' | 'week' | 'month' | 'month2' | 'month3' | 'month6' | 'year' | 'all'
+    minViews?: number
+    minLikes?: number // 최소 좋아요 수 필터 (프로필 검색 전용)
+    sortBy?: 'trending' | 'recent' | 'most_liked'
+  }
+}
+
+export interface ITikTokSearchResponse {
+  results: ITikTokVideo[]
+  totalCount: number
+  searchType: 'keyword' | 'hashtag' | 'url' | 'profile'
+  metadata?: {
+    searchTerm: string
+    totalFound: number
+  }
+}
+
 export interface IUniversalSearchResponse {
   platform: 'instagram' | 'tiktok' | 'youtube'
-  results: ISearchRow[] | IYouTubeVideo[]
+  results: ISearchRow[] | IYouTubeVideo[] | ITikTokVideo[]
   totalCount: number
   creditsUsed: number
-  searchType: 'keyword' | 'url'
+  searchType: 'keyword' | 'url' | 'hashtag'
   metadata?: any
 }
 

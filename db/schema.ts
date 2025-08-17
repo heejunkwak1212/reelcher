@@ -27,6 +27,7 @@ export const searches = pgTable('searches', {
   id: serial('id').primaryKey(),
   userId: uuid('user_id'),
   keyword: text('keyword'),
+  platform: text('platform'), // 추가: instagram, youtube, tiktok
   period: text('period'),
   minViews: integer('min_views'),
   maxFollowers: integer('max_followers'),

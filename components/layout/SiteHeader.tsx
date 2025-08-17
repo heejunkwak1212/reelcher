@@ -13,11 +13,14 @@ export default async function SiteHeader() {
       <div className="max-w-6xl mx-auto px-4 h-16 grid grid-cols-3 items-center">
         <div className="flex items-center gap-2">
           <Link href="/" prefetch={true} className="flex items-center gap-0.1 hover:opacity-80 transition-opacity">
-            <img 
-              src="/logo.svg" 
-              alt="Reelcher" 
-              className="w-10 h-10"
-            />
+            <picture>
+              <source srcSet="/logo.svg" type="image/svg+xml" />
+              <img 
+                src="/icon-64" 
+                alt="Reelcher" 
+                className="w-10 h-10"
+              />
+            </picture>
             <span className="font-bold text-xl">Reelcher</span>
           </Link>
         </div>

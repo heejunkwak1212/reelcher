@@ -11,7 +11,7 @@ const youtubeSearchSchema = z.object({
   query: z.string().min(1),
   url: z.string().optional(),
   apiKey: z.string().min(1, 'YouTube API 키가 필요합니다'),
-  resultsLimit: z.union([z.literal(5), z.literal(30), z.literal(60), z.literal(90), z.literal(120)]),
+  resultsLimit: z.union([z.literal(5), z.literal(15), z.literal(30), z.literal(50), z.literal(60), z.literal(90), z.literal(120)]),
   filters: z.object({
     period: z.enum(['day', 'week', 'month', 'month2', 'month3', 'month6', 'year', 'all']).optional(),
     minViews: z.number().min(0).optional(),

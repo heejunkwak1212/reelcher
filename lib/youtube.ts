@@ -94,7 +94,25 @@ export class YouTubeClient {
   }
 
   /**
-   * PT 형식의 duration을 읽기 쉬운 형식으로 변환
+   * PT 형식의 duration을 초 단위로 변환
+   */
+  private parseDurationToSeconds(duration: string): number {
+    if (!duration) return 0
+
+    const pattern = /PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/
+    const match = duration.match(pattern)
+
+    if (!match) return 0
+
+    const hours = parseInt(match[1] || '0')
+    const minutes = parseInt(match[2] || '0')
+    const seconds = parseInt(match[3] || '0')
+
+    return hours * 3600 + minutes * 60 + seconds
+  }
+
+  /**
+   * PT 형식의 duration을 읽기 쉬운 형식으로 변환 (1:10:23 또는 0:53 형식)
    */
   private formatDuration(duration: string): string {
     if (!duration) return "0:00"
@@ -250,6 +268,7 @@ export class YouTubeClient {
           publishedAt: snippet.publishedAt,
           thumbnails: snippet.thumbnails,
           duration: this.formatDuration(contentDetails.duration),
+          durationSeconds: this.parseDurationToSeconds(contentDetails.duration),
           viewCount,
           likeCount,
           commentCount,
@@ -467,29 +486,47 @@ export class YouTubeClient {
       adjustedDuration = 'any'
     }
 
-    // 견고한 순차적 폴백 검색 전략
+    // main.py와 동일한 견고한 순차적 폴백 검색 전략 - 다양성 확보를 위한 조정
+    const originalTags = snippet.tags || []
+    const originalTitle = snippet.title || ''
+    const originalDescription = snippet.description || ''
+    
+    // 해시태그 추출 (제목 + 설명에서)
+    const hashtagMatches = [
+      ...(originalTitle.match(/#(\w+)/g) || []),
+      ...(originalDescription.match(/#(\w+)/g) || [])
+    ]
+    const originalHashtags = [...new Set(hashtagMatches.map(tag => tag.substring(1)))]
+    
     const searchStrategies = [
-      // 1차: 정밀 타겟팅 (제목 + 카테고리)
-      {
-        q: snippet.title,
-        videoCategoryId: snippet.categoryId,
-        maxResults: 40
-      },
-      // 2차: 주제 확장 (topicId)
-      ...(topicDetails.relevantTopicIds?.length > 0 ? [{
-        topicId: topicDetails.relevantTopicIds[0],
-        maxResults: 30
-      }] : []),
-      // 3차: 채널 우선
+      // 1차: 채널 우선 검색 (40개) - main.py와 동일하게 채널을 우선으로
       {
         channelId: snippet.channelId,
         maxResults: 40
       },
-      // 4차: 제목만
+      // 2차: 제목 검색 (25개)
       {
-        q: snippet.title,
+        q: originalTitle,
         maxResults: 25
-      }
+      },
+      // 3차: 태그 검색 (20개) - 상위 3개 태그만 사용
+      ...(originalTags.length > 0 ? [{
+        q: originalTags.slice(0, 3).join(' '),
+        maxResults: 20
+      }] : []),
+      // 4차: 해시태그 검색 (15개) - 상위 3개 해시태그만 사용
+      ...(originalHashtags.length > 0 ? [{
+        q: originalHashtags.slice(0, 3).map(tag => `#${tag}`).join(' '),
+        maxResults: 15
+      }] : []),
+      // 5차: 주제/카테고리 검색 (15개)
+      ...(topicDetails.relevantTopicIds?.length > 0 ? [{
+        topicId: topicDetails.relevantTopicIds[0],
+        maxResults: 15
+      }] : snippet.categoryId ? [{
+        videoCategoryId: snippet.categoryId,
+        maxResults: 15
+      }] : [])
     ]
 
     let candidateVideoIds = new Set<string>()
@@ -511,9 +548,11 @@ export class YouTubeClient {
       commonParams.publishedAfter = publishedAfter
     }
 
-    // 순차적 폴백 검색 실행
+    // 순차적 폴백 검색 실행 - 더 많은 후보 수집
+    const targetCandidates = Math.max(resultsLimit * 3, 100) // 최소 100개, 목표의 3배까지 후보 수집
+    
     for (const strategy of searchStrategies) {
-      if (candidateVideoIds.size >= resultsLimit) break
+      if (candidateVideoIds.size >= targetCandidates) break
 
       try {
         const params = { ...commonParams, ...strategy }
@@ -529,6 +568,22 @@ export class YouTubeClient {
         for (const item of response.items || []) {
           if (item.id?.videoId && item.id.videoId !== videoId) { // 원본 영상 제외
             candidateVideoIds.add(item.id.videoId)
+          }
+        }
+        
+        // 각 전략에서 더 많은 결과 수집을 위해 페이지네이션 고려
+        if (response.nextPageToken && candidateVideoIds.size < targetCandidates) {
+          try {
+            const nextPageParams = { ...params, pageToken: response.nextPageToken }
+            const nextResponse = await this.makeRequest('search', nextPageParams)
+            
+            for (const item of nextResponse.items || []) {
+              if (item.id?.videoId && item.id.videoId !== videoId) {
+                candidateVideoIds.add(item.id.videoId)
+              }
+            }
+          } catch (nextPageError) {
+            console.warn('Next page search failed:', nextPageError)
           }
         }
       } catch (error) {
@@ -550,8 +605,8 @@ export class YouTubeClient {
       }
     }
 
-    // 상세 정보 수집
-    const candidateList = Array.from(candidateVideoIds).slice(0, resultsLimit)
+    // 상세 정보 수집 - 더 많은 후보에서 선별
+    const candidateList = Array.from(candidateVideoIds)
     let videos = await this.getVideoDetails(candidateList)
 
     // 채널 구독자 수 가져오기
@@ -564,38 +619,109 @@ export class YouTubeClient {
       subscriberCount: subscriberCounts[video.channelId] || 0
     }))
 
-    // 유사도 스코어링
+    // main.py와 동일한 정교한 유사도 스코어링 시스템
     const titleKeywords = new Set(
-      snippet.title.toLowerCase().split(' ').filter(word => word.length > 2)
+      originalTitle.split(' ').filter(word => word.length > 2)
     )
 
     videos = videos.map(video => {
       let score = 0
 
-      // 채널 일치 보너스
+      // 1. 채널 일치 보너스 (main.py와 동일)
       if (video.channelId === snippet.channelId) {
         score += 30
       }
 
-      // 태그 일치 보너스
-      if (video.tags && snippet.tags) {
-        const commonTags = video.tags.filter(tag => snippet.tags?.includes(tag))
+      // 2. 태그 일치 보너스 (main.py와 동일)
+      if (video.tags && originalTags.length > 0) {
+        const commonTags = originalTags.filter(tag => video.tags?.includes(tag))
         score += commonTags.length * 15
       }
 
-      // 제목 키워드 일치 보너스
-      const videoTitleWords = video.title.toLowerCase().split(' ')
+      // 3. 해시태그 일치 보너스 (main.py 추가 기능)
+      if (originalHashtags.length > 0) {
+        const videoDescription = video.description || ''
+        const videoHashtags = [
+          ...(video.title.match(/#(\w+)/g) || []),
+          ...(videoDescription.match(/#(\w+)/g) || [])
+        ].map(tag => tag.substring(1))
+        
+        const commonHashtags = originalHashtags.filter(tag => videoHashtags.includes(tag))
+        score += commonHashtags.length * 8
+      }
+
+      // 4. 제목 키워드 일치 보너스 (main.py와 동일)
+      const videoTitle = video.title.toLowerCase()
       for (const keyword of titleKeywords) {
-        if (videoTitleWords.some(word => word.includes(keyword))) {
+        if (videoTitle.includes(keyword.toLowerCase())) {
           score += 5
         }
+      }
+
+      // 5. 다양성 보너스 - 다른 채널에게 가점 (main.py 개념 적용)
+      if (video.channelId !== snippet.channelId) {
+        score += 2 // 다른 채널에게 약간의 가점
       }
 
       return { ...video, similarityScore: score }
     })
 
-    // 유사도 점수로 정렬
+    // main.py 스타일 채널 다양성 확보를 위한 정렬 - 결과 개수 최적화
+    // 1차: 유사도 점수로 정렬
     videos.sort((a: any, b: any) => b.similarityScore - a.similarityScore)
+    
+    // 2차: 적응형 채널 다양성 확보 (결과 개수에 맞춰 유연하게 조정)
+    const targetResults = Math.min(resultsLimit, videos.length)
+    const channelCounts = new Map<string, number>()
+    const diversifiedVideos: any[] = []
+    const reservedVideos: any[] = [] // 다양성 제한에 걸린 영상들
+    
+    // 첫 번째 패스: 엄격한 다양성 적용
+    for (const video of videos) {
+      const channelCount = channelCounts.get(video.channelId) || 0
+      
+      // 원본 채널: 최대 5개, 다른 채널: 최대 3개 (기존보다 완화)
+      const maxForChannel = video.channelId === snippet.channelId ? 5 : 3
+      
+      if (channelCount < maxForChannel) {
+        diversifiedVideos.push(video)
+        channelCounts.set(video.channelId, channelCount + 1)
+      } else {
+        reservedVideos.push(video)
+      }
+      
+      // 목표 개수의 80%에 도달하면 첫 번째 패스 종료
+      if (diversifiedVideos.length >= Math.floor(targetResults * 0.8)) {
+        break
+      }
+    }
+    
+    // 두 번째 패스: 목표 개수에 못 미치면 제한 완화
+    if (diversifiedVideos.length < targetResults) {
+      const needed = targetResults - diversifiedVideos.length
+      
+      // 채널당 제한을 2개씩 더 늘려서 추가
+      for (const video of reservedVideos) {
+        if (diversifiedVideos.length >= targetResults) break
+        
+        const channelCount = channelCounts.get(video.channelId) || 0
+        const relaxedMaxForChannel = video.channelId === snippet.channelId ? 8 : 5
+        
+        if (channelCount < relaxedMaxForChannel) {
+          diversifiedVideos.push(video)
+          channelCounts.set(video.channelId, channelCount + 1)
+        }
+      }
+    }
+    
+    // 세 번째 패스: 여전히 부족하면 제한 없이 추가
+    if (diversifiedVideos.length < targetResults) {
+      const stillNeeded = targetResults - diversifiedVideos.length
+      const remainingVideos = videos.filter(v => !diversifiedVideos.includes(v))
+      diversifiedVideos.push(...remainingVideos.slice(0, stillNeeded))
+    }
+    
+    videos = diversifiedVideos
 
     // 필터 적용
     if (filters.minViews) {

@@ -39,24 +39,31 @@ export class YouTubeDownloader {
       // 출력 디렉토리 생성
       await fs.mkdir(outputDir, { recursive: true })
       
-      const outputTemplate = path.join(outputDir, '%(title)s.%(ext)s')
+      // 한글 파일명 문제를 피하기 위해 고정된 파일명 사용
+      const timestamp = Date.now()
+      const outputTemplate = path.join(outputDir, `youtube_video_${timestamp}.%(ext)s`)
       
       const args = [
         '--no-warnings',
         '--no-playlist',
-        '--format', options.format || options.quality || 'best[height<=720]/best',
+        '--format', options.format || options.quality || 'best[height<=1080]/bestvideo[height<=1080]+bestaudio/best',
         '--output', outputTemplate,
         '--print', 'after_move:filepath',
         '--print', 'title',
         '--print', 'duration',
+        '--encoding', 'utf-8',  // UTF-8 인코딩 명시
         url
       ]
 
       console.log('yt-dlp 명령어:', 'yt-dlp', args.join(' '))
 
       return new Promise((resolve) => {
-        const ytdlp = spawn('yt-dlp', args, {
-          stdio: ['ignore', 'pipe', 'pipe']
+        // Windows에서는 현재 디렉토리의 yt-dlp.exe 사용
+        const ytdlpCommand = process.platform === 'win32' ? './yt-dlp.exe' : 'yt-dlp'
+        
+        const ytdlp = spawn(ytdlpCommand, args, {
+          stdio: ['ignore', 'pipe', 'pipe'],
+          cwd: process.cwd()
         })
 
         let stdout = ''
@@ -141,8 +148,12 @@ export class YouTubeDownloader {
     ]
 
     return new Promise((resolve, reject) => {
-      const ytdlp = spawn('yt-dlp', args, {
-        stdio: ['ignore', 'pipe', 'pipe']
+      // Windows에서는 현재 디렉토리의 yt-dlp.exe 사용
+      const ytdlpCommand = process.platform === 'win32' ? './yt-dlp.exe' : 'yt-dlp'
+      
+      const ytdlp = spawn(ytdlpCommand, args, {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        cwd: process.cwd() // 현재 작업 디렉토리 설정
       })
 
       let stdout = ''

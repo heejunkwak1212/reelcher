@@ -187,7 +187,7 @@ export default function RelcherHero({ user }: RelcherHeroProps) {
             transition={{ duration: 0.4, delay: 0.9 }}
           >
             <p className="mt-6 text-base sm:text-lg md:text-xl text-gray-600 mb-8 leading-relaxed font-light tracking-normal max-w-2xl mx-auto px-4" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>
-              키워드만 입력하세요. 인기 콘텐츠, 제가 찾아드릴게요.
+              키워드만 입력하세요. 이제는 릴처가 찾아줄게요.
             </p>
           </motion.div>
 

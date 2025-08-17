@@ -14,6 +14,24 @@ const isYouTubeUrl = (u: string) => {
   }
 }
 
+const isTikTokUrl = (u: string) => {
+  try {
+    const url = new URL(u)
+    return url.hostname.includes('tiktok.com')
+  } catch {
+    return false
+  }
+}
+
+const isTikTokDirectUrl = (u: string) => {
+  try {
+    const url = new URL(u)
+    return url.hostname.includes('api.apify.com') && u.includes('.mp4')
+  } catch {
+    return false
+  }
+}
+
 import JSZip from 'jszip'
 import { YouTubeDownloader } from '@/lib/youtube-downloader'
 import { promises as fs } from 'fs'
@@ -31,7 +49,7 @@ export async function POST(req: Request) {
       if (isYouTubeUrl(url)) {
         try {
           const result = await YouTubeDownloader.downloadVideo(url, {
-            quality: 'best[height<=720]/best'
+            format: 'best[height<=1080]/bestvideo[height<=1080]+bestaudio/best'
           })
           
           if (!result.success || !result.filePath) {
@@ -47,7 +65,7 @@ export async function POST(req: Request) {
             `${result.title.replace(/[^a-zA-Z0-9가-힣\s\-_]/g, '')}.mp4` : 
             'youtube-video.mp4'
           
-          return new Response(fileBuffer, {
+          return new Response(new Uint8Array(fileBuffer), {
             status: 200,
             headers: {
               'content-type': 'video/mp4',
@@ -58,6 +76,56 @@ export async function POST(req: Request) {
         } catch (error) {
           console.error('YouTube 다운로드 오류:', error)
           return new Response(`YouTube 다운로드 실패: ${error instanceof Error ? error.message : 'Unknown error'}`, { status: 502 })
+        }
+      } else if (isTikTokDirectUrl(url)) {
+        // TikTok Apify 직접 URL인 경우 (이미 다운로드 가능한 MP4 URL)
+        try {
+          const upstream = await fetch(url)
+          if (!upstream.ok || !upstream.body) return new Response('TikTok video fetch error', { status: 502 })
+          
+          return new Response(upstream.body, { 
+            status: 200, 
+            headers: { 
+              'content-type': 'video/mp4', 
+              'content-disposition': 'attachment; filename="tiktok-video.mp4"', 
+              'cache-control': 'no-store' 
+            } 
+          })
+        } catch (error) {
+          console.error('TikTok 다운로드 오류:', error)
+          return new Response(`TikTok 다운로드 실패: ${error instanceof Error ? error.message : 'Unknown error'}`, { status: 502 })
+        }
+      } else if (isTikTokUrl(url)) {
+        // TikTok 웹 URL인 경우 yt-dlp 사용
+        try {
+          const result = await YouTubeDownloader.downloadVideo(url, {
+            format: 'best[height<=1080]/bestvideo[height<=1080]+bestaudio/best'
+          })
+          
+          if (!result.success || !result.filePath) {
+            return new Response(result.error || 'TikTok download failed', { status: 502 })
+          }
+          
+          const fileBuffer = await fs.readFile(result.filePath)
+          
+          // 파일 정리
+          YouTubeDownloader.cleanup(result.filePath).catch(() => {})
+          
+          const fileName = result.title ? 
+            `${result.title.replace(/[^a-zA-Z0-9가-힣\s\-_]/g, '')}.mp4` : 
+            'tiktok-video.mp4'
+          
+          return new Response(new Uint8Array(fileBuffer), {
+            status: 200,
+            headers: {
+              'content-type': 'video/mp4',
+              'content-disposition': `attachment; filename="${encodeURIComponent(fileName)}"`,
+              'cache-control': 'no-store'
+            }
+          })
+        } catch (error) {
+          console.error('TikTok 다운로드 오류:', error)
+          return new Response(`TikTok 다운로드 실패: ${error instanceof Error ? error.message : 'Unknown error'}`, { status: 502 })
         }
       } else {
         // 일반 URL 처리 (기존 로직)
@@ -88,7 +156,7 @@ export async function POST(req: Request) {
           if (isYouTubeUrl(url)) {
             // YouTube URL 처리
             const result = await YouTubeDownloader.downloadVideo(url, {
-              quality: 'best[height<=720]/best'
+              format: 'best[height<=1080]/bestvideo[height<=1080]+bestaudio/best'
             })
             
             if (result.success && result.filePath) {
@@ -96,7 +164,30 @@ export async function POST(req: Request) {
               const fileName = result.title ? 
                 `${result.title.replace(/[^a-zA-Z0-9가-힣\s\-_]/g, '')}.mp4` : 
                 `youtube-video-${current + 1}.mp4`
-              files.push({ name: fileName, data: buf })
+              files.push({ name: fileName, data: new Uint8Array(buf) })
+              
+              // 파일 정리
+              YouTubeDownloader.cleanup(result.filePath).catch(() => {})
+            }
+          } else if (isTikTokDirectUrl(url)) {
+            // TikTok Apify 직접 URL 처리
+            const res = await fetch(url)
+            if (res.ok) {
+              const buf = await res.arrayBuffer()
+              files.push({ name: `tiktok-video-${current + 1}.mp4`, data: buf })
+            }
+          } else if (isTikTokUrl(url)) {
+            // TikTok 웹 URL 처리 (yt-dlp 사용)
+            const result = await YouTubeDownloader.downloadVideo(url, {
+              format: 'best[height<=1080]/bestvideo[height<=1080]+bestaudio/best'
+            })
+            
+            if (result.success && result.filePath) {
+              const buf = await fs.readFile(result.filePath)
+              const fileName = result.title ? 
+                `${result.title.replace(/[^a-zA-Z0-9가-힣\s\-_]/g, '')}.mp4` : 
+                `tiktok-video-${current + 1}.mp4`
+              files.push({ name: fileName, data: new Uint8Array(buf) })
               
               // 파일 정리
               YouTubeDownloader.cleanup(result.filePath).catch(() => {})

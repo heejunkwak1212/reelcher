@@ -17,31 +17,72 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  console.log('=== Instagram API 호출 시작 ===')
   try {
     // Read body once and reuse to avoid stream re-consumption errors
     const body = await req.json().catch(() => ({} as any))
+    console.log('Instagram API 요청 본문:', JSON.stringify(body, null, 2))
+    
     // Optional Turnstile token verification (env-gated)
     const turnstileSecret = process.env.TURNSTILE_SECRET_KEY
-    if (turnstileSecret) {
+    const isDevelopment = process.env.NODE_ENV === 'development'
+    console.log('Turnstile 검증 시작. Secret 존재:', !!turnstileSecret, '개발환경:', isDevelopment)
+    if (turnstileSecret && !isDevelopment) {
       try {
         const token = (body as any)?.turnstileToken
-        if (!token) return new Response('CAPTCHA required', { status: 400 })
+        console.log('Turnstile 토큰:', token ? '존재함' : '없음')
+        if (!token) {
+          console.log('Turnstile 토큰이 없어서 400 반환')
+          return new Response('CAPTCHA required', { status: 400 })
+        }
+        console.log('Turnstile 서버 검증 시작...')
         const verify = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
           method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
           body: new URLSearchParams({ secret: turnstileSecret, response: token }),
         }).then(r => r.json()).catch(() => ({ success: false }))
-        if (!verify?.success) return new Response('CAPTCHA failed', { status: 400 })
-      } catch {}
+        console.log('Turnstile 검증 결과:', verify)
+        if (!verify?.success) {
+          console.log('Turnstile 검증 실패로 400 반환')
+          return new Response('CAPTCHA failed', { status: 400 })
+        }
+        console.log('Turnstile 검증 성공')
+      } catch (e) {
+        console.error('Turnstile 검증 중 예외 발생:', e)
+      }
     }
+    console.log('Rate Limiting 검사 시작. Limiter 존재:', !!searchLimiter)
     if (searchLimiter) {
       const ip = req.headers.get('x-forwarded-for') || 'anon'
+      console.log('Rate Limiting IP:', ip)
       const res = await searchLimiter.limit(`search:${ip}`)
-      if (!res.success) return new Response('Too Many Requests', { status: 429 })
+      console.log('Rate Limiting 결과:', res)
+      if (!res.success) {
+        console.log('Rate Limiting 실패 - 429 반환')
+        return new Response('Too Many Requests', { status: 429 })
+      }
     }
 
-    const input = searchSchema.parse(body)
+    console.log('Instagram API body validation 시작:', body)
+    console.log('현재 NODE_ENV:', process.env.NODE_ENV)
+    let input: any
+    try {
+      input = searchSchema.parse(body)
+      console.log('Instagram API validation 성공:', input)
+    } catch (validationError: any) {
+      console.error('Instagram API validation 실패:', {
+        error: validationError,
+        issues: validationError?.issues,
+        message: validationError?.message
+      })
+      return Response.json({ 
+        error: 'Validation failed',
+        details: validationError,
+        receivedBody: body
+      }, { status: 400 })
+    }
 
     const token = process.env.APIFY_TOKEN
+    console.log('APIFY_TOKEN 확인:', token ? 'TOKEN 존재' : 'TOKEN 없음')
     if (!token) return new Response('APIFY_TOKEN missing', { status: 500 })
 
     // Require auth for costful operation
@@ -151,6 +192,7 @@ export async function POST(req: Request) {
     {
       attempts++
       try {
+        console.log('Instagram 검색 시작 - normalizedKeywords:', normalizedKeywords)
         const kwCount = Math.max(1, normalizedKeywords.length)
         const base = Math.floor(resultsLimit / kwCount)
         let remainder = resultsLimit % kwCount
@@ -158,17 +200,23 @@ export async function POST(req: Request) {
         const perTarget = normalizedKeywords.map(() => base + (remainder-- > 0 ? 1 : 0))
         const oversampleFactor = normalizedKeywords.length >= 2 ? 1.3 : 1.0
         const perOversample = perTarget.map(n => Math.ceil(n * oversampleFactor))
+        
+        console.log('Instagram 배치 계획:', { kwCount, base, perTarget, perOversample })
 
         const runs = await Promise.all(normalizedKeywords.map(async (kw, idx) => {
           const want = Math.max(1, perOversample[idx])
           const batches = Math.ceil(want / 30)
           let acc: IHashtagItem[] = []
+          console.log(`Instagram 키워드 "${kw}" 처리 시작 - want: ${want}, batches: ${batches}`)
           for (let b = 0; b < batches; b++) {
             const slice = Math.min(30, want - b * 30)
             if (slice <= 0) break
+            console.log(`Instagram Apify 액터 호출 시작 - taskId: ${taskId}, kw: ${kw}, slice: ${slice}`)
             const started = await startTaskRun({ taskId, token, input: { hashtags: [kw], resultsLimit: slice, whatToScrape: 'reels', firstPageOnly: false } })
+            console.log(`Instagram Apify 액터 시작됨 - runId: ${started.runId}`)
             apifyRunIds.add(started.runId)
             const run = await waitForRunItems<IHashtagItem>({ token, runId: started.runId })
+            console.log(`Instagram Apify 액터 완료 - runId: ${started.runId}, items: ${run.items?.length || 0}개`)
             acc = acc.concat(Array.isArray(run.items) ? run.items : [])
           }
           return acc
@@ -530,6 +578,11 @@ export async function POST(req: Request) {
       return Response.json({ items: sorted, credits: { toCharge, basis: 100, per: 30 } })
     }
   } catch (e) {
+    console.error('=== Instagram API 전체 에러 발생 ===')
+    console.error('에러 타입:', typeof e)
+    console.error('에러 객체:', e)
+    console.error('에러 스택:', (e as Error)?.stack)
+    
     // Best-effort: no settle here because we don't have user/reserve in this scope anymore
     // Always return JSON for easier debugging from clients/CLI
     // Include Zod issues when available
@@ -537,7 +590,9 @@ export async function POST(req: Request) {
     const isZod = Array.isArray(anyErr?.issues)
     const payload = isZod
       ? { error: 'ValidationError', issues: anyErr.issues }
-      : { error: anyErr?.message || 'Bad Request' }
+      : { error: anyErr?.message || 'Bad Request', fullError: String(e) }
+    
+    console.error('반환할 에러 페이로드:', payload)
     return Response.json(payload, { status: 400 })
   }
 }
