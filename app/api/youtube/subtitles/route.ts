@@ -4,6 +4,8 @@ import { supabaseServer } from '@/lib/supabase/server'
 import { searchLimiter, subtitleCooldown } from '@/lib/ratelimit'
 import { z } from 'zod'
 
+export const runtime = 'nodejs'
+
 const subtitleSchema = z.object({
   url: z.string().url('유효한 URL을 입력해주세요'),
 })

@@ -3,6 +3,8 @@ import { createClient } from '@supabase/supabase-js'
 import { emailCheckLimiter } from '@/lib/ratelimit'
 import { z } from 'zod'
 
+export const runtime = 'nodejs'
+
 const checkEmailSchema = z.object({
   email: z.string().email('유효하지 않은 이메일 형식입니다'),
 })

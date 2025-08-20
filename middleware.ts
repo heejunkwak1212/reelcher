@@ -2,6 +2,8 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
+export const runtime = 'nodejs'
+
 export async function middleware(req: NextRequest) {
   // 1. 응답(response) 객체를 생성하고, Edge에 최적화된 Supabase 클라이언트를 초기화합니다.
   const res = NextResponse.next()

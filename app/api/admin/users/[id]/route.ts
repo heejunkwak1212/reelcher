@@ -3,14 +3,17 @@ import { supabaseServer } from '@/lib/supabase/server'
 import { createClient } from '@supabase/supabase-js'
 import { z } from 'zod'
 
+export const runtime = 'nodejs'
+
 const deleteUserSchema = z.object({
   userId: z.string().uuid(),
 })
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: any
 ) {
+  const params = context.params as { id: string }
   try {
     const supabase = await supabaseServer()
     

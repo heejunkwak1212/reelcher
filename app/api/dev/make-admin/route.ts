@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabase/server'
 
+export const runtime = 'nodejs'
+
 // 개발 환경에서만 작동하는 Admin 생성 API
 export async function POST(request: NextRequest) {
   // 개발 환경에서만 실행

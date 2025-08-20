@@ -5,6 +5,8 @@ import { YouTubeClient, YouTubeAPIError } from '@/lib/youtube'
 import { IYouTubeSearchRequest } from '@/types'
 import { z } from 'zod'
 
+export const runtime = 'nodejs'
+
 // YouTube 검색 요청 스키마
 const youtubeSearchSchema = z.object({
   searchType: z.enum(['keyword', 'url']),
