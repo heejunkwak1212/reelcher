@@ -11,6 +11,7 @@ export default function AdminUsers() {
   const [promoting, setPromoting] = useState(false)
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null)
   const queryClient = useQueryClient()
+  
   const q = useQuery({
     queryKey: ['admin-users', page],
     queryFn: async () => {
@@ -25,6 +26,7 @@ export default function AdminUsers() {
       }>
     },
   })
+  
   const rows = q.data?.items || []
   const profiles = q.data?.profiles || []
   const credits = q.data?.credits || []
@@ -71,6 +73,7 @@ export default function AdminUsers() {
       deleteUserMutation.mutate(userId)
     }
   }
+
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-4">
       <h1 className="text-lg font-medium text-gray-900">사용자 관리</h1>
@@ -110,62 +113,63 @@ export default function AdminUsers() {
                 <th className="p-3 text-left w-20 font-medium text-gray-700">액션</th>
               </tr>
             </thead>
-          <tbody>
-            {rows.map((u) => {
-              const profile = getProfile(u.id)
-              const credit = getCredits(u.id)
-              const stats = getSearchStats(u.id)
-              return (
-                <tr key={u.id} className="border-b border-gray-100 hover:bg-gray-50">
-                  <td className="p-3 whitespace-nowrap text-xs font-mono text-gray-500">
-                    {u.id.slice(-8)}
-                  </td>
-                  <td className="p-3 text-gray-900">{u.email || '-'}</td>
-                  <td className="p-3">
-                    <div className="flex items-center gap-1">
-                      <User className="h-3 w-3 text-gray-400" />
-                      <span className="text-xs text-gray-600">{profile?.display_name || '-'}</span>
-                    </div>
-                  </td>
-                  <td className="p-3">
-                    <div className="flex items-center gap-1">
-                      <Phone className="h-3 w-3 text-gray-400" />
-                      <span className="text-xs text-gray-600">{profile?.phone_number || '-'}</span>
-                    </div>
-                  </td>
-                  <td className="p-3 text-center">
-                    {profile?.is_verified ? (
-                      <ShieldCheck className="h-4 w-4 text-green-500 mx-auto" />
-                    ) : (
-                      <Shield className="h-4 w-4 text-gray-400 mx-auto" />
-                    )}
-                  </td>
-                  <td className="p-3 text-right text-xs text-gray-600">
-                    {(credit?.balance || 0).toLocaleString()}
-                  </td>
-                  <td className="p-3 text-right font-medium text-xs text-gray-900">
-                    {stats.totalCost.toLocaleString()}
-                  </td>
-                  <td className="p-3 text-center text-xs text-gray-600">
-                    {stats.searchCount}
-                  </td>
-                  <td className="p-3 whitespace-nowrap text-xs text-gray-500">
-                    {u.created_at ? new Date(u.created_at).toLocaleDateString('ko-KR') : '-'}
-                  </td>
-                  <td className="p-3 text-center">
-                    <button
-                      onClick={() => handleDeleteUser(u.id, u.email)}
-                      disabled={deletingUserId === u.id}
-                      className="h-7 w-7 p-0 border border-gray-200 rounded-md bg-white hover:bg-red-50 hover:border-red-200 transition-colors flex items-center justify-center"
-                    >
-                      <Trash2 className="h-3 w-3 text-gray-500 hover:text-red-500" />
-                    </button>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+            <tbody>
+              {rows.map((u) => {
+                const profile = getProfile(u.id)
+                const credit = getCredits(u.id)
+                const stats = getSearchStats(u.id)
+                return (
+                  <tr key={u.id} className="border-b border-gray-100 hover:bg-gray-50">
+                    <td className="p-3 whitespace-nowrap text-xs font-mono text-gray-500">
+                      {u.id.slice(-8)}
+                    </td>
+                    <td className="p-3 text-gray-900">{u.email || '-'}</td>
+                    <td className="p-3">
+                      <div className="flex items-center gap-1">
+                        <User className="h-3 w-3 text-gray-400" />
+                        <span className="text-xs text-gray-600">{profile?.display_name || '-'}</span>
+                      </div>
+                    </td>
+                    <td className="p-3">
+                      <div className="flex items-center gap-1">
+                        <Phone className="h-3 w-3 text-gray-400" />
+                        <span className="text-xs text-gray-600">{profile?.phone_number || '-'}</span>
+                      </div>
+                    </td>
+                    <td className="p-3 text-center">
+                      {profile?.is_verified ? (
+                        <ShieldCheck className="h-4 w-4 text-green-500 mx-auto" />
+                      ) : (
+                        <Shield className="h-4 w-4 text-gray-400 mx-auto" />
+                      )}
+                    </td>
+                    <td className="p-3 text-right text-xs text-gray-600">
+                      {(credit?.balance || 0).toLocaleString()}
+                    </td>
+                    <td className="p-3 text-right font-medium text-xs text-gray-900">
+                      {stats.totalCost.toLocaleString()}
+                    </td>
+                    <td className="p-3 text-center text-xs text-gray-600">
+                      {stats.searchCount}
+                    </td>
+                    <td className="p-3 whitespace-nowrap text-xs text-gray-500">
+                      {u.created_at ? new Date(u.created_at).toLocaleDateString('ko-KR') : '-'}
+                    </td>
+                    <td className="p-3 text-center">
+                      <button
+                        onClick={() => handleDeleteUser(u.id, u.email)}
+                        disabled={deletingUserId === u.id}
+                        className="h-7 w-7 p-0 border border-gray-200 rounded-md bg-white hover:bg-red-50 hover:border-red-200 transition-colors flex items-center justify-center"
+                      >
+                        <Trash2 className="h-3 w-3 text-gray-500 hover:text-red-500" />
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
       <div className="flex items-center justify-end gap-2">
         <button className="px-3 py-1.5 border border-gray-200 rounded-md bg-white text-sm hover:bg-gray-50 transition-colors" onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={page<=1}>이전</button>
@@ -175,5 +179,3 @@ export default function AdminUsers() {
     </div>
   )
 }
-
-
