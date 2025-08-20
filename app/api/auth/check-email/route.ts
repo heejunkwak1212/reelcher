@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
   try {
     // Rate limiting
     if (emailCheckLimiter) {
-      const identifier = request.ip ?? 'anonymous'
+      const identifier = (request as any).ip ?? request.headers.get('x-forwarded-for') ?? 'anonymous'
       const { success, remaining, reset } = await emailCheckLimiter.limit(identifier)
       if (!success) {
         return NextResponse.json(
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Check email error:', error)
     if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: error.errors[0].message }, { status: 400 })
+      return NextResponse.json({ error: error.issues[0].message }, { status: 400 })
     }
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }

@@ -1,6 +1,5 @@
 import Link from 'next/link'
 import { supabaseServer } from '@/lib/supabase/server'
-import TossPayButton from '@/components/payments/TossPayButton'
 import CancelSubscriptionButton from '@/components/billing/CancelSubscriptionButton'
 
 export const runtime = 'nodejs'
@@ -22,16 +21,12 @@ export default async function BillingPage() {
           <div className="text-xl font-semibold capitalize">{plan}</div>
           <div className="mt-4 flex gap-2">
             <Link className="px-3 py-2 rounded-md bg-neutral-900 text-white text-sm" href="/pricing">플랜 변경</Link>
+            <CancelSubscriptionButton />
           </div>
         </div>
         <div className="border border-gray-200 rounded-lg p-4">
           <div className="text-sm text-neutral-500">크레딧 잔액</div>
           <div className="text-xl font-semibold">{balance.toLocaleString()}</div>
-          <div className="mt-4 flex gap-2">
-            <TossPayButton amount={1000} label="결제 테스트" />
-            <form action="/api/toss/billing" method="POST" className="hidden" />
-            <CancelSubscriptionButton />
-          </div>
         </div>
       </div>
       <div className="text-xs text-neutral-500">

@@ -9,6 +9,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [plan, setPlan] = useState('free')
   const [balance, setBalance] = useState(0)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true)
+  const [isAdmin, setIsAdmin] = useState(false)
 
   useEffect(() => {
     async function loadUserData() {
@@ -24,6 +25,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           setUser(userData)
           setPlan(userData.plan || 'free')
           setBalance(userData.credits || 0)
+          setIsAdmin(userData.role === 'admin')
         }
       } catch (error) {
         console.error('Failed to load user data:', error)
@@ -44,6 +46,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         plan={plan} 
         balance={balance} 
         onSidebarChange={handleSidebarChange}
+        isAdmin={isAdmin}
       />
       <main className={`flex-1 transition-all duration-200 p-4 md:p-6 ${
         isSidebarCollapsed ? 'ml-12' : 'ml-60'

@@ -11,6 +11,7 @@ import {
   LogOut,
   Search,
   BarChart3,
+  Shield,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import Link from "next/link";
@@ -77,9 +78,10 @@ interface DashboardSidebarProps {
   plan?: string;
   balance?: number;
   onSidebarChange?: (isCollapsed: boolean) => void;
+  isAdmin?: boolean;
 }
 
-export function DashboardSidebar({ user, plan = 'free', balance = 0, onSidebarChange }: DashboardSidebarProps) {
+export function DashboardSidebar({ user, plan = 'free', balance = 0, onSidebarChange, isAdmin = false }: DashboardSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(true);
   const pathname = usePathname();
   const router = useRouter();
@@ -219,6 +221,25 @@ export function DashboardSidebar({ user, plan = 'free', balance = 0, onSidebarCh
                         )}
                       </motion.li>
                     </Link>
+
+                    {/* 관리자 페이지 링크 (관리자만 보임) */}
+                    {isAdmin && (
+                      <Link
+                        href="/admin"
+                        prefetch={true}
+                        className={cn(
+                          "flex h-8 w-full flex-row items-center rounded-md px-2 py-1.5 transition hover:bg-gray-100 hover:text-gray-900",
+                          pathname?.includes("admin") && "bg-gray-100 text-gray-900",
+                        )}
+                      >
+                        <Shield className="h-4 w-4" />
+                        <motion.li variants={variants}>
+                          {!isCollapsed && (
+                            <p className="ml-2 text-sm font-medium">관리자 페이지</p>
+                          )}
+                        </motion.li>
+                      </Link>
+                    )}
                   </div>
                 </ScrollArea>
               </div>
@@ -251,7 +272,7 @@ export function DashboardSidebar({ user, plan = 'free', balance = 0, onSidebarCh
                     <div className="text-xs space-y-1">
                       <div className="flex justify-between">
                         <span className="text-gray-500">플랜</span>
-                        <span className="font-medium capitalize">{plan}</span>
+                        <span className="font-medium capitalize">{isAdmin ? 'admin' : plan}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-500">잔액</span>
@@ -295,7 +316,7 @@ export function DashboardSidebar({ user, plan = 'free', balance = 0, onSidebarCh
                           {user?.email || '사용자'}
                         </span>
                         <span className="line-clamp-1 text-xs text-gray-500 capitalize">
-                          {plan} 플랜
+                          {isAdmin ? 'admin' : plan} 플랜
                         </span>
                       </div>
                     </div>

@@ -21,11 +21,22 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 5,
+  themeColor: '#ffffff',
+}
+
 export const metadata: Metadata = {
   title: "Reelcher - 인스타그램 릴스 분석 도구",
   description: "인스타그램 릴스 데이터를 효율적으로 분석하고 트렌드를 파악하세요",
   icons: {
     icon: [
+      { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
+      { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
+      { url: '/favicon-48x48.png', sizes: '48x48', type: 'image/png' },
+      { url: '/favicon-64x64.png', sizes: '64x64', type: 'image/png' },
       { url: '/icon-16', sizes: '16x16', type: 'image/png' },
       { url: '/icon-32', sizes: '32x32', type: 'image/png' },
       { url: '/icon-48', sizes: '48x48', type: 'image/png' },
@@ -34,15 +45,30 @@ export const metadata: Metadata = {
       { url: '/logo.svg', type: 'image/svg+xml', sizes: 'any' }
     ],
     shortcut: [
-      { url: '/icon-16', sizes: '16x16' },
       { url: '/icon-32', sizes: '32x32' },
-      { url: '/icon-48', sizes: '48x48' },
-      { url: '/icon-64', sizes: '64x64' },
-      { url: '/icon', sizes: '256x256' }
+      { url: '/favicon-16x16.png', sizes: '16x16' },
+      { url: '/favicon-32x32.png', sizes: '32x32' },
+      { url: '/favicon-48x48.png', sizes: '48x48' },
+      { url: '/favicon-64x64.png', sizes: '64x64' }
     ],
     apple: [
+      { url: '/apple-touch-icon.png', sizes: '180x180' },
       { url: '/apple-icon', sizes: '512x512' }
     ],
+    other: [
+      { rel: 'mask-icon', url: '/safari-pinned-tab.svg', color: '#000000' }
+    ]
+  },
+  manifest: '/site.webmanifest',
+
+  robots: 'index, follow',
+  authors: [{ name: 'Reelcher' }],
+  creator: 'Reelcher',
+  publisher: 'Reelcher',
+  formatDetection: {
+    email: false,
+    address: false,
+    telephone: false,
   },
 };
 

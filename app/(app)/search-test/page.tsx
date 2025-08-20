@@ -816,12 +816,13 @@ function SearchTestPageContent() {
 
   // 본인인증 확인 함수
   const checkVerificationAndRun = () => {
-    if (!isVerified) {
-      setPendingSearchAction(() => run)
-      setShowVerificationModal(true)
+    // 관리자는 본인인증 패스
+    if (isAdmin || isVerified) {
+      run()
       return
     }
-    run()
+    setPendingSearchAction(() => run)
+    setShowVerificationModal(true)
   }
 
   // 본인인증 성공 시 실행될 함수

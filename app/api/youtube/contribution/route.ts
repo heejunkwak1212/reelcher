@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
 
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        { error: '잘못된 요청 형식입니다.', details: error.errors },
+        { error: '잘못된 요청 형식입니다.', details: error.issues },
         { status: 400 }
       )
     }

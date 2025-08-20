@@ -167,7 +167,7 @@ export default function RelcherHero({ user }: RelcherHeroProps) {
                 text="Stop scrolling,"
                 duration={0.3}
                 delayMultiple={0.04}
-                className="text-4xl md:text-7xl font-bold tracking-tight"
+                className="text-3xl md:text-6xl font-bold tracking-tighter"
               />
             </div>
             
@@ -176,7 +176,7 @@ export default function RelcherHero({ user }: RelcherHeroProps) {
                 text="Reelcher is here."
                 duration={0.3}
                 delayMultiple={0.04}
-                className="text-6xl md:text-8xl font-black tracking-tight text-black"
+                className="text-5xl md:text-7xl font-black tracking-tighter text-black"
               />
             </div>
           </div>

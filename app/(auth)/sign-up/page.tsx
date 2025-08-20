@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -30,6 +30,17 @@ export default function SignUpPage() {
   const [emailChecked, setEmailChecked] = useState(false)
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
+
+  // Check if user is already logged in and redirect to dashboard
+  useEffect(() => {
+    const checkUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        router.replace('/dashboard')
+      }
+    }
+    checkUser()
+  }, [supabase, router])
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {}
@@ -204,14 +215,23 @@ export default function SignUpPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        <div className="bg-white rounded-2xl shadow-xl p-8">
+        <div className="bg-white rounded-2xl shadow-xl p-6">
           {/* Header */}
-          <div className="text-center mb-8">
+          <div className="text-center mb-6">
             <h1 className="text-2xl font-bold text-gray-900 mb-2">릴처 회원가입</h1>
           </div>
 
+          {/* Required Info Section */}
+          <div className="mb-6">
+            <div className="flex items-center space-x-2 mb-4">
+              <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+              <span className="text-sm font-medium text-gray-700">필수정보입력</span>
+            </div>
+            <div className="w-full h-px bg-gray-200"></div>
+          </div>
+
           {/* Form */}
-          <form onSubmit={handleSignUp} className="space-y-5">
+          <form onSubmit={handleSignUp} className="space-y-4">
             {/* Name Field */}
             <div className="space-y-2">
               <Label htmlFor="name" className="text-sm font-medium text-gray-700">
@@ -224,7 +244,7 @@ export default function SignUpPage() {
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                  className="pl-10 h-12 border-gray-200 focus:border-black focus:ring-black"
+                  className="pl-10 h-10 border-gray-200 focus:border-black focus:ring-black"
                   placeholder="실명을 입력해주세요"
                 />
               </div>
@@ -256,7 +276,7 @@ export default function SignUpPage() {
                     }
                     setFormData(prev => ({ ...prev, phone: value }))
                   }}
-                  className="pl-10 h-12 border-gray-200 focus:border-black focus:ring-black"
+                  className="pl-10 h-10 border-gray-200 focus:border-black focus:ring-black"
                   placeholder="010-0000-0000"
                   maxLength={13}
                 />
@@ -277,7 +297,7 @@ export default function SignUpPage() {
                     type="email"
                     value={formData.email}
                     onChange={(e) => handleEmailChange(e.target.value)}
-                    className="pl-10 h-12 border-gray-200 focus:border-black focus:ring-black"
+                    className="pl-10 h-10 border-gray-200 focus:border-black focus:ring-black"
                     placeholder="이메일을 입력해주세요"
                   />
                   {emailStatus === 'available' && (
@@ -291,7 +311,7 @@ export default function SignUpPage() {
                   type="button"
                   onClick={checkEmailDuplicate}
                   disabled={emailStatus === 'checking' || !formData.email || emailStatus === 'available'}
-                  className={`h-12 px-4 border transition-colors ${
+                  className={`h-10 px-3 border transition-colors text-xs ${
                     emailStatus === 'available' 
                       ? 'bg-green-50 border-green-200 text-green-700 cursor-not-allowed' 
                       : 'bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-200'
@@ -327,7 +347,7 @@ export default function SignUpPage() {
                   type={showPassword ? 'text' : 'password'}
                   value={formData.password}
                   onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                  className="pl-10 pr-10 h-12 border-gray-200 focus:border-black focus:ring-black"
+                  className="pl-10 pr-10 h-10 border-gray-200 focus:border-black focus:ring-black"
                   placeholder="8자 이상의 비밀번호를 입력해주세요"
                 />
                 <button
@@ -354,7 +374,7 @@ export default function SignUpPage() {
                   type={showConfirmPassword ? 'text' : 'password'}
                   value={formData.confirmPassword}
                   onChange={(e) => setFormData(prev => ({ ...prev, confirmPassword: e.target.value }))}
-                  className="pl-10 pr-10 h-12 border-gray-200 focus:border-black focus:ring-black"
+                  className="pl-10 pr-10 h-10 border-gray-200 focus:border-black focus:ring-black"
                   placeholder="비밀번호를 다시 입력해주세요"
                 />
                 <button
@@ -395,14 +415,14 @@ export default function SignUpPage() {
             <Button
               type="submit"
               disabled={loading || !emailChecked || emailStatus !== 'available'}
-              className="w-full h-12 bg-black hover:bg-gray-800 text-white font-medium rounded-lg transition-colors"
+              className="w-full h-10 bg-black hover:bg-gray-800 text-white font-medium rounded-lg transition-colors"
             >
               {loading ? '가입 중...' : '회원가입'}
             </Button>
           </form>
 
           {/* Divider */}
-          <div className="my-6 flex items-center">
+          <div className="my-4 flex items-center">
             <div className="flex-1 border-t border-gray-200"></div>
             <span className="px-4 text-sm text-gray-500">또는</span>
             <div className="flex-1 border-t border-gray-200"></div>
@@ -413,7 +433,7 @@ export default function SignUpPage() {
             <Button
               type="button"
               onClick={() => handleSocialAuth('google')}
-              className="w-full h-12 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 font-medium rounded-lg transition-colors"
+              className="w-full h-10 bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 font-medium rounded-lg transition-colors"
               variant="outline"
             >
               <svg className="w-5 h-5 mr-3" viewBox="0 0 24 24">
@@ -428,7 +448,7 @@ export default function SignUpPage() {
             <Button
               type="button"
               onClick={() => handleSocialAuth('kakao')}
-              className="w-full h-12 bg-yellow-400 hover:bg-yellow-500 text-gray-900 font-medium rounded-lg transition-colors"
+              className="w-full h-10 bg-yellow-400 hover:bg-yellow-500 text-gray-900 font-medium rounded-lg transition-colors"
             >
               <svg className="w-5 h-5 mr-3" viewBox="0 0 24 24">
                 <path fill="currentColor" d="M12 3c5.799 0 10.5 3.664 10.5 8.185 0 4.52-4.701 8.184-10.5 8.184a13.5 13.5 0 0 1-1.727-.11l-4.408 2.883c-.501.265-.678.236-.472-.413l.892-3.678c-2.88-1.46-4.785-3.99-4.785-6.866C1.5 6.665 6.201 3 12 3z"/>
