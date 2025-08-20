@@ -100,6 +100,8 @@ export default async function RootLayout({
               <span aria-hidden>·</span>
               <div>대표자명 {siteBusiness.owner}</div>
               <span aria-hidden>·</span>
+              <div>사업자등록번호 {siteBusiness.businessNumber}</div>
+              <span aria-hidden>·</span>
               <div>사업장 주소 {siteBusiness.address}</div>
               <span aria-hidden>·</span>
               <div>연락처 <a href={`tel:${siteBusiness.phone}`} className="hover:underline">{siteBusiness.phone}</a></div>

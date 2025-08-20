@@ -7,10 +7,11 @@ import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import { Star } from "lucide-react";
 import Link from "next/link";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { CheckIcon } from "@radix-ui/react-icons";
 import { VerificationModal } from '@/components/auth/VerificationModal';
 import { useAuthStore } from '@/store/auth';
+import { supabaseBrowser } from '@/lib/supabase/client';
 
 interface PricingPlan {
   name: string;
@@ -39,9 +40,42 @@ export function RelcherPricing({
   const { isVerified } = useAuthStore();
   const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [pendingPlan, setPendingPlan] = useState<'starter' | 'pro' | 'business' | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
-  // 본인인증 확인 후 토스페이 호출 함수
+  // Admin 상태 확인
+  useEffect(() => {
+    checkAdminStatus();
+  }, []);
+
+  const checkAdminStatus = async () => {
+    try {
+      const supabase = supabaseBrowser();
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('user_id', user.id)
+          .single();
+        
+        setIsAdmin(profile?.role === 'admin');
+      }
+    } catch (error) {
+      console.error('Error checking admin status:', error);
+      setIsAdmin(false);
+    }
+  };
+
+  // 본인인증 확인 후 토스페이 호출 함수 (Admin은 우회)
   const checkVerificationAndOpenToss = (plan: 'starter' | 'pro' | 'business') => {
+    // Admin 계정은 본인인증 우회하고 바로 결제창 호출
+    if (isAdmin) {
+      openToss(plan);
+      return;
+    }
+
+    // 일반 사용자는 본인인증 확인
     if (!isVerified) {
       setPendingPlan(plan);
       setShowVerificationModal(true);
@@ -134,8 +168,6 @@ export function RelcherPricing({
       features: [
         "월 2,000 크레딧", // 기능 1 - PRD.MD 기준
         "60개 검색 결과", // 기능 2
-        "고급 분석 도구", // 기능 3
-        "이메일 지원", // 기능 4
         "다중 키워드 검색", // 기능 5
       ],
       description: "소규모 비즈니스를 위한 완벽한 시작", // 설명
@@ -151,8 +183,6 @@ export function RelcherPricing({
       features: [
         "월 7,000 크레딧", // 기능 1 - PRD.MD 기준
         "90개 검색 결과", // 기능 2
-        "프리미엄 분석 도구", // 기능 3
-        "우선 지원", // 기능 4
         "고급 필터링", // 기능 5
         "자막 추출 기능", // 기능 6
       ],
@@ -171,9 +201,6 @@ export function RelcherPricing({
         "120개 검색 결과", // 기능 2
         "전체 분석 도구", // 기능 3
         "24/7 전담 지원", // 기능 4
-        "팀 협업 기능", // 기능 5
-        "API 접근", // 기능 6
-        "맞춤형 리포트", // 기능 7
       ],
       description: "대규모 팀과 기업을 위한 완전한 솔루션", // 설명
       buttonText: "BUSINESS 시작하기", // 버튼 텍스트
