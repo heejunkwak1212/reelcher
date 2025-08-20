@@ -18,6 +18,13 @@ export interface DownloadResult {
   fileSize?: number
 }
 
+export interface SubtitleResult {
+  success: boolean
+  subtitles?: string
+  error?: string
+  title?: string
+}
+
 export class YouTubeDownloader {
   private static isYouTubeUrl(url: string): boolean {
     try {
@@ -76,7 +83,7 @@ export class YouTubeDownloader {
           const output = data.toString().trim()
           stdout += output + '\n'
           
-          const lines = output.split('\n').filter(line => line.trim())
+          const lines = output.split('\n').filter((line: string) => line.trim())
           for (const line of lines) {
             if (line.includes(outputDir) && (line.endsWith('.mp4') || line.endsWith('.webm') || line.endsWith('.mkv'))) {
               filePath = line.trim()
@@ -182,6 +189,266 @@ export class YouTubeDownloader {
 
       ytdlp.on('error', (error) => {
         reject(new Error(`yt-dlp 실행 실패: ${error.message}`))
+      })
+    })
+  }
+
+  /**
+   * VTT 자막 내용을 깔끔한 텍스트로 변환
+   * - 타임스탬프, align, position 등 메타데이터 제거
+   * - [음악], [박수] 등 사운드 태그 제거
+   * - 중복 텍스트 제거
+   * - HTML 태그 제거
+   */
+  static parseVttToCleanText(vttContent: string): string {
+    const lines = vttContent.split('\n')
+    const textLines: string[] = []
+    const seenTexts = new Set<string>()
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim()
+      
+      // 스킵할 라인들
+      if (
+        !line ||                                                  // 빈 라인
+        line.startsWith('WEBVTT') ||                             // VTT 헤더
+        line.startsWith('Kind:') ||                              // Kind: captions
+        line.startsWith('Language:') ||                          // Language: ko
+        line.match(/^\d+$/) ||                                   // 숫자만 있는 라인
+        line.match(/^\d{2}:\d{2}:\d{2}\.\d{3} --> \d{2}:\d{2}:\d{2}\.\d{3}/) || // 타임스탬프
+        line.includes('align:') ||                               // align:start position:0%
+        line.includes('position:') ||                            // position 정보
+        line.match(/^NOTE /) ||                                  // NOTE 라인
+        line.startsWith('<c>') ||                                // VTT 스타일 태그
+        line.startsWith('</c>')                                  // VTT 스타일 태그 종료
+      ) {
+        continue
+      }
+
+      // HTML 태그 제거
+      let cleanLine = line.replace(/<[^>]*>/g, '')
+      
+      // 사운드 태그 제거 ([음악], [박수], [웃음] 등)
+      cleanLine = cleanLine.replace(/\[[^\]]*\]/g, '')
+      
+      // >> 표시 제거 (예: ">> 야 자 김민철이" → "야 자 김민철이")
+      cleanLine = cleanLine.replace(/^>>\s*/g, '')
+      
+      // 추가 정리
+      cleanLine = cleanLine
+        .replace(/&nbsp;/g, ' ')                                 // &nbsp; 제거
+        .replace(/&amp;/g, '&')                                  // HTML 엔티티 변환
+        .replace(/&lt;/g, '<')                                   // HTML 엔티티 변환
+        .replace(/&gt;/g, '>')                                   // HTML 엔티티 변환
+        .replace(/\s+/g, ' ')                                    // 연속 공백을 하나로
+        .trim()
+
+      // 의미있는 텍스트만 추가 (중복 제거)
+      if (cleanLine && cleanLine.length > 1 && !seenTexts.has(cleanLine)) {
+        textLines.push(cleanLine)
+        seenTexts.add(cleanLine)
+      }
+    }
+
+    // 최종 텍스트 조합 및 정리
+    let result = textLines.join('\n').trim()
+    
+    // 연속된 줄바꿈 정리
+    result = result.replace(/\n\s*\n/g, '\n')
+    
+    return result
+  }
+
+  static async extractSubtitles(url: string): Promise<SubtitleResult> {
+    if (!this.isYouTubeUrl(url)) {
+      return { success: false, error: 'Invalid YouTube URL' }
+    }
+
+    const args = [
+      '--no-warnings',
+      '--no-playlist',
+      '--write-auto-sub',        // 자동 생성 자막 다운로드
+      '--write-sub',             // 원본 자막 다운로드
+      '--sub-langs', 'ko,en,ko-orig,ja,zh,zh-Hans,zh-Hant', // 주요 언어만
+      '--sub-format', 'vtt',     // VTT 형식
+      '--skip-download',         // 비디오는 다운로드하지 않음
+      '--sleep-interval', '2',   // 요청 간 2초 대기
+      '--max-sleep-interval', '10', // 최대 10초 대기
+      '--retries', '2',          // 2회 재시도
+      '--socket-timeout', '30',  // 소켓 타임아웃 30초
+      '--encoding', 'utf-8',
+      url
+    ]
+
+    return new Promise((resolve) => {
+      const ytdlpCommand = process.platform === 'win32' ? './yt-dlp.exe' : 'yt-dlp'
+      
+      const ytdlp = spawn(ytdlpCommand, args, {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        cwd: process.cwd()
+      })
+
+      let stdout = ''
+      let stderr = ''
+      let title = ''
+
+      ytdlp.stdout.on('data', (data) => {
+        const output = data.toString()
+        stdout += output
+        
+        // 제목 추출
+        const titleMatch = output.match(/\[info\] ([^:]+): Downloading/)
+        if (titleMatch) {
+          title = titleMatch[1].trim()
+        }
+      })
+
+      ytdlp.stderr.on('data', (data) => {
+        stderr += data.toString()
+      })
+
+      ytdlp.on('close', async (code) => {
+        console.log('yt-dlp 자막 추출 완료. 종료 코드:', code)
+        console.log('stdout:', stdout)
+        console.log('stderr:', stderr)
+        
+        if (code === 0) {
+          try {
+            // 자막 파일 찾기 (yt-dlp가 생성한 .vtt 파일들)
+            const tempDir = process.cwd()
+            let files: string[] = []
+            try {
+              files = await fs.readdir(tempDir)
+            } catch (error) {
+              console.error('디렉토리 읽기 실패:', error)
+              resolve({
+                success: false,
+                error: `디렉토리 읽기 실패: ${error instanceof Error ? error.message : 'Unknown error'}`
+              })
+              return
+            }
+            
+            // 자막 파일 필터링 - 더 유연한 패턴으로 수정
+            const subtitleFiles = files.filter(file => 
+              file.endsWith('.vtt') && 
+              (file.includes('.ko') || file.includes('.en') || file.includes('auto') || file.includes('live_chat'))
+            )
+
+            console.log('찾은 자막 파일들:', subtitleFiles)
+            console.log('전체 파일 목록:', files.filter(f => f.includes('.vtt')))
+
+            if (subtitleFiles.length === 0) {
+              resolve({
+                success: false,
+                error: '자막을 찾을 수 없습니다. 이 영상에는 자막이 없거나 지원하지 않는 형식일 수 있습니다.'
+              })
+              return
+            }
+
+            // 첫 번째 자막 파일 읽기 (한국어 우선, 없으면 영어, 없으면 자동생성)
+            const priorityFile = subtitleFiles.find(f => f.includes('.ko')) || 
+                               subtitleFiles.find(f => f.includes('.en')) ||
+                               subtitleFiles.find(f => f.includes('auto')) ||
+                               subtitleFiles[0]
+
+            console.log('선택된 자막 파일:', priorityFile)
+
+            const subtitlePath = path.join(tempDir, priorityFile)
+            console.log('자막 파일 경로:', subtitlePath)
+            
+            let subtitleContent: string
+            try {
+              subtitleContent = await fs.readFile(subtitlePath, 'utf-8')
+            } catch (error) {
+              console.error('자막 파일 읽기 실패:', error)
+              resolve({
+                success: false,
+                error: `자막 파일 읽기 실패: ${error instanceof Error ? error.message : 'Unknown error'}`
+              })
+              return
+            }
+            
+            // VTT 형식을 깔끔한 텍스트로 변환
+            const cleanSubtitles = this.parseVttToCleanText(subtitleContent)
+
+            // 임시 자막 파일들 정리
+            for (const file of subtitleFiles) {
+              try {
+                await fs.unlink(path.join(tempDir, file))
+              } catch {
+                // 파일 삭제 실패 무시
+              }
+            }
+
+            resolve({
+              success: true,
+              subtitles: cleanSubtitles,
+              title: title || 'Unknown'
+            })
+          } catch (error) {
+            resolve({
+              success: false,
+              error: `자막 처리 실패: ${error instanceof Error ? error.message : 'Unknown error'}`
+            })
+          }
+        } else {
+          // 실패했더라도 일부 자막 파일이 다운로드되었을 수 있음
+          try {
+            const tempDir = process.cwd()
+            const files = await fs.readdir(tempDir)
+            const subtitleFiles = files.filter(file => 
+              file.endsWith('.vtt') && 
+              (file.includes('.ko') || file.includes('.en') || file.includes('auto') || file.includes('live_chat'))
+            )
+
+            if (subtitleFiles.length > 0) {
+              console.log('실패했지만 일부 자막 파일 발견:', subtitleFiles)
+              
+              const priorityFile = subtitleFiles.find(f => f.includes('.ko')) || 
+                                 subtitleFiles.find(f => f.includes('.en')) ||
+                                 subtitleFiles.find(f => f.includes('auto')) ||
+                                 subtitleFiles[0]
+
+              const subtitlePath = path.join(tempDir, priorityFile)
+              const subtitleContent = await fs.readFile(subtitlePath, 'utf-8')
+              
+              const cleanSubtitles = this.parseVttToCleanText(subtitleContent)
+
+              // 임시 파일들 정리
+              for (const file of subtitleFiles) {
+                try {
+                  await fs.unlink(path.join(tempDir, file))
+                } catch {}
+              }
+
+              resolve({
+                success: true,
+                subtitles: cleanSubtitles,
+                title: title || 'Unknown'
+              })
+              return
+            }
+          } catch (error) {
+            console.error('부분 자막 처리 실패:', error)
+          }
+
+          // 429 에러인 경우 특별한 메시지
+          const errorMessage = stderr.includes('429') || stderr.includes('Too Many Requests')
+            ? '현재 YouTube 서버가 혼잡합니다. 10-15분 후 다시 시도해주세요. (서비스 이용자가 많을 때 발생할 수 있습니다)'
+            : `자막 추출 실패 (코드: ${code}): ${stderr || '알 수 없는 오류'}`
+
+          resolve({
+            success: false,
+            error: errorMessage
+          })
+        }
+      })
+
+      ytdlp.on('error', (error) => {
+        resolve({
+          success: false,
+          error: `yt-dlp 실행 실패: ${error.message}`
+        })
       })
     })
   }

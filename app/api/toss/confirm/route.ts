@@ -34,18 +34,12 @@ export async function POST(req: Request) {
     const { data: { user } } = await ssr.auth.getUser()
     if (!user) return new Response('Unauthorized', { status: 401 })
     const svc = supabaseService()
-    // Block Top-up on FREE plan
-    const { data: prof } = await svc.from('profiles').select('plan').eq('user_id', user.id).single()
-    if ((prof?.plan || 'free') === 'free') {
-      return new Response('Top-up is not available on FREE plan. Please upgrade.', { status: 403 })
-    }
+
     const { data: row } = await svc.from('credits').select('balance, reserved').eq('user_id', user.id).single()
     const current = (row?.balance || 0) as number
     const reserved = (row as any)?.reserved || 0
-    // 금액→크레딧 변환: STARTER/PRO/BUSINESS 또는 Top-up 상품에 맞춰 클라이언트에서 orderId로 구분해 전달하는 것이 정석이지만,
-    // MVP로는 amount(원화)를 그대로 크레딧으로 간주하지 않고, 프론트에서 전달한 creditDelta가 있으면 우선 사용합니다.
-    const delta = Number(creditDelta || 0) || 0
-    await svc.from('credits').upsert({ user_id: user.id as any, balance: current + delta, reserved })
+    // 구독 플랜만 지원, Top-up 제거됨
+    // amount는 무시하고 구독 플랜에서만 크레딧 지급됨
 
     return Response.json({ ok: true, receipt })
   } catch (e) {

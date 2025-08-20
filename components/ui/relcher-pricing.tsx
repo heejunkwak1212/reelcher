@@ -9,6 +9,8 @@ import { Star } from "lucide-react";
 import Link from "next/link";
 import { useState, useRef } from "react";
 import { CheckIcon } from "@radix-ui/react-icons";
+import { VerificationModal } from '@/components/auth/VerificationModal';
+import { useAuthStore } from '@/store/auth';
 
 interface PricingPlan {
   name: string;
@@ -32,6 +34,36 @@ export function RelcherPricing({
   description = "당신에게 맞는 플랜을 선택하세요\n모든 플랜에는 플랫폼 접근, 검색 도구, 전담 지원이 포함됩니다.",
 }: RelcherPricingProps) {
   const [isMonthly, setIsMonthly] = useState(true);
+  
+  // 본인인증 관련 상태
+  const { isVerified } = useAuthStore();
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
+  const [pendingPlan, setPendingPlan] = useState<'starter' | 'pro' | 'business' | null>(null);
+
+  // 본인인증 확인 후 토스페이 호출 함수
+  const checkVerificationAndOpenToss = (plan: 'starter' | 'pro' | 'business') => {
+    if (!isVerified) {
+      setPendingPlan(plan);
+      setShowVerificationModal(true);
+      return;
+    }
+    openToss(plan);
+  };
+
+  // 본인인증 성공 시 실행될 함수
+  const handleVerificationSuccess = () => {
+    setShowVerificationModal(false);
+    if (pendingPlan) {
+      openToss(pendingPlan);
+      setPendingPlan(null);
+    }
+  };
+
+  // 본인인증 모달 닫기 함수
+  const handleVerificationClose = () => {
+    setShowVerificationModal(false);
+    setPendingPlan(null);
+  };
 
   // 토스페이 호출 함수
   const openToss = async (plan: 'starter' | 'pro' | 'business') => {
@@ -100,7 +132,7 @@ export function RelcherPricing({
       yearlyPrice: "182400", // 연간 가격 (원화) - 20% 할인 적용 (19000*12*0.8)
       period: "month", // 기간
       features: [
-        "월 3,000 크레딧", // 기능 1 - PRD.MD 기준
+        "월 2,000 크레딧", // 기능 1 - PRD.MD 기준
         "60개 검색 결과", // 기능 2
         "고급 분석 도구", // 기능 3
         "이메일 지원", // 기능 4
@@ -117,7 +149,7 @@ export function RelcherPricing({
       yearlyPrice: "470400", // 연간 가격 (원화) - 20% 할인 적용 (49000*12*0.8)
       period: "month", // 기간
       features: [
-        "월 10,000 크레딧", // 기능 1 - PRD.MD 기준
+        "월 7,000 크레딧", // 기능 1 - PRD.MD 기준
         "90개 검색 결과", // 기능 2
         "프리미엄 분석 도구", // 기능 3
         "우선 지원", // 기능 4
@@ -131,11 +163,11 @@ export function RelcherPricing({
     },
     {
       name: "BUSINESS", // 플랜명
-      price: "109000", // 월간 가격 (원화) - PRD.MD 기준
-      yearlyPrice: "1046400", // 연간 가격 (원화) - 20% 할인 적용 (109000*12*0.8)
+      price: "119000", // 월간 가격 (원화) - PRD.MD 기준
+      yearlyPrice: "1142400", // 연간 가격 (원화) - 20% 할인 적용 (119000*12*0.8)
       period: "month", // 기간
       features: [
-        "월 30,000 크레딧", // 기능 1 - PRD.MD 기준
+        "월 20,000 크레딧", // 기능 1 - PRD.MD 기준
         "120개 검색 결과", // 기능 2
         "전체 분석 도구", // 기능 3
         "24/7 전담 지원", // 기능 4
@@ -284,7 +316,7 @@ export function RelcherPricing({
                   </Link>
                 ) : (
                   <button
-                    onClick={() => openToss(plan.name.toLowerCase() as 'starter' | 'pro' | 'business')}
+                    onClick={() => checkVerificationAndOpenToss(plan.name.toLowerCase() as 'starter' | 'pro' | 'business')}
                     className={cn(
                       buttonVariants({ variant: "outline" }),
                       "w-full group-hover:scale-105 transition-transform duration-200",
@@ -306,6 +338,13 @@ export function RelcherPricing({
           </motion.div>
         ))}
       </div>
+      
+      {/* 본인인증 모달 */}
+      <VerificationModal
+        isOpen={showVerificationModal}
+        onClose={handleVerificationClose}
+        onSuccess={handleVerificationSuccess}
+      />
     </div>
   );
 }

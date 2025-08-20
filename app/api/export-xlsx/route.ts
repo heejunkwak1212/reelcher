@@ -15,15 +15,15 @@ export async function POST(req: Request) {
     const day = String(now.getDate()).padStart(2, '0')
     const hours = String(now.getHours()).padStart(2, '0')
     const minutes = String(now.getMinutes()).padStart(2, '0')
-    const dateTimeStr = `${year}-${month}-${day}-${hours}${minutes}` // YYYY-MM-DD-HHMM 형식
+    const dateTimeStr = `${year}-${month}-${day}_${hours}-${minutes}` // 2025-08-18_11-28 형식
     
     const platformNames = {
-      youtube: 'YouTube',
-      tiktok: 'TikTok', 
-      instagram: 'Instagram'
+      youtube: 'youtube',
+      tiktok: 'tiktok', 
+      instagram: 'instagram'
     }
     
-    const filename = `${platformNames[platform as keyof typeof platformNames] || 'Reelcher'}_데이터_${dateTimeStr}.xlsx`
+    const filename = `${platformNames[platform as keyof typeof platformNames] || 'reelcher'}-data-${dateTimeStr}.xlsx`
     
     const url = new URL(req.url)
     const origin = url.origin

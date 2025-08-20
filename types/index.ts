@@ -165,6 +165,9 @@ export interface IUniversalSearchRequest {
     // TikTok 전용 필터
     minLikes?: number // TikTok 최소 좋아요 수 (프로필 검색 시 사용)
     
+    // Instagram 프로필 검색 전용 필터
+    onlyPostsNewerThan?: string // ISO 날짜 문자열
+    
     // YouTube 전용 필터
     maxSubscribers?: number
     videoDuration?: 'any' | 'short' | 'long'
@@ -224,5 +227,64 @@ export interface IUniversalSearchResponse {
   creditsUsed: number
   searchType: 'keyword' | 'url' | 'hashtag'
   metadata?: any
+}
+
+// 카카오 인증서 API 관련 타입
+export interface ICertificationRequest {
+  id: number
+  userId: string
+  txId: string
+  status: 'pending' | 'success' | 'failed' | 'expired'
+  expiresAt: string
+  createdAt: string
+}
+
+export interface IKakaoCertRequest {
+  tx_id: string
+  user_name: string
+  phone_number?: string
+  identity_req_type: 'RESIDENT_REGISTRATION_NUMBER'
+  return_url: string
+  is_same_name: boolean
+}
+
+export interface IKakaoCertResponse {
+  tx_id: string
+  app_link: string
+  qr_code_url: string
+}
+
+export interface IKakaoCertResult {
+  status: 'SUCCESS' | 'FAILED' | 'PENDING' | 'EXPIRED'
+  phone_number?: string
+  name?: string
+  birth?: string
+  gender?: string
+}
+
+// 토스 간편인증 API 관련 타입 (공식 문서 기준)
+export interface ITossCertRequest {
+  // 토스 간편인증 요청에는 추가 파라미터 불필요
+}
+
+export interface ITossCertResponse {
+  txId: string
+  authUrl: string // 토스 표준창 URL
+  success: boolean
+}
+
+export interface ITossCertVerifyRequest {
+  txId: string
+}
+
+export interface ITossCertVerifyResult {
+  status: 'PENDING' | 'SUCCESS' | 'FAILED'
+  personalData?: {
+    ci: string
+    name: string
+    phoneNumber: string
+  }
+  error?: string
+  message?: string
 }
 

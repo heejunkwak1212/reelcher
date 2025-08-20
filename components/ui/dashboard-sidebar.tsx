@@ -26,6 +26,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
 import { CaretSortIcon } from "@radix-ui/react-icons";
+import { supabaseBrowser } from "@/lib/supabase/client";
+import { useRouter } from "next/navigation";
 
 const sidebarVariants = {
   open: {
@@ -80,6 +82,7 @@ interface DashboardSidebarProps {
 export function DashboardSidebar({ user, plan = 'free', balance = 0, onSidebarChange }: DashboardSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(true);
   const pathname = usePathname();
+  const router = useRouter();
   
   const handleExpand = () => {
     setIsCollapsed(false);
@@ -89,6 +92,23 @@ export function DashboardSidebar({ user, plan = 'free', balance = 0, onSidebarCh
   const handleCollapse = () => {
     setIsCollapsed(true);
     onSidebarChange?.(true);
+  };
+
+  const handleLogout = async () => {
+    try {
+      const supabase = supabaseBrowser();
+      
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error('로그아웃 오류:', error);
+        return;
+      }
+      
+      // 로그아웃 성공 시 홈페이지로 리다이렉트
+      router.push('/');
+    } catch (error) {
+      console.error('로그아웃 처리 중 오류:', error);
+    }
   };
   
   return (
@@ -291,11 +311,27 @@ export function DashboardSidebar({ user, plan = 'free', balance = 0, onSidebarCh
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem className="flex items-center gap-2 text-red-600">
+                    <DropdownMenuItem 
+                      className="flex items-center gap-2 text-red-600 cursor-pointer"
+                      onClick={handleLogout}
+                    >
                       <LogOut className="h-4 w-4" /> 로그아웃
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
+
+                {/* 독립적인 로그아웃 버튼 */}
+                <button
+                  onClick={handleLogout}
+                  className="flex h-8 w-full flex-row items-center rounded-md px-2 py-1.5 transition hover:bg-red-50 hover:text-red-600 text-red-500"
+                >
+                  <LogOut className="h-4 w-4" />
+                  <motion.div variants={variants}>
+                    {!isCollapsed && (
+                      <p className="ml-2 text-sm font-medium">로그아웃</p>
+                    )}
+                  </motion.div>
+                </button>
               </div>
             </div>
           </div>

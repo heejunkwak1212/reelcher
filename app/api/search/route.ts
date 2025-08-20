@@ -64,9 +64,33 @@ export async function POST(req: Request) {
 
     console.log('Instagram API body validation 시작:', body)
     console.log('현재 NODE_ENV:', process.env.NODE_ENV)
+    
+    // 관리자 체크를 먼저 수행 (validation 전에)
+    const supabaseForAuth = await supabaseServer()
+    const { data: { user } } = await supabaseForAuth.auth.getUser()
+    if (!user) return new Response('Unauthorized', { status: 401 })
+    
+    let isAdmin = false
+    try {
+      const { data: userData } = await supabaseForAuth.from('users').select('role').eq('user_id', user.id).single()
+      isAdmin = userData?.role === 'admin'
+      console.log('관리자 체크 결과:', isAdmin)
+    } catch (adminCheckError) {
+      console.log('관리자 체크 실패:', adminCheckError)
+    }
+    
     let input: any
     try {
-      input = searchSchema.parse(body)
+      // 관리자인 경우 5개 검색 허용을 위해 특별 처리
+      if (isAdmin && body.limit === '5') {
+        console.log('관리자 5개 검색 특별 허용')
+        // 임시로 30으로 변경해서 validation 통과시킨 후 다시 5로 복원
+        const tempBody = { ...body, limit: '30' }
+        input = searchSchema.parse(tempBody)
+        input.limit = '5' // 다시 5로 복원
+      } else {
+        input = searchSchema.parse(body)
+      }
       console.log('Instagram API validation 성공:', input)
     } catch (validationError: any) {
       console.error('Instagram API validation 실패:', {
@@ -85,10 +109,8 @@ export async function POST(req: Request) {
     console.log('APIFY_TOKEN 확인:', token ? 'TOKEN 존재' : 'TOKEN 없음')
     if (!token) return new Response('APIFY_TOKEN missing', { status: 500 })
 
-    // Require auth for costful operation
+    // 이미 위에서 user 인증 완료됨
     const supabase = await supabaseServer()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return new Response('Unauthorized', { status: 401 })
 
     // Credits reservation
     // Dev limit '5' skips reservation; for others, map 30→100, 60→200, 90→300, 120→400
@@ -101,24 +123,30 @@ export async function POST(req: Request) {
       if (email && devList.includes(email.toLowerCase())) isDev = true
     } catch {}
 
-    // Plan-based limits
+    // 관리자 체크는 이미 위에서 완료됨
+
+    // Plan-based limits (관리자는 모든 제한 무시)
     let plan: 'free' | 'starter' | 'pro' | 'business' | string = 'free'
-    try {
-      const { data: prof } = await supabase.from('profiles').select('plan').eq('user_id', user.id).single()
-      plan = (prof?.plan as any) || 'free'
-    } catch {}
-    const lim = input.limit
-    if (plan === 'free' && lim !== '30' && lim !== '5') {
-      return new Response('FREE plan allows only 30 results.', { status: 403 })
-    }
-    if (plan === 'starter' && (lim === '90' || lim === '120')) {
-      return new Response('STARTER plan allows up to 60 results.', { status: 403 })
-    }
-    if (plan === 'pro' && lim === '120') {
-      return new Response('PRO plan allows up to 90 results.', { status: 403 })
+    if (!isAdmin) {
+      try {
+        const { data: prof } = await supabase.from('profiles').select('plan').eq('user_id', user.id).single()
+        plan = (prof?.plan as any) || 'free'
+      } catch {}
+      const lim = input.limit
+      if (plan === 'free' && lim !== '30' && lim !== '5') {
+        return new Response('FREE plan allows only 30 results.', { status: 403 })
+      }
+      if (plan === 'starter' && (lim === '90' || lim === '120')) {
+        return new Response('STARTER plan allows up to 60 results.', { status: 403 })
+      }
+      if (plan === 'pro' && lim === '120') {
+        return new Response('PRO plan allows up to 90 results.', { status: 403 })
+      }
+    } else {
+      console.log('관리자 계정: 모든 제한 우회')
     }
 
-    const reserveAmount = isDev ? 0 : (
+    const reserveAmount = (isDev || isAdmin) ? 0 : (
       input.limit === '30' ? 100 :
       input.limit === '60' ? 200 :
       input.limit === '90' ? 300 :
@@ -144,8 +172,19 @@ export async function POST(req: Request) {
     }
 
     const resultsLimit = Number(input.limit) as 5 | 30 | 60 | 90 | 120
+    console.log('Instagram 검색 타입:', input.searchType)
+    
+    // 검색 타입에 따른 분기
+    if (input.searchType === 'profile') {
+      console.log('Instagram 프로필 검색 시작')
+      return await handleProfileSearch(req, input, resultsLimit, settle, token, user.id)
+    }
+    
+    // 기존 키워드 검색 로직
+    console.log('Instagram 키워드 검색 시작')
+    
     // Auto-detect region from keyword language (very simple heuristic)
-    const keywordHasKorean = /[\uac00-\ud7af]/.test(input.keyword)
+    const keywordHasKorean = /[\uac00-\ud7af]/.test(input.keyword || '')
     const inferredRegion = keywordHasKorean ? 'KR' : undefined
     // Use Task default proxy (Automatic). We don't override proxy to avoid pool exhaustion.
     const proxyOpt: Record<string, unknown> = {}
@@ -153,7 +192,7 @@ export async function POST(req: Request) {
     // Multi keyword normalization (max 3). Fallback to single keyword
     const rawKeywords: string[] = Array.isArray((input as any).keywords) && (input as any).keywords!.length
       ? ((input as any).keywords as string[])
-      : [input.keyword]
+      : [input.keyword || '']
     const normalizedKeywords = Array.from(new Set(
       rawKeywords.map(k => k
         .replace(/^#/, '')
@@ -379,16 +418,13 @@ export async function POST(req: Request) {
         const v = sanitizeNonNegative(rawLikes)
         return typeof v === 'number' ? v : 'private'
       })()
-      // taken date (day precision)
+      // taken date (with time for consistent display)
       const takenAtRaw = (d as any)?.takenAt ?? (h as any)?.timestamp
       const takenDate = (() => {
         const ts = typeof takenAtRaw === 'string' ? Date.parse(takenAtRaw) : typeof takenAtRaw === 'number' ? takenAtRaw : undefined
         if (!ts) return undefined
         const dt = new Date(ts)
-        const yyyy = dt.getFullYear()
-        const mm = String(dt.getMonth() + 1).padStart(2, '0')
-        const dd = String(dt.getDate()).padStart(2, '0')
-        return `${yyyy}-${mm}-${dd}`
+        return dt.toISOString() // ISO 문자열로 반환하여 프론트엔드에서 날짜+시간 파싱 가능
       })()
       return {
         url,
@@ -403,6 +439,8 @@ export async function POST(req: Request) {
         caption: (h as any)?.caption || (d as any)?.caption,
         duration: pickDuration(d),
         takenDate,
+        // paidPartnership 필드 추가
+        paidPartnership: (d as any).paidPartnership || false,
       }
     })
 
@@ -480,6 +518,8 @@ export async function POST(req: Request) {
           caption: (h as any)?.caption || (d as any)?.caption,
           duration: pickDuration(d),
           takenDate: takenDate2,
+          // paidPartnership 필드 추가 (기존 키워드 검색에서도 협찬 필터링 가능)
+          paidPartnership: (d as any).paidPartnership || false,
         }
       })
       backfillRounds++
@@ -571,6 +611,23 @@ export async function POST(req: Request) {
         month_count += 1
         today_count += 1
         await svc.from('search_counters').upsert({ user_id: user.id as any, month_start, month_count, today_date, today_count, updated_at: new Date().toISOString() as any })
+        
+        // Instagram 키워드 검색 기록 저장 (통합된 테이블 사용)
+        const { error: historyError } = await svc.from('platform_searches').insert({
+          user_id: user.id,
+          platform: 'instagram',
+          search_type: 'keyword',
+          keyword: input.keyword,
+          filters: input.filters,
+          results_count: sorted.length,
+          credits_used: toCharge
+        })
+        
+        if (historyError) {
+          console.error('Instagram 검색 기록 저장 실패:', historyError)
+          // 검색 기록 저장 실패는 응답에 영향을 주지 않음
+        }
+        
         // Retention: keep personal search logs only 2 days
         const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
         await svc.from('searches').delete().lt('created_at', twoDaysAgo).eq('user_id', user.id)
@@ -594,6 +651,193 @@ export async function POST(req: Request) {
     
     console.error('반환할 에러 페이로드:', payload)
     return Response.json(payload, { status: 400 })
+  }
+}
+
+// Instagram 프로필 검색 핸들러
+async function handleProfileSearch(
+  req: Request,
+  input: any,
+  resultsLimit: number,
+  settle: ((finalCount: number) => Promise<void>) | null,
+  token: string,
+  userId: string
+) {
+  console.log('=== Instagram 프로필 검색 시작 ===')
+  
+  try {
+    // 프로필 URL에서 사용자명 추출
+    const profileUrl = input.profileUrl
+    console.log('프로필 URL:', profileUrl)
+    
+    let username = ''
+    if (profileUrl.includes('instagram.com/')) {
+      // URL에서 사용자명 추출: https://www.instagram.com/abc -> abc
+      const match = profileUrl.match(/instagram\.com\/([^\/?\s]+)/)
+      username = match ? match[1] : profileUrl
+    } else {
+      // 사용자명만 입력된 경우
+      username = profileUrl.replace('@', '').trim()
+    }
+    
+    if (!username) {
+      return Response.json({ error: '유효하지 않은 프로필 URL 또는 사용자명입니다.' }, { status: 400 })
+    }
+    
+    console.log('추출된 사용자명:', username)
+    
+    // 기간 필터 처리
+    let onlyPostsNewerThan = input.onlyPostsNewerThan
+    if (!onlyPostsNewerThan) {
+      onlyPostsNewerThan = undefined
+    }
+    
+    console.log('기간 필터:', onlyPostsNewerThan)
+    
+    // Apify 실행 추적
+    const apifyRunIds = new Set<string>()
+    const onAbort = () => {
+      const idList = Array.from(apifyRunIds)
+      Promise.all(idList.map(runId => abortRun({ token, runId }))).catch(() => {})
+    }
+    try { req.signal.addEventListener('abort', onAbort, { once: true }) } catch {}
+    
+    // Instagram Scraper 태스크 실행 (2단계 스크래퍼 직접 사용)
+    const taskId = 'upscale_jiminy/instagram-scraper-task'
+    const profileUrl_full = `https://www.instagram.com/${username}/`
+    
+    console.log('Instagram 스크래퍼 태스크 시작:', taskId)
+    console.log('프로필 URL:', profileUrl_full)
+    console.log('결과 개수:', resultsLimit)
+    
+    const taskInput = {
+      addParentData: false,
+      directUrls: [profileUrl_full],
+      enhanceUserSearchWithFacebookPage: false,
+      isUserReelFeedURL: false,
+      isUserTaggedFeedURL: false,
+      onlyPostsNewerThan: onlyPostsNewerThan,
+      resultsLimit: resultsLimit,
+      resultsType: 'stories', // 프로필 릴스 검색으로 변경
+      searchLimit: 1,
+    }
+    
+    console.log('Apify 태스크 입력:', JSON.stringify(taskInput, null, 2))
+    
+    const started = await startTaskRun({ taskId, token, input: taskInput })
+    console.log('Apify 태스크 시작됨 - runId:', started.runId)
+    apifyRunIds.add(started.runId)
+    
+    const result = await waitForRunItems<IReelDetail>({ token, runId: started.runId })
+    console.log('Apify 태스크 완료 - 결과 개수:', result.items?.length || 0)
+    
+    const reels = result.items || []
+    
+    // 릴스만 필터링 (비디오 콘텐츠만)
+    const videoReels = reels.filter(r => {
+      const hasVideo = !!r.videoUrl || (r as any).type === 'Video' || (r as any).type === 'Reel'
+      return hasVideo
+    })
+    
+    console.log('비디오 릴스 필터링 후 개수:', videoReels.length)
+    
+    // paidPartnership 필드 로깅
+    videoReels.forEach((reel, index) => {
+      console.log(`릴스 ${index + 1} paidPartnership:`, (reel as any).paidPartnership)
+    })
+    
+    // 결과 변환
+    const searchRows: ISearchRow[] = videoReels.map(r => {
+      const getUrl = (x: any) => {
+        const sc = x?.shortCode || x?.shortcode || x?.short_code || x?.code
+        return x?.url || x?.postUrl || x?.link || (sc ? `https://www.instagram.com/p/${sc}/` : undefined)
+      }
+      
+      // 조회수 처리 (videoPlayCount 사용)
+      const videoPlayCount = (r as any).videoPlayCount || (r as any).viewCount || (r as any).views || 0
+      
+      // 좋아요 처리 (-1이면 'private'로 변환)
+      const rawLikes = (r as any).likesCount || (r as any).likes
+      const likes = rawLikes === -1 ? 'private' : (rawLikes || 0)
+      
+      // 영상 길이 처리 (videoDuration을 초 단위로 받아서 숫자로 저장)
+      const videoDurationSeconds = (r as any).videoDuration || (r as any).duration || 0
+      const durationInSeconds = Math.floor(videoDurationSeconds)
+      
+      return {
+        platform: 'instagram' as const,
+        url: getUrl(r),
+        title: (r as any).caption || (r as any).text || '',
+        username: (r as any).ownerUsername || username,
+        views: videoPlayCount,
+        likes: likes,
+        comments: (r as any).commentsCount || (r as any).comments || 0,
+        // 프로필 검색에서는 팔로워 수 제외 (요구사항)
+        followers: undefined,
+        takenDate: (r as any).timestamp || (r as any).takenDate || (r as any).takenAt,
+        thumbnailUrl: (r as any).thumbnailUrl || (r as any).displayUrl,
+        videoUrl: (r as any).videoUrl,
+        caption: (r as any).caption || (r as any).text || '',
+        duration: durationInSeconds, // 초 단위로 저장
+        // paidPartnership 필드 포함
+        paidPartnership: (r as any).paidPartnership || false
+      }
+    })
+    
+    console.log('최종 검색 결과 개수:', searchRows.length)
+    
+    // 크레딧 정산
+    if (settle) {
+      await settle(searchRows.length)
+    }
+    
+    // Instagram 프로필 검색 기록 저장
+    try {
+      const ssr = await supabaseServer()
+      const { data: { user: historyUser } } = await ssr.auth.getUser()
+      
+      if (historyUser) {
+        const { error: historyError } = await ssr.from('platform_searches').insert({
+          user_id: historyUser.id,
+          platform: 'instagram',
+          search_type: 'profile',
+          keyword: username, // 프로필명을 키워드로 저장
+          filters: input.filters,
+          results_count: searchRows.length,
+          credits_used: 0 // 실제 사용된 크레딧은 settle에서 처리
+        })
+        
+        if (historyError) {
+          console.error('Instagram 프로필 검색 기록 저장 실패:', historyError)
+        }
+      }
+    } catch (historyError) {
+      console.error('Instagram 프로필 검색 기록 저장 실패:', historyError)
+    }
+    
+    return Response.json({
+      items: searchRows, // 프론트엔드가 기대하는 필드명으로 변경
+      metadata: {
+        platform: 'instagram',
+        searchType: 'profile',
+        username: username,
+        totalCount: searchRows.length,
+        profileSearchEnabled: true
+      }
+    })
+    
+  } catch (error) {
+    console.error('Instagram 프로필 검색 에러:', error)
+    
+    // 크레딧 환불
+    if (settle) {
+      await settle(0)
+    }
+    
+    return Response.json({ 
+      error: 'Instagram 프로필 검색 실패', 
+      message: (error as Error)?.message || 'Unknown error'
+    }, { status: 500 })
   }
 }
 

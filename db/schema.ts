@@ -13,6 +13,8 @@ export const profiles = pgTable('profiles', {
   role: text('role'),
   plan: text('plan').default('free'),
   onboardingCompleted: boolean('onboarding_completed').default(false),
+  phoneNumber: text('phone_number').unique(),
+  isVerified: boolean('is_verified').notNull().default(false),
 })
 
 export const credits = pgTable('credits', {
@@ -61,6 +63,15 @@ export const inquiries = pgTable('inquiries', {
   type: text('type').notNull(),
   email: text('email').notNull(),
   message: text('message').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+})
+
+export const certificationRequests = pgTable('certification_requests', {
+  id: serial('id').primaryKey(),
+  userId: uuid('user_id').notNull(),
+  txId: text('tx_id').notNull().unique(),
+  status: text('status').notNull().default('pending'),
+  expiresAt: timestamp('expires_at').notNull(),
   createdAt: timestamp('created_at').defaultNow(),
 })
 

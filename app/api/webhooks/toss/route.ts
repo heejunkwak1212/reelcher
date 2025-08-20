@@ -11,7 +11,7 @@ const tossSchema = z.object({
   orderId: z.string(),
   userId: z.string(),
   amount: z.number().int().nonnegative(),
-  creditDelta: z.number().int().nonnegative().default(0),
+
 })
 
 function verifySignature(req: Request, body: string) {
@@ -29,13 +29,7 @@ export async function POST(req: Request) {
     const payload = tossSchema.parse(JSON.parse(bodyText))
 
     // Idempotency: use orderId as natural key via upsert-like safe update
-    // For MVP, we just apply creditDelta if any
-    if (payload.creditDelta > 0) {
-      const [row] = await db.select().from(credits).where(eq(credits.userId, payload.userId))
-      if (row) {
-        await db.update(credits).set({ balance: (row.balance || 0) + payload.creditDelta }).where(eq(credits.userId, payload.userId))
-      }
-    }
+    // Top-up 기능 제거됨, 구독 플랜에서만 크레딧 지급
     return Response.json({ ok: true })
   } catch (e) {
     const err: any = e

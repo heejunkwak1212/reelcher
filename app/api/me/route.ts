@@ -19,25 +19,70 @@ export async function GET(req: Request) {
     const url = new URL(req.url)
     const scope = url.searchParams.get('scope')
     if (scope === 'search-stats') {
-      // Dynamic counts to ensure accuracy even without counters
-      const now = new Date()
-      const startOfTodayIso = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString()
-      const monthStartIso = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString()
+      try {
+        // search_counters 테이블에서 정확한 통계 가져오기
+        const { data: counters, error: countersError } = await svc.from('search_counters')
+          .select('today_count, month_count')
+          .eq('user_id', user.id)
+          .single()
 
-      const todayQuery = await svc.from('searches').select('id', { count: 'exact', head: true })
-        .eq('user_id', user.id).gte('created_at', startOfTodayIso)
-      const monthQuery = await svc.from('searches').select('id', { count: 'exact', head: true })
-        .eq('user_id', user.id).gte('created_at', monthStartIso)
+        if (countersError) {
+          console.log('search_counters에서 데이터 없음, 0으로 초기화:', countersError.message)
+        }
 
-      // recent keywords: last 2 days
-      const since = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
-      const { data: rec } = await svc.from('searches').select('keyword, created_at').gte('created_at', since).eq('user_id', user.id).order('created_at', { ascending: false }).limit(50)
-      const recent = Array.from(new Set((rec || []).map(r => (r as any).keyword))).slice(0, 12)
+        const today = Number(counters?.today_count || 0)
+        const month = Number(counters?.month_count || 0)
 
-      // month credit usage: sum of cost for current month
-      const { data: monthRows } = await svc.from('searches').select('cost, created_at').gte('created_at', monthStartIso).eq('user_id', user.id)
-      const monthCredits = (monthRows || []).reduce((sum, r: any) => sum + (Number(r?.cost || 0) || 0), 0)
-      return Response.json({ today: Number(todayQuery.count || 0), month: Number(monthQuery.count || 0), recent, monthCredits })
+        console.log('검색 통계 조회 결과:', { today, month, counters })
+
+        // recent keywords: last 2 days (platform_searches 테이블에서 키워드 검색용 더미 레코드 조회)
+        const since = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
+        const { data: rec, error: keywordError } = await svc.from('platform_searches')
+          .select('keyword, created_at, platform')
+          .eq('user_id', user.id)
+          .eq('search_type', 'keyword')
+          .eq('results_count', 0) // 키워드 저장용 더미 레코드만
+          .eq('credits_used', 0)
+          .gte('created_at', since)
+          .order('created_at', { ascending: false })
+          .limit(50)
+
+        if (keywordError) {
+          console.error('최근 키워드 조회 오류:', keywordError)
+        }
+
+        // 중복 제거하되 플랫폼 정보도 포함
+        const keywordMap = new Map()
+        ;(rec || []).forEach((r: any) => {
+          if (r.keyword && !keywordMap.has(r.keyword)) {
+            keywordMap.set(r.keyword, { keyword: r.keyword, platform: r.platform, created_at: r.created_at })
+          }
+        })
+        const recent = Array.from(keywordMap.values()).slice(0, 12).map(item => item.keyword)
+
+        console.log('최근 키워드 조회 결과:', { recent: recent.length, keywordError })
+
+        // month credit usage: sum of credits_used for current month (platform_searches 테이블)
+        const monthStartIso = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).toISOString()
+        const { data: monthRows, error: creditError } = await svc.from('platform_searches')
+          .select('credits_used, created_at')
+          .eq('user_id', user.id)
+          .gte('created_at', monthStartIso)
+          .gt('results_count', 0) // 실제 검색 기록만 (더미 레코드 제외)
+
+        if (creditError) {
+          console.error('월 크레딧 사용량 조회 오류:', creditError)
+        }
+
+        const monthCredits = (monthRows || []).reduce((sum, r: any) => sum + (Number(r?.credits_used || 0) || 0), 0)
+        
+        console.log('월 크레딧 사용량 조회 결과:', { monthCredits, monthRows: monthRows?.length || 0, creditError })
+        
+        return Response.json({ today, month, recent, monthCredits })
+      } catch (error) {
+        console.error('search-stats 조회 전체 오류:', error)
+        return Response.json({ today: 0, month: 0, recent: [], monthCredits: 0 })
+      }
     }
     return Response.json({ id: user.id, email: user.email, role: prof?.role || 'user', plan: prof?.plan || 'free', display_name: prof?.display_name, credits: (cr?.balance || 0) as number })
   } catch {

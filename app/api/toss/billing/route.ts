@@ -40,7 +40,7 @@ export async function PUT(req: Request) {
   try {
     const svc = supabaseService()
     const { data: rows } = await svc.from('subscriptions').select('user_id, plan, billing_key, status')
-    const planToCredits: Record<string, number> = { starter: 3000, pro: 10000, business: 30000 }
+    const planToCredits: Record<string, number> = { starter: 2000, pro: 7000, business: 20000 }
     const now = new Date()
     const next = new Date(now)
     next.setUTCMonth(next.getUTCMonth() + 1)

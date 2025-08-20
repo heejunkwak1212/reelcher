@@ -71,13 +71,13 @@ export async function POST(request: NextRequest) {
 
     // 관리자가 아닌 경우에만 크레딧 처리
     if (!isAdmin) {
-      // 크레딧 계산 (TikTok은 YouTube보다 더 저렴하게)
+      // 크레딧 계산 (TikTok은 Instagram과 동일)
       const creditCosts: Record<number, number> = {
         5: 0,     // 개발용 - 무료
-        30: 30,   // Instagram 100, YouTube 50 → TikTok 30
-        60: 60,   // Instagram 200, YouTube 100 → TikTok 60
-        90: 90,   // Instagram 300, YouTube 150 → TikTok 90
-        120: 120  // Instagram 400, YouTube 200 → TikTok 120
+        30: 100,  // Instagram과 동일
+        60: 200,  // Instagram과 동일  
+        90: 300,  // Instagram과 동일
+        120: 400  // Instagram과 동일
       }
       const requiredCredits = creditCosts[searchRequest.resultsLimit] || 0
 
@@ -243,7 +243,7 @@ export async function POST(request: NextRequest) {
       
       // 실제 결과 수 계산 (관리자/일반 사용자 공통)
       const actualResults = finalResults.length
-      const actualCredits = isAdmin ? 0 : Math.floor((actualResults / 30) * 30) // 30개당 30크레딧, 관리자는 0
+      const actualCredits = isAdmin ? 0 : Math.floor((actualResults / 30) * 100) // 30개당 100크레딧, 관리자는 0
 
       // 관리자가 아닌 경우에만 크레딧 정산
       if (!isAdmin && transactionId) {
@@ -275,22 +275,104 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // TikTok 전용 검색 기록 저장 (새로운 테이블 사용)
-      const { error: historyError } = await supabase
-        .from('platform_searches')
-        .insert({
-          user_id: user.id,
-          platform: 'tiktok',
-          search_type: searchRequest.searchType,
-          keyword: searchRequest.query,
-          filters: searchRequest.filters,
-          results_count: actualResults,
-          credits_used: actualCredits
-        })
+      // Supabase 서비스 클라이언트 생성 (검색 기록 및 통계 업데이트용)
+      const svc = (await import('@/lib/supabase/service')).supabaseService()
+      
+      // TikTok 검색 기록 저장 (platform_searches 테이블 사용)
+      try {
+        const { error: historyError } = await svc
+          .from('platform_searches')
+          .insert({
+            user_id: user.id,
+            platform: 'tiktok',
+            search_type: searchRequest.searchType,
+            keyword: searchRequest.query,
+            filters: searchRequest.filters,
+            results_count: actualResults,
+            credits_used: actualCredits
+          })
 
-      if (historyError) {
+        if (historyError) {
+          console.error('TikTok 검색 기록 저장 실패:', historyError)
+          // 검색 기록 저장 실패는 응답에 영향을 주지 않음
+        }
+        
+        // 키워드 검색인 경우에만 최근 키워드로 저장 (2일간 보관)
+        if (searchRequest.searchType === 'keyword' && searchRequest.query?.trim()) {
+          // 2일 이상된 키워드 기록 정리
+          const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
+          await svc.from('platform_searches')
+            .delete()
+            .eq('user_id', user.id)
+            .eq('platform', 'tiktok')
+            .eq('search_type', 'keyword')
+            .eq('results_count', 0) // 키워드 저장용 더미 레코드만 삭제
+            .eq('credits_used', 0)
+            .lt('created_at', twoDaysAgo)
+          
+          // 최근 키워드 저장 (더미 레코드)
+          await svc.from('platform_searches').insert({
+            user_id: user.id,
+            platform: 'tiktok',
+            search_type: 'keyword',
+            keyword: searchRequest.query.trim(),
+            results_count: 0, // 키워드 저장만을 위한 더미 count
+            credits_used: 0, // 키워드 저장만을 위한 더미 cost
+            created_at: new Date().toISOString()
+          })
+        }
+      } catch (historyError) {
         console.error('TikTok 검색 기록 저장 실패:', historyError)
-        // 검색 기록 저장 실패는 응답에 영향을 주지 않음 (일단 무시)
+      }
+
+      // 검색 통계 업데이트 (모든 사용자)
+      try {
+        const todayUtc = new Date()
+        const yyyy = todayUtc.getUTCFullYear()
+        const mm = String(todayUtc.getUTCMonth() + 1).padStart(2, '0')
+        const firstOfMonth = `${yyyy}-${mm}-01`
+        const todayStr = todayUtc.toISOString().slice(0,10)
+        
+        const { data: row } = await svc.from('search_counters')
+          .select('month_start,month_count,today_date,today_count')
+          .eq('user_id', user.id)
+          .single()
+          
+        let month_start = row?.month_start || firstOfMonth
+        let month_count = Number(row?.month_count || 0)
+        let today_date = row?.today_date || todayStr
+        let today_count = Number(row?.today_count || 0)
+        
+        // reset if month crossed
+        if (String(month_start) !== firstOfMonth) { 
+          month_start = firstOfMonth 
+          month_count = 0 
+        }
+        // reset if day crossed
+        if (String(today_date) !== todayStr) { 
+          today_date = todayStr
+          today_count = 0 
+        }
+        
+        month_count += 1
+        today_count += 1
+        
+        const { error: counterError } = await svc.from('search_counters').upsert({ 
+          user_id: user.id,
+          month_start, 
+          month_count, 
+          today_date, 
+          today_count, 
+          updated_at: new Date().toISOString()
+        })
+        
+        if (counterError) {
+          console.error('TikTok 검색 통계 업데이트 실패:', counterError)
+        } else {
+          console.log(`TikTok 검색 통계 업데이트 성공: 오늘 ${today_count}회, 이번달 ${month_count}회`)
+        }
+      } catch (statsError) {
+        console.error('TikTok 검색 통계 업데이트 실패:', statsError)
       }
 
       // Instagram과 동일한 응답 형식 사용 (items 필드)

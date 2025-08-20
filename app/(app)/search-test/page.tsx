@@ -1,11 +1,53 @@
 'use client'
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState, Component, ErrorInfo, ReactNode } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
+import { VerificationModal } from '@/components/auth/VerificationModal'
+import { useAuthStore } from '@/store/auth'
+
+// 에러 바운더리 컴포넌트
+class ErrorBoundary extends Component<
+  { children: ReactNode },
+  { hasError: boolean; error?: Error }
+> {
+  constructor(props: { children: ReactNode }) {
+    super(props)
+    this.state = { hasError: false }
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error }
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('ErrorBoundary caught an error:', error, errorInfo)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+          <div className="text-center p-8">
+            <h2 className="text-xl font-semibold text-gray-800 mb-4">오류가 발생했습니다</h2>
+            <p className="text-gray-600 mb-4">페이지를 새로고침해주세요.</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            >
+              새로고침
+            </button>
+          </div>
+        </div>
+      )
+    }
+
+    return this.props.children
+  }
+}
 
 // Helpers first
 function extractYouTubeVideoId(url: string): string | null {
@@ -290,18 +332,56 @@ type SearchRow = {
   channelUrl?: string // YouTube 채널 URL
 }
 
-export default function SearchTestPage() {
+function SearchTestPageContent() {
   const [platform, setPlatform] = useState<'instagram' | 'youtube' | 'tiktok'>('instagram')
   const [searchType, setSearchType] = useState<'keyword' | 'url' | 'profile'>('keyword')
   const [expandedTitleRow, setExpandedTitleRow] = useState<string | null>(null) // 확장된 제목 행 관리
+  
+  // 본인인증 관련 상태
+  const { isVerified } = useAuthStore()
+  const [showVerificationModal, setShowVerificationModal] = useState(false)
+  const [pendingSearchAction, setPendingSearchAction] = useState<(() => void) | null>(null)
+
+  // 전역 오류 처리
+  useEffect(() => {
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      console.error('Unhandled promise rejection:', event.reason)
+      event.preventDefault() // 기본 오류 표시 방지
+    }
+
+    const handleError = (event: ErrorEvent) => {
+      // null 에러는 무시 (의미없는 에러)
+      if (event.error === null || event.error === undefined) {
+        console.log('Global error: null/undefined - 무시됨')
+        event.preventDefault()
+        return
+      }
+      console.error('Global error:', event.error)
+      event.preventDefault() // 기본 오류 표시 방지
+    }
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('unhandledrejection', handleUnhandledRejection)
+      window.addEventListener('error', handleError)
+
+      return () => {
+        window.removeEventListener('unhandledrejection', handleUnhandledRejection)
+        window.removeEventListener('error', handleError)
+      }
+    }
+  }, [])
   
   // 페이지네이션 상태
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 30
   
-  // 플랫폼별 독립적인 키워드 상태
-  const [instagramKeywords, setInstagramKeywords] = useState<string[]>(['재테크'])
-  const [youtubeKeywords, setYoutubeKeywords] = useState<string[]>([''])
+  // YouTube 검색 타입별 독립적인 키워드 상태
+  const [youtubeKeywordSearch, setYoutubeKeywordSearch] = useState<string[]>([''])
+  const [youtubeUrlSearch, setYoutubeUrlSearch] = useState<string[]>([''])
+  
+  // Instagram 검색 타입별 독립적인 키워드 상태
+  const [instagramKeywordSearch, setInstagramKeywordSearch] = useState<string[]>(['재테크'])
+  const [instagramProfileSearch, setInstagramProfileSearch] = useState<string[]>([''])
   
   // TikTok 검색 타입별 독립적인 키워드 상태
   const [tiktokKeywordSearch, setTiktokKeywordSearch] = useState<string[]>([''])
@@ -311,8 +391,18 @@ export default function SearchTestPage() {
   // 현재 플랫폼의 키워드 getter/setter
   const keywords = useMemo(() => {
     switch (platform) {
-      case 'instagram': return instagramKeywords
-      case 'youtube': return youtubeKeywords
+      case 'instagram': 
+        switch (searchType) {
+          case 'keyword': return instagramKeywordSearch
+          case 'profile': return instagramProfileSearch
+          default: return instagramKeywordSearch
+        }
+      case 'youtube': 
+        switch (searchType) {
+          case 'keyword': return youtubeKeywordSearch
+          case 'url': return youtubeUrlSearch
+          default: return youtubeKeywordSearch
+        }
       case 'tiktok': 
         switch (searchType) {
           case 'keyword': return tiktokKeywordSearch
@@ -320,15 +410,27 @@ export default function SearchTestPage() {
           case 'profile': return tiktokProfileSearch
           default: return tiktokKeywordSearch
         }
-      default: return instagramKeywords
+      default: return instagramKeywordSearch
     }
-  }, [platform, searchType, instagramKeywords, youtubeKeywords, tiktokKeywordSearch, tiktokUrlSearch, tiktokProfileSearch])
+  }, [platform, searchType, instagramKeywordSearch, instagramProfileSearch, youtubeKeywordSearch, youtubeUrlSearch, tiktokKeywordSearch, tiktokUrlSearch, tiktokProfileSearch])
   
   const setKeywords = useCallback((newKeywords: string[] | ((prev: string[]) => string[])) => {
     const updatedKeywords = typeof newKeywords === 'function' ? newKeywords(keywords) : newKeywords
     switch (platform) {
-      case 'instagram': setInstagramKeywords(updatedKeywords); break
-      case 'youtube': setYoutubeKeywords(updatedKeywords); break
+      case 'instagram': 
+        switch (searchType) {
+          case 'keyword': setInstagramKeywordSearch(updatedKeywords); break
+          case 'profile': setInstagramProfileSearch(updatedKeywords); break
+          default: setInstagramKeywordSearch(updatedKeywords); break
+        }
+        break
+      case 'youtube': 
+        switch (searchType) {
+          case 'keyword': setYoutubeKeywordSearch(updatedKeywords); break
+          case 'url': setYoutubeUrlSearch(updatedKeywords); break
+          default: setYoutubeKeywordSearch(updatedKeywords); break
+        }
+        break
       case 'tiktok': 
         switch (searchType) {
           case 'keyword': setTiktokKeywordSearch(updatedKeywords); break
@@ -357,10 +459,21 @@ export default function SearchTestPage() {
   // TikTok 전용 필터
   const [minLikes, setMinLikes] = useState<number>(0)
   
+  // Instagram 프로필 검색 전용 필터
+  const [instagramPeriod, setInstagramPeriod] = useState<'7' | '15' | '30' | '90' | '180' | '365' | 'custom'>('30')
+  const [instagramCustomPeriod, setInstagramCustomPeriod] = useState<number>(7)
+  const [instagramCustomUnit, setInstagramCustomUnit] = useState<'days' | 'months'>('days')
+  
   // 플랫폼별 키워드 추천 상태
   const [selectedInstagramCategory, setSelectedInstagramCategory] = useState<string | null>(null)
   const [selectedTiktokCategory, setSelectedTiktokCategory] = useState<string | null>(null)
   const [selectedYoutubeCategory, setSelectedYoutubeCategory] = useState<string | null>(null)
+  
+  // 키워드 추천 섹션 접기/펼치기 상태
+  const [showKeywordSuggestions, setShowKeywordSuggestions] = useState(false)
+  
+  // 협찬 필터 상태 (인스타그램 프로필 검색 전용)
+  const [showSponsoredOnly, setShowSponsoredOnly] = useState(false)
   
   // Instagram 키워드 카테고리 및 추천 키워드
   const instagramKeywordCategories = {
@@ -685,11 +798,11 @@ export default function SearchTestPage() {
   }
   
 
-  const nf = useMemo(() => new Intl.NumberFormat('en-US'), [])
+  const nf = useMemo(() => new Intl.NumberFormat('ko-KR'), [])
   const formatNumber = (n?: number | 'private', showExact: boolean = false) => {
     if (typeof n === 'number') {
-      // TikTok의 경우 정확한 숫자 표시, 다른 플랫폼은 천단위 구분자
-      return showExact ? n.toString() : nf.format(n)
+      // 모든 플랫폼에서 천단위 구분자 적용 (TikTok도 포함)
+      return nf.format(n)
     }
     return n === 'private' ? '비공개' : '-'
   }
@@ -699,6 +812,31 @@ export default function SearchTestPage() {
     const m = Math.floor(s / 60)
     const r = s % 60
     return `${m}:${String(r).padStart(2,'0')}`
+  }
+
+  // 본인인증 확인 함수
+  const checkVerificationAndRun = () => {
+    if (!isVerified) {
+      setPendingSearchAction(() => run)
+      setShowVerificationModal(true)
+      return
+    }
+    run()
+  }
+
+  // 본인인증 성공 시 실행될 함수
+  const handleVerificationSuccess = () => {
+    setShowVerificationModal(false)
+    if (pendingSearchAction) {
+      pendingSearchAction()
+      setPendingSearchAction(null)
+    }
+  }
+
+  // 본인인증 모달 닫기 함수
+  const handleVerificationClose = () => {
+    setShowVerificationModal(false)
+    setPendingSearchAction(null)
   }
 
   const run = async () => {
@@ -725,13 +863,13 @@ export default function SearchTestPage() {
       } else if (platform === 'youtube') {
         if (searchType === 'keyword') {
           // YouTube 키워드 검색: 기존 체계
-          return { '30': 50, '60': 100, '90': 150, '120': 200, '5': 0 }[String(limit)] ?? 0
+          return { '30': 100, '60': 200, '90': 300, '120': 400, '5': 0 }[String(limit)] ?? 0
         } else {
           // YouTube URL 검색: 새로운 체계
           return { '15': 25, '30': 50, '50': 70, '5': 0 }[String(limit)] ?? 0
         }
       } else if (platform === 'tiktok') {
-        return { '30': 50, '60': 100, '90': 150, '120': 200, '5': 0 }[String(limit)] ?? 0
+        return { '30': 100, '60': 200, '90': 300, '120': 400, '5': 0 }[String(limit)] ?? 0
       }
       return 0
     }
@@ -850,10 +988,61 @@ export default function SearchTestPage() {
         }
         apiEndpoint = '/api/search/tiktok'
       } else {
-        // Instagram 검색 (기존)
-        const list = keywords.map(s=>s.trim()).filter(Boolean).slice(0,3)
-        payload = { keyword: (list[0] || '재테크'), limit, debug: true }
-        if (list.length) payload.keywords = list
+        // Instagram 검색
+        if (searchType === 'profile') {
+          // 프로필 검색
+          const profileUrl = keywords[0]?.trim() || ''
+          if (!profileUrl) {
+            throw new Error('프로필 URL 또는 사용자명을 입력해주세요.')
+          }
+          
+          // 기간 필터 계산 (Apify 형식으로)
+          let onlyPostsNewerThan: string | undefined = undefined
+          if (instagramPeriod !== '30') { // 기본값이 아닌 경우
+            if (instagramPeriod === 'custom') {
+              // 사용자 정의 기간
+              if (instagramCustomUnit === 'days') {
+                onlyPostsNewerThan = `${instagramCustomPeriod} days`
+              } else {
+                onlyPostsNewerThan = `${instagramCustomPeriod} months`
+              }
+            } else {
+              // 미리 정의된 기간
+              const periodDays = Number(instagramPeriod)
+              if (periodDays === 7) {
+                onlyPostsNewerThan = '7 days'
+              } else if (periodDays === 15) {
+                onlyPostsNewerThan = '15 days'
+              } else if (periodDays === 30) {
+                onlyPostsNewerThan = '1 month'
+              } else if (periodDays === 90) {
+                onlyPostsNewerThan = '3 months'
+              } else if (periodDays === 180) {
+                onlyPostsNewerThan = '6 months'
+              } else if (periodDays === 365) {
+                onlyPostsNewerThan = '12 months'
+              }
+            }
+          }
+          
+          payload = { 
+            searchType: 'profile',
+            profileUrl,
+            limit, 
+            debug: true,
+            onlyPostsNewerThan
+          }
+        } else {
+          // 키워드 검색 (기존)
+          const list = keywords.map(s=>s.trim()).filter(Boolean).slice(0,3)
+          payload = { 
+            searchType: 'keyword',
+            keyword: (list[0] || '재테크'), 
+            limit, 
+            debug: true 
+          }
+          if (list.length) payload.keywords = list
+        }
         apiEndpoint = '/api/search'
       }
       
@@ -925,7 +1114,7 @@ export default function SearchTestPage() {
           caption: item.title + (item.description ? '\n\n' + item.description : ''),
           duration: item.durationSeconds,
           durationDisplay: item.duration, // 1:10:23 형식의 표시용 duration
-          takenDate: item.publishedAt?.split('T')[0],
+          takenDate: item.publishedAt,
           isShorts: item.durationSeconds && item.durationSeconds <= 60, // 쇼츠 여부 (60초 이하)
           channelId: item.channelId, // YouTube 채널 ID
           channelUrl: `https://www.youtube.com/channel/${item.channelId}` // 실제 채널 URL
@@ -957,7 +1146,7 @@ export default function SearchTestPage() {
             thumbnailUrl: item.thumbnailUrl || null,
             caption: item.title || item.description || '',
             duration: item.duration || 0,
-            takenDate: item.publishedAt?.split('T')[0] || new Date().toISOString().split('T')[0],
+            takenDate: item.publishedAt || new Date().toISOString(),
             videoUrl: item.videoUrl || item.webVideoUrl
           }
         }) : []
@@ -978,12 +1167,18 @@ export default function SearchTestPage() {
       finishProgress()
       
       // 검색 성공 시 최근 키워드를 서버에 저장 (모든 플랫폼, 키워드 검색만, URL 검색 제외)
+      console.log(`키워드 저장 조건 체크: arr.length=${arr.length}, searchType=${searchType}, platform=${platform}`)
       if (arr.length > 0 && searchType === 'keyword') {
         const keyword = (platform === 'youtube' || platform === 'tiktok') 
           ? keywords[0]?.trim() 
           : keywords[0]?.trim()
         
-        if (keyword && keyword.length > 0 && !keyword.includes('http')) {
+        console.log(`키워드 저장 준비: keyword="${keyword}", keywords=`, keywords)
+        
+        // 키워드 검색인 경우만 저장 (URL, 프로필 검색 제외)
+        const isKeywordSearch = searchType === 'keyword' && keyword && keyword.length > 0 && !keyword.includes('http') && !keyword.includes('@')
+        console.log(`키워드 저장 가능 여부: isKeywordSearch=${isKeywordSearch}`)
+        if (isKeywordSearch) {
           try {
             console.log(`Saving recent keyword for ${platform}:`, keyword)
             // 서버에 키워드 저장
@@ -1028,41 +1223,39 @@ export default function SearchTestPage() {
             if (searchType === 'keyword') {
               // YouTube 키워드 검색: 기존 체계
               if (requested === 30) {
-                actualCredits = Math.ceil((returned / 30) * 50)
-                reserved = 50
-              } else if (requested === 60) {
-                actualCredits = Math.ceil((returned / 60) * 100)
+                actualCredits = Math.round((returned / 30) * 100)
                 reserved = 100
-              } else if (requested === 90) {
-                actualCredits = Math.ceil((returned / 90) * 150)
-                reserved = 150
-              } else if (requested === 120) {
-                actualCredits = Math.ceil((returned / 120) * 200)
+              } else if (requested === 60) {
+                actualCredits = Math.round((returned / 60) * 200)
                 reserved = 200
+              } else if (requested === 90) {
+                actualCredits = Math.round((returned / 90) * 300)
+                reserved = 300
+              } else if (requested === 120) {
+                actualCredits = Math.round((returned / 120) * 400)
+                reserved = 400
               }
             } else {
               // YouTube URL 검색: 새로운 체계
               if (requested === 15) {
-                actualCredits = Math.ceil((returned / 15) * 25)
+                actualCredits = Math.round((returned / 15) * 25)
                 reserved = 25
               } else if (requested === 30) {
-                actualCredits = Math.ceil((returned / 30) * 50)
+                actualCredits = Math.round((returned / 30) * 50)
                 reserved = 50
               } else if (requested === 50) {
-                actualCredits = Math.ceil((returned / 50) * 70)
+                actualCredits = Math.round((returned / 50) * 70)
                 reserved = 70
               }
             }
           } else if (platform === 'tiktok') {
-            // TikTok: 30개당 50크레딧 기준
-            const creditsPer30 = 50
-            actualCredits = Math.ceil((returned / 30) * creditsPer30)
-            reserved = (requested / 30) * creditsPer30
+            // TikTok: 30개당 50크레딧 기준 (요구사항에 따라 변경)
+            actualCredits = Math.round((returned / 30) * 100)
+            reserved = (requested / 30) * 100
           } else {
             // Instagram: 30개당 100크레딧 기준
-            const creditsPer30 = 100
-            actualCredits = Math.ceil((returned / 30) * creditsPer30)
-            reserved = (requested / 30) * creditsPer30
+            actualCredits = Math.round((returned / 30) * 100)
+            reserved = (requested / 30) * 100
           }
           
           const refund = Math.max(0, reserved - actualCredits)
@@ -1116,6 +1309,14 @@ export default function SearchTestPage() {
         return okViews && okFollowers && okDate
       })
     }
+    
+    // 인스타그램 검색 시 협찬 필터링 (키워드/프로필 모두)
+    if (platform === 'instagram' && showSponsoredOnly) {
+      arr = arr.filter((i) => {
+        return (i as any).paidPartnership === true
+      })
+    }
+    
     const sorted = [...arr]
     if (sort === 'views') {
       sorted.sort((a, b) => (b.views || 0) - (a.views || 0))
@@ -1126,7 +1327,7 @@ export default function SearchTestPage() {
     }
     // 페이지네이션 적용
     return sorted.slice(startIndex, endIndex)
-  }, [baseItems, filters, sort, startIndex, endIndex])
+  }, [baseItems, filters, sort, startIndex, endIndex, platform, searchType, showSponsoredOnly])
 
   // 현재 페이지 아이템들을 전역에 저장 (Shift 선택용)
   useEffect(() => {
@@ -1354,9 +1555,33 @@ export default function SearchTestPage() {
           {/* 검색 입력 */}
           <div>
             {/* 검색 방식 선택 버튼 (TikTok과 YouTube용) */}
-            {(platform === 'tiktok' || platform === 'youtube') ? (
+            {(platform === 'instagram' || platform === 'tiktok' || platform === 'youtube') ? (
               <div className="mb-3">
-                {platform === 'tiktok' ? (
+                {platform === 'instagram' ? (
+                  // Instagram: 2개 버튼 (키워드, 프로필)
+                  <div className="flex bg-gray-100 rounded-lg p-1">
+                    <button
+                      className={`flex-1 py-2 px-4 text-sm font-medium rounded-md transition-all ${
+                        searchType === 'keyword'
+                          ? 'bg-white text-gray-900 shadow-sm'
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                      onClick={() => setSearchType('keyword')}
+                    >
+                      키워드 검색
+                    </button>
+                    <button
+                      className={`flex-1 py-2 px-4 text-sm font-medium rounded-md transition-all ${
+                        searchType === 'profile'
+                          ? 'bg-white text-gray-900 shadow-sm'
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                      onClick={() => setSearchType('profile')}
+                    >
+                      프로필 검색
+                    </button>
+                  </div>
+                ) : platform === 'tiktok' ? (
                   // TikTok: 3개 버튼 (키워드, URL, 프로필)
                   <div className="grid grid-cols-3 bg-gray-100 rounded-lg p-1 gap-1">
                     <button
@@ -1475,21 +1700,91 @@ export default function SearchTestPage() {
                 키워드
               </div>
             )}
-            {((platform === 'youtube' || platform === 'tiktok') && (searchType === 'url' || searchType === 'profile')) ? (
+            {(((platform === 'youtube' || platform === 'tiktok') && (searchType === 'url' || searchType === 'profile')) || (platform === 'instagram' && searchType === 'profile')) ? (
               <div>
                 <input 
                   className="w-full h-12 border border-gray-300 rounded-lg px-4 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-all" 
                   style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}
                   placeholder={
-                    searchType === 'profile' 
-                      ? '예: https://www.tiktok.com/@abc 또는 abc'
-                      : platform === 'youtube' 
-                        ? '예: https://www.youtube.com/watch?v=...' 
-                        : '예: https://www.tiktok.com/@username/video/...'
+                    platform === 'instagram' && searchType === 'profile'
+                      ? '예: https://www.instagram.com/abc 또는 abc'
+                      : searchType === 'profile' 
+                        ? '예: https://www.tiktok.com/@abc 또는 abc'
+                        : platform === 'youtube' 
+                          ? '예: https://www.youtube.com/watch?v=...' 
+                          : '예: https://www.tiktok.com/@username/video/...'
                   }
                   value={keywords[0]} 
                   onChange={(e)=>setKeywords([e.target.value])} 
                 />
+                
+                {/* Instagram 프로필 검색 시 업로드 기간 필터 */}
+                {platform === 'instagram' && searchType === 'profile' && (
+                  <div className="mt-3">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      업로드 기간 설정
+                    </label>
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {(['7', '15', '30', '90', '180', '365', 'custom'] as const).map((period) => (
+                        <button
+                          key={period}
+                          className={`px-3 py-1 text-xs rounded-md border transition-all ${
+                            instagramPeriod === period
+                              ? 'bg-gray-900 text-white border-gray-900'
+                              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                          }`}
+                          onClick={() => setInstagramPeriod(period)}
+                        >
+                          {period === 'custom' 
+                            ? '직접 입력' 
+                            : period === '7' ? '7일'
+                            : period === '15' ? '15일'
+                            : period === '30' ? '1개월'
+                            : period === '90' ? '3개월'
+                            : period === '180' ? '6개월'
+                            : '1년'
+                          }
+                        </button>
+                      ))}
+                    </div>
+                    
+                    {instagramPeriod === 'custom' && (
+                      <div className="flex items-center gap-2">
+                        <input 
+                          type="number"
+                          className="flex-1 h-10 border border-gray-300 rounded-lg px-3 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-all" 
+                          style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}
+                          placeholder="숫자만 입력"
+                          min="1"
+                          value={instagramCustomPeriod > 0 ? instagramCustomPeriod : ''}
+                          onChange={(e) => setInstagramCustomPeriod(Number(e.target.value) || 1)}
+                        />
+                        <div className="flex bg-gray-100 rounded-lg p-1">
+                          <button
+                            className={`px-3 py-1 text-xs rounded-md transition-all ${
+                              instagramCustomUnit === 'days'
+                                ? 'bg-white text-gray-900 shadow-sm'
+                                : 'text-gray-600 hover:text-gray-900'
+                            }`}
+                            onClick={() => setInstagramCustomUnit('days')}
+                          >
+                            일
+                          </button>
+                          <button
+                            className={`px-3 py-1 text-xs rounded-md transition-all ${
+                              instagramCustomUnit === 'months'
+                                ? 'bg-white text-gray-900 shadow-sm'
+                                : 'text-gray-600 hover:text-gray-900'
+                            }`}
+                            onClick={() => setInstagramCustomUnit('months')}
+                          >
+                            개월
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
                 
                 {/* TikTok 프로필 검색 시 최소 좋아요 필터 */}
                 {platform === 'tiktok' && searchType === 'profile' && (
@@ -1536,11 +1831,27 @@ export default function SearchTestPage() {
             {/* 키워드 검색 시 추천 키워드 (모든 플랫폼) */}
             {(
               (platform === 'youtube' && searchType === 'keyword') ||
-              (platform === 'instagram') ||
+              (platform === 'instagram' && searchType === 'keyword') ||
               (platform === 'tiktok' && searchType === 'keyword')
             ) && (
               <div className="mt-3">
-                <div className="text-sm font-medium text-gray-700 mb-2">주제별 추천 키워드</div>
+                <button
+                  onClick={() => setShowKeywordSuggestions(!showKeywordSuggestions)}
+                  className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors bg-gray-50 hover:bg-gray-100 px-3 py-2 rounded-lg border border-gray-200 shadow-sm"
+                >
+                  <span>주제별 추천 키워드</span>
+                  <svg 
+                    className={`w-4 h-4 transition-transform ${showKeywordSuggestions ? 'rotate-180' : ''}`}
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                
+                {showKeywordSuggestions && (
+                  <div className="mt-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
                 
                 {/* 카테고리 버튼들 */}
                 <div className="grid grid-cols-3 gap-2 mb-3">
@@ -1599,6 +1910,8 @@ export default function SearchTestPage() {
                     </div>
                   )
                 })()}
+                  </div>
+                )}
               </div>
             )}
                 {platform !== 'youtube' && platform !== 'tiktok' && keywords.slice(1).map((kw, idx)=> (
@@ -1713,8 +2026,11 @@ export default function SearchTestPage() {
                         if (plan==='free' && (v==='30'||v==='50')) { e.preventDefault(); (e.target as HTMLSelectElement).value = prevLimitRef.current as any; showUpgradeModal('FREE 플랜은 15개만 가능합니다'); return }
                         if (plan==='starter' && v==='50') { e.preventDefault(); (e.target as HTMLSelectElement).value = prevLimitRef.current as any; showUpgradeModal('STARTER 플랜은 30개까지만 가능합니다'); return }
                       }
+                    } else if (platform === 'instagram' && searchType === 'keyword') {
+                      // Instagram 키워드 검색: 베타 단계에서 30개만 허용
+                      if (v !== '30') { e.preventDefault(); (e.target as HTMLSelectElement).value = '30'; showUpgradeModal('베타 단계에서는 인스타그램 키워드 검색은 30개만 가능합니다'); return }
                     } else {
-                      // Instagram/TikTok: 30/60/90/120
+                      // Instagram 프로필 검색/TikTok: 30/60/90/120
                       if (plan==='free' && (v==='60'||v==='90'||v==='120')) { e.preventDefault(); (e.target as HTMLSelectElement).value = prevLimitRef.current as any; showUpgradeModal('FREE 플랜은 30개만 가능합니다'); return }
                       if (plan==='starter' && (v==='90'||v==='120')) { e.preventDefault(); (e.target as HTMLSelectElement).value = prevLimitRef.current as any; showUpgradeModal('STARTER 플랜은 60개까지만 가능합니다'); return }
                       if (plan==='pro' && v==='120') { e.preventDefault(); (e.target as HTMLSelectElement).value = prevLimitRef.current as any; showUpgradeModal('PRO 플랜은 90개까지만 가능합니다'); return }
@@ -1725,10 +2041,17 @@ export default function SearchTestPage() {
                   {isAdmin && <option value="5">5 (개발용)</option>}
                   {platform === 'instagram' ? (
                     <>
-                      <option value="30">30개 (100크레딧)</option>
-                      <option value="60">60개 (200크레딧){plan==='free'?' 🔒':''}</option>
-                      <option value="90">90개 (300크레딧){(plan==='free'||plan==='starter')?' 🔒':''}</option>
-                      <option value="120">120개 (400크레딧){(plan==='free'||plan==='starter'||plan==='pro')?' 🔒':''}</option>
+                      {/* 인스타그램은 베타 단계에서 키워드 검색만 30개로 제한 (프로필 검색은 제한 없음) */}
+                      {searchType === 'keyword' ? (
+                        <option value="30">30개 (100크레딧)</option>
+                      ) : (
+                        <>
+                          <option value="30">30개 (100크레딧)</option>
+                          <option value="60">60개 (200크레딧){plan==='free'?' 🔒':''}</option>
+                          <option value="90">90개 (300크레딧){(plan==='free'||plan==='starter')?' 🔒':''}</option>
+                          <option value="120">120개 (400크레딧){(plan==='free'||plan==='starter'||plan==='pro')?' 🔒':''}</option>
+                        </>
+                      )}
                     </>
                   ) : platform === 'youtube' ? (
                     <>
@@ -1759,7 +2082,7 @@ export default function SearchTestPage() {
               </div>
               <div>
                 <button 
-                  onClick={(e)=>{e.preventDefault(); run()}} 
+                  onClick={(e)=>{e.preventDefault(); checkVerificationAndRun()}} 
                   disabled={loading} 
                   className={`h-12 px-6 rounded-lg text-sm font-medium text-white transition-all duration-200 ${
                     loading 
@@ -1946,14 +2269,32 @@ export default function SearchTestPage() {
         <div className="flex items-center gap-3">
             <ClientFilters baseItems={baseItems} setFilters={setFilters} />
           <SortMenu sort={sort} setSort={setSort} />
+          
+          {/* 인스타그램 검색 시 협찬 필터 버튼 (키워드/프로필 모두) */}
+          {platform === 'instagram' && (
+            <button
+              className={`px-3 py-1.5 text-sm border rounded transition-all font-medium ${
+                showSponsoredOnly
+                  ? 'bg-yellow-100 border-yellow-300 text-yellow-800'
+                  : 'border-gray-300 hover:border-gray-400 text-gray-700'
+              }`}
+              onClick={() => setShowSponsoredOnly(!showSponsoredOnly)}
+            >
+              협찬 {showSponsoredOnly ? '해제' : ''}
+            </button>
+          )}
           </div>
                 <div className="h-6 w-px bg-gray-300"></div>
                 <ExportButtons items={items || []} platform={platform} onProgress={{ open: openProgress, tick: tickProgress, finish: finishProgress }} />
               </>
             ) : (
               <>
-                <button className="px-3 py-1.5 text-sm border border-gray-300 rounded bg-gray-50 text-gray-400 cursor-not-allowed" disabled title="검색 후 사용 가능">필터</button>
-                <button className="px-3 py-1.5 text-sm border border-gray-300 rounded bg-gray-50 text-gray-400 cursor-not-allowed" disabled title="검색 후 사용 가능">정렬</button>
+                <button className="px-3 py-1.5 text-sm border border-gray-300 rounded bg-gray-50 text-gray-400 cursor-not-allowed font-medium" disabled title="검색 후 사용 가능">필터</button>
+                <button className="px-3 py-1.5 text-sm border border-gray-300 rounded bg-gray-50 text-gray-400 cursor-not-allowed font-medium" disabled title="검색 후 사용 가능">정렬</button>
+                {/* 인스타그램일 때 협찬 버튼 (비활성화) */}
+                {platform === 'instagram' && (
+                  <button className="px-3 py-1.5 text-sm border border-gray-300 rounded bg-gray-50 text-gray-400 cursor-not-allowed font-medium" disabled title="검색 후 사용 가능">협찬</button>
+                )}
                 <div className="h-4 w-px bg-gray-300"></div>
                 <button className="px-3 py-1.5 text-sm border border-gray-300 rounded bg-gray-50 text-gray-400 cursor-not-allowed" disabled title="검색 후 사용 가능">영상 바로가기</button>
                 <button className="px-3 py-1.5 text-sm border border-gray-300 rounded bg-gray-50 text-gray-400 cursor-not-allowed" disabled title="검색 후 사용 가능">엑셀 추출</button>
@@ -1972,13 +2313,13 @@ export default function SearchTestPage() {
               <tr className="border-b-2 border-gray-300">
                 <th className="p-3 text-center font-bold text-gray-800 w-[50px] border-r border-gray-200">선택</th>
                 <th className="p-3 text-center font-bold text-gray-800 w-[90px] border-r border-gray-200">썸네일</th>
-                <th className="p-3 text-center font-bold text-gray-800 w-[90px] border-r border-gray-200">업로드</th>
+                <th className="p-3 text-center font-bold text-gray-800 w-[110px] border-r border-gray-200">업로드</th>
                 <th className="p-3 text-center font-bold text-gray-800 w-[90px] border-r border-gray-200">조회수</th>
                 <th className="p-3 text-center font-bold text-gray-800 w-[70px] border-r border-gray-200">길이</th>
                 <th className="p-3 text-center font-bold text-gray-800 w-[80px] border-r border-gray-200">좋아요</th>
                 <th className="p-3 text-center font-bold text-gray-800 w-[80px] border-r border-gray-200">댓글</th>
                 {platform === 'youtube' && (
-                  <th className="p-3 text-center font-bold text-gray-800 w-[400px] border-r border-gray-200">제목</th>
+                  <th className="p-3 text-center font-bold text-gray-800 w-[380px] border-r border-gray-200">제목</th>
                 )}
                 <th className="p-3 text-center font-bold text-gray-800 w-[140px]">
                   {platform === 'youtube' ? '채널' : platform === 'tiktok' ? '계정' : '계정'}
@@ -1996,11 +2337,22 @@ export default function SearchTestPage() {
                     <tr className="border-b border-gray-200 hover:bg-gray-50/70 transition-colors h-[64px]">
                       <td className="p-3 text-center align-middle border-r border-gray-100"><RowCheck url={r.url} index={index} /></td>
                       <td className="p-3 text-center align-middle border-r border-gray-100"><InlineThumb row={r as any} videoDuration={videoDuration} /></td>
-                      <td className="p-3 text-center align-middle border-r border-gray-100 text-gray-800 font-semibold">{r.takenDate ?? '-'}</td>
-                      <td className="p-3 text-center align-middle border-r border-gray-100 font-semibold text-gray-900 tabular-nums" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>{formatNumber(r.views, platform === 'tiktok')}</td>
+                      <td className="p-3 text-center align-middle border-r border-gray-100 text-gray-800 font-semibold">
+                        {r.takenDate ? (() => {
+                          const date = new Date(r.takenDate)
+                          if (isNaN(date.getTime())) return r.takenDate
+                          return (
+                            <div className="text-center">
+                              <div className="text-sm leading-tight" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>{date.toISOString().split('T')[0]}</div>
+                              <div className="text-sm text-gray-600 leading-tight" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>{date.toTimeString().substring(0, 5)}</div>
+                            </div>
+                          )
+                        })() : '-'}
+                      </td>
+                      <td className="p-3 text-center align-middle border-r border-gray-100 font-semibold text-gray-900 tabular-nums" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>{formatNumber(r.views)}</td>
                       <td className="p-3 text-center align-middle border-r border-gray-100 text-gray-800 font-semibold" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>{r.durationDisplay || formatDuration(r.duration)}</td>
-                      <td className="p-3 text-center align-middle border-r border-gray-100 font-semibold text-gray-900 tabular-nums" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>{r.likes === 'private' || r.likes === 0 ? '-' : formatNumber(r.likes as number, platform === 'tiktok')}</td>
-                      <td className="p-3 text-center align-middle border-r border-gray-100 font-semibold text-gray-900 tabular-nums" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>{formatNumber(r.comments, platform === 'tiktok')}</td>
+                      <td className="p-3 text-center align-middle border-r border-gray-100 font-semibold text-gray-900 tabular-nums" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>{r.likes === 'private' || r.likes === 0 ? '-' : formatNumber(r.likes as number)}</td>
+                      <td className="p-3 text-center align-middle border-r border-gray-100 font-semibold text-gray-900 tabular-nums" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>{formatNumber(r.comments)}</td>
                       {platform === 'youtube' && (
                         <td className="p-3 text-center align-middle border-r border-gray-100">
                           <div 
@@ -2041,9 +2393,12 @@ export default function SearchTestPage() {
                           >
                             {platform === 'youtube' ? r.username : `@${r.username}`}
                           </a>
-                          <div className="text-xs text-gray-600 text-center font-semibold" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>
-                            {typeof r.followers === 'number' ? new Intl.NumberFormat('en-US').format(r.followers) : '-'} {platform === 'youtube' ? '구독자' : '팔로워'}
-                          </div>
+                          {/* 인스타그램 프로필 검색에서는 팔로워 수 숨기기 */}
+                          {!(platform === 'instagram' && searchType === 'profile') && (
+                            <div className="text-xs text-gray-600 text-center font-semibold" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>
+                              {typeof r.followers === 'number' ? new Intl.NumberFormat('en-US').format(r.followers) : '-'} {platform === 'youtube' ? '구독자' : '팔로워'}
+                            </div>
+                          )}
                       </div>
                     ) : <span className="text-gray-400">-</span>}
                   </td>
@@ -2094,6 +2449,10 @@ export default function SearchTestPage() {
                               >
                                 영상 바로가기
                               </button>
+                              {/* YouTube일 때만 자막 추출 버튼 표시 */}
+                              {platform === 'youtube' && (
+                                <SubtitleDialog url={r.url} platform={platform} />
+                              )}
                               <button 
                                 className="px-3 py-1.5 text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors"
                                 onClick={() => setExpandedTitleRow(null)}
@@ -2228,6 +2587,13 @@ export default function SearchTestPage() {
         </div>
       )}
       </div>
+      
+      {/* 본인인증 모달 */}
+      <VerificationModal
+        isOpen={showVerificationModal}
+        onClose={handleVerificationClose}
+        onSuccess={handleVerificationSuccess}
+      />
     </div>
   )
 }
@@ -2435,8 +2801,25 @@ function ExportButtons({ items, platform, onProgress }: { items: SearchRow[]; pl
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    // 파일명은 서버에서 설정하므로 기본값 사용
-    a.download = `${platform}-data.xlsx`
+    
+    // Content-Disposition 헤더에서 파일명 추출
+    const contentDisposition = res.headers.get('content-disposition')
+    let filename = `${platform}-data.xlsx` // 기본 파일명
+    
+    if (contentDisposition) {
+      // filename="filename.xlsx" 형태 매칭
+      const filenameMatch = contentDisposition.match(/filename="([^"]+)"/i) || 
+                           contentDisposition.match(/filename=([^;\s]+)/i)
+      if (filenameMatch && filenameMatch[1]) {
+        try {
+          filename = decodeURIComponent(filenameMatch[1])
+        } catch {
+          filename = filenameMatch[1]
+        }
+      }
+    }
+    
+    a.download = filename
     a.click()
     URL.revokeObjectURL(url)
     onProgress.finish()
@@ -2505,6 +2888,9 @@ function ExportButtons({ items, platform, onProgress }: { items: SearchRow[]; pl
       onProgress.finish()
     }
   }
+
+
+
     const downloadThumbnails = async () => {
     if (!guardSelected()) return
     
@@ -2745,14 +3131,14 @@ function CaptionDialog({ caption, platform }: { caption: string; platform: 'yout
   )
 }
 
-function SubtitleDialog({ url }: { url: string }) {
+function SubtitleDialog({ url, platform }: { url: string; platform?: string }) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [text, setText] = useState('')
   const [confirmOpen, setConfirmOpen] = useState(false)
   // simple in-memory cache per URL
   const cache = (globalThis as any).__subtitleCache || ((globalThis as any).__subtitleCache = new Map<string, string>())
-  const showCreditModal = (message = '자막 추출에는 20 크레딧이 필요해요. 업그레이드 또는 충전 후 다시 시도해 주세요.') => {
+  const showCreditModal = (message = '자막 추출에는 크레딧이 필요해요. 업그레이드 또는 충전 후 다시 시도해 주세요.') => {
     const modal = document.createElement('div')
     modal.className = 'fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4'
     modal.innerHTML = `
@@ -2767,13 +3153,34 @@ function SubtitleDialog({ url }: { url: string }) {
     document.body.appendChild(modal)
     modal.querySelector('#cnl')?.addEventListener('click', () => modal.remove())
   }
+
+  const showCooldownModal = () => {
+    const modal = document.createElement('div')
+    modal.className = 'fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4'
+    modal.innerHTML = `
+      <div class="bg-white rounded shadow-lg w-full max-w-md p-5">
+        <div class="text-base font-bold mb-3">잠시만 기다려주세요!</div>
+        <div class="text-sm text-neutral-700 mb-4">과부하 방지를 위해, 자막 추출은 30초 단위로 가능해요.</div>
+        <div class="flex items-center justify-center">
+          <button id="confirm" class="px-4 py-2 text-sm border rounded bg-black text-white">확인</button>
+        </div>
+      </div>`
+    document.body.appendChild(modal)
+    modal.querySelector('#confirm')?.addEventListener('click', () => modal.remove())
+  }
   const ensureCredits = async (): Promise<boolean> => {
     try {
       const res = await fetch('/api/me', { cache: 'no-store' })
       if (!res.ok) return false
       const j = await res.json().catch(() => ({}))
       const credits = Number(j?.credits || 0)
-      if (!Number.isFinite(credits) || credits < 20) { showCreditModal(); return false }
+      const requiredCredits = platform === 'youtube' ? 10 : 20
+      const platformName = platform === 'youtube' ? 'YouTube' : (platform === 'tiktok' ? 'TikTok' : 'Instagram')
+      
+      if (!Number.isFinite(credits) || credits < requiredCredits) { 
+        showCreditModal(`${platformName} 자막 추출에는 ${requiredCredits} 크레딧이 필요해요. 업그레이드 또는 충전 후 다시 시도해 주세요.`); 
+        return false 
+      }
       return true
     } catch {
       return false
@@ -2792,15 +3199,35 @@ function SubtitleDialog({ url }: { url: string }) {
     document.body.dispatchEvent(new CustomEvent('relcher:progress', { detail: { action: 'open', title: '자막을 추출하고 있습니다…' } }))
     document.body.dispatchEvent(new CustomEvent('relcher:progress', { detail: { action: 'tick', max: 92, step: 2, ms: 250 } }))
     try {
-      const res = await fetch('/api/captions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url }) })
-      if (!res.ok) throw new Error('자막 추출 실패')
+      // YouTube와 다른 플랫폼에 따라 다른 API 사용
+      const apiEndpoint = platform === 'youtube' ? '/api/youtube/subtitles' : '/api/captions'
+      const res = await fetch(apiEndpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url }) })
+      
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => '')
+        let errorMessage = '자막 추출 실패'
+        try {
+          const errorJson = JSON.parse(errorText)
+          if (errorJson.error === 'SUBTITLE_COOLDOWN') {
+            showCooldownModal()
+            return
+          }
+          errorMessage = errorJson.error || errorMessage
+        } catch {
+          // JSON 파싱 실패시 기본 메시지 사용
+        }
+        throw new Error(errorMessage)
+      }
+      
       const j = await res.json()
-      const t = j?.captions || ''
+      const t = (platform === 'youtube' ? j?.subtitles : j?.captions) || ''
       cache.set(url, t)
       setText(t)
       setOpen(true)
     } catch (e: any) {
-      alert(e?.message || '자막 추출 실패')
+      console.error('자막 추출 오류:', e)
+      const errorMessage = e?.message || '자막 추출 실패'
+      alert(errorMessage)
     } finally {
       setLoading(false)
       document.body.dispatchEvent(new CustomEvent('relcher:progress', { detail: { action: 'finish' } }))
@@ -2901,13 +3328,33 @@ function CommaInput({ value, onChange }: { value: number; onChange: (v: number) 
   const [text, setText] = useState<string>(new Intl.NumberFormat('en-US').format(value || 0))
   useEffect(() => { setText(new Intl.NumberFormat('en-US').format(value || 0)) }, [value])
   const onInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const raw = e.target.value.replace(/,/g, '')
+    const input = e.target.value
+    
+    // 빈 문자열인 경우
+    if (input === '') {
+      setText('')
+      onChange(0)
+      return
+    }
+    
+    // 숫자와 콤마만 허용
+    const numericOnly = input.replace(/[^0-9,]/g, '')
+    
+    // 콤마 제거하고 숫자로 변환
+    const raw = numericOnly.replace(/,/g, '')
     const num = Number(raw)
-    if (Number.isFinite(num)) {
+    
+    if (Number.isFinite(num) && num >= 0) {
       onChange(num)
-      setText(new Intl.NumberFormat('en-US').format(num))
+      // 숫자가 0이 아닐 때만 콤마 포맷팅
+      if (num > 0) {
+        setText(new Intl.NumberFormat('en-US').format(num))
+      } else {
+        setText('')
+      }
     } else {
-      setText(e.target.value)
+      // 잘못된 입력인 경우 이전 값 유지
+      setText(text)
     }
   }
   return <input inputMode="numeric" pattern="[0-9,]*" className="border rounded px-2 py-1 w-1/2 text-right" value={text} onChange={onInput} />
@@ -2984,3 +3431,14 @@ function NumberInput({ value, onChange, placeholder, className }: {
     />
   )
 }
+
+// ErrorBoundary로 감싼 메인 컴포넌트 export
+export default function SearchTestPage() {
+  return (
+    <ErrorBoundary>
+      <SearchTestPageContent />
+    </ErrorBoundary>
+  )
+}
+
+
