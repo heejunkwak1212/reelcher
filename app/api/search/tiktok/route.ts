@@ -31,16 +31,20 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 사용자 인증 확인
-    const supabase = await supabaseServer()
-    const { data: { user } } = await supabase.auth.getUser()
+      // 사용자 인증 확인
+  const supabase = await supabaseServer()
+  const { data: { user } } = await supabase.auth.getUser()
 
-    if (!user) {
-      return NextResponse.json(
-        { error: '인증이 필요합니다.' },
-        { status: 401 }
-      )
-    }
+  if (!user) {
+    return NextResponse.json(
+      { error: '인증이 필요합니다.' },
+      { status: 401 }
+    )
+  }
+
+  // 디버깅: 사용자 정보 로깅
+  console.log('🔍 TikTok API - User ID:', user.id)
+  console.log('🔍 TikTok API - User Email:', user.email)
 
     // 요청 본문 파싱 및 검증
     const body = await request.json()
@@ -81,26 +85,31 @@ export async function POST(request: NextRequest) {
       }
       const requiredCredits = creditCosts[searchRequest.resultsLimit] || 0
 
-      // 크레딧이 필요한 경우에만 예약
+      // 크레딧이 필요한 경우에만 잔액 확인 (예약 시스템 제거)
       if (requiredCredits > 0) {
-        // 크레딧 예약
-        const { data: reservationData, error: reservationError } = await supabase.rpc(
-          'reserve_credits',
-          { 
-            user_id: user.id, 
-            amount: requiredCredits,
-            source: `tiktok_${searchRequest.searchType}_search`
-          }
-        )
+        // 현재 크레딧 상태 확인
+        const { data: creditData, error: creditError } = await supabase
+          .from('credits')
+          .select('balance')
+          .eq('user_id', user.id)
+          .single()
 
-        if (reservationError || !reservationData) {
+        if (creditError || !creditData) {
+          return NextResponse.json(
+            { error: '크레딧 정보를 확인할 수 없습니다.' },
+            { status: 500 }
+          )
+        }
+
+        // 잔여 크레딧 확인 (예약 없이 단순 잔액만 확인)
+        if (creditData.balance < requiredCredits) {
           return NextResponse.json(
             { error: '크레딧이 부족합니다.' },
             { status: 402 }
           )
         }
 
-        transactionId = reservationData.transaction_id
+        console.log(`💰 TikTok 크레딧 사전 확인 완료: 잔액=${creditData.balance}, 필요=${requiredCredits}`)
       }
     }
 
@@ -307,8 +316,18 @@ export async function POST(request: NextRequest) {
             .eq('platform', 'tiktok')
             .eq('search_type', 'keyword')
             .eq('results_count', 0) // 키워드 저장용 더미 레코드만 삭제
-            .eq('credits_used', 0)
+            .is('credits_used', null) // null로 구분
             .lt('created_at', twoDaysAgo)
+          
+          // 기존 동일 키워드 더미 레코드 삭제 (중복 방지)
+          await svc.from('platform_searches')
+            .delete()
+            .eq('user_id', user.id)
+            .eq('platform', 'tiktok')
+            .eq('search_type', 'keyword')
+            .eq('keyword', searchRequest.query.trim())
+            .eq('results_count', 0) // 키워드 저장용 더미 레코드만 삭제
+            .is('credits_used', null) // null로 구분
           
           // 최근 키워드 저장 (더미 레코드)
           await svc.from('platform_searches').insert({
@@ -317,7 +336,7 @@ export async function POST(request: NextRequest) {
             search_type: 'keyword',
             keyword: searchRequest.query.trim(),
             results_count: 0, // 키워드 저장만을 위한 더미 count
-            credits_used: 0, // 키워드 저장만을 위한 더미 cost
+            credits_used: null, // null로 구분 (관리자 0과 구분)
             created_at: new Date().toISOString()
           })
         }
@@ -403,6 +422,75 @@ export async function POST(request: NextRequest) {
         } : null,
         debug: response.debug
       })
+
+      // ==========================================
+      // 🔄 단순화된 후처리 로직 (TikTok)
+      // ==========================================
+      
+      // 1. 동적 크레딧 계산
+      const actualCreditsUsed = isAdmin ? 0 : Math.floor((response.items?.length || 0) / 30) * 100 // TikTok은 100크레딧
+      console.log(`💰 TikTok 실제 크레딧 사용량: ${actualCreditsUsed} (결과 수: ${response.items?.length || 0})`)
+      
+      // 2. A. 사용자 크레딧 차감 (credits 테이블 직접 UPDATE)
+      if (!isAdmin && actualCreditsUsed > 0) {
+        try {
+          // 현재 크레딧 조회 후 차감
+          const { data: currentCredits } = await supabase
+            .from('credits')
+            .select('balance')
+            .eq('user_id', user.id)
+            .single()
+          
+          if (currentCredits) {
+            const newBalance = Math.max(0, currentCredits.balance - actualCreditsUsed)
+            
+            console.log(`💰 TikTok 크레딧 차감 세부사항:`, {
+              사용자ID: user.id,
+              현재잔액: currentCredits.balance,
+              실제사용: actualCreditsUsed,
+              새잔액: newBalance
+            })
+            
+            const { error: creditError } = await supabase
+              .from('credits')
+              .update({ 
+                balance: newBalance
+              })
+              .eq('user_id', user.id)
+            
+            if (creditError) {
+              console.error('❌ TikTok 크레딧 차감 실패:', creditError)
+            } else {
+              console.log(`✅ TikTok 크레딧 차감 성공: ${actualCreditsUsed}`)
+            }
+          }
+        } catch (error) {
+          console.error('❌ TikTok 크레딧 차감 오류:', error)
+        }
+      }
+      
+      // 2. B. 검색 기록 저장 (search_history 테이블 직접 INSERT)
+      try {
+        const { error: logError } = await supabase
+          .from('search_history')
+          .insert({
+            user_id: user.id,
+            platform: 'tiktok', // 플랫폼 명시
+            search_type: searchRequest.searchType || 'hashtag',
+            keyword: searchRequest.query || '',
+            filters: searchRequest.filters || {},
+            results_count: response.items?.length || 0,
+            credits_used: actualCreditsUsed
+          })
+        
+        if (logError) {
+          console.error('❌ TikTok 검색 기록 저장 실패:', logError)
+        } else {
+          console.log('✅ TikTok 검색 기록 저장 성공 (search_history)')
+        }
+      } catch (error) {
+        console.error('❌ TikTok 검색 기록 저장 오류:', error)
+      }
 
       return NextResponse.json(response)
 

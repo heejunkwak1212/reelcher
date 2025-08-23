@@ -75,4 +75,35 @@ export const certificationRequests = pgTable('certification_requests', {
   createdAt: timestamp('created_at').defaultNow(),
 })
 
+// 정확한 검색 통계를 위한 카운터 테이블
+export const searchCounters = pgTable('search_counters', {
+  userId: uuid('user_id').primaryKey(),
+  todayCount: integer('today_count').default(0).notNull(),
+  monthCount: integer('month_count').default(0).notNull(),
+  todayDate: text('today_date').notNull(), // YYYY-MM-DD 형식
+  monthStart: text('month_start').notNull(), // YYYY-MM-01 형식
+  updatedAt: timestamp('updated_at').defaultNow(),
+})
+
+export const platformSearches = pgTable('platform_searches', {
+  id: serial('id').primaryKey(),
+  userId: uuid('user_id').notNull(),
+  platform: text('platform').notNull(), // youtube, tiktok, instagram
+  searchType: text('search_type'),
+  keyword: text('keyword'),
+  url: text('url'),
+  filters: text('filters'), // JSON 필터 정보
+  resultsCount: integer('results_count'),
+  creditsUsed: integer('credits_used'),
+  createdAt: timestamp('created_at').defaultNow(),
+})
+
+export const monthlyCreditsUsage = pgTable('monthly_credit_usage', {
+  userId: uuid('user_id').primaryKey(),
+  monthStart: text('month_start').notNull(), // YYYY-MM-01 형식
+  totalCreditsUsed: integer('total_credits_used').default(0),
+  searchCount: integer('search_count').default(0),
+  updatedAt: timestamp('updated_at').defaultNow(),
+})
+
 

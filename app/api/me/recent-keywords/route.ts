@@ -1,57 +1,80 @@
+import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabase/server'
-import { supabaseService } from '@/lib/supabase/service'
 
 export const runtime = 'nodejs'
 
-export async function POST(req: Request) {
+export async function GET(request: NextRequest) {
   try {
-    const ssr = await supabaseServer()
-    const { data: { user } } = await ssr.auth.getUser()
-    if (!user) return new Response('Unauthorized', { status: 401 })
+    const supabase = await supabaseServer()
     
-    const body = await req.json()
-    const { keyword, platform } = body
+    // 사용자 인증 확인
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
     
-    if (!keyword || !platform) {
-      return new Response('Missing keyword or platform', { status: 400 })
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: '인증이 필요합니다.' },
+        { status: 401 }
+      )
     }
-    
-    const svc = supabaseService()
-    
-    // 2일 이상된 키워드 기록 정리 (키워드 저장용 records만)
+
+    // search_history 테이블에서 최근 키워드 조회 (2일 이내, 중복 제거, 최신순)
     const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
-    try {
-      await svc.from('platform_searches')
-        .delete()
-        .eq('user_id', user.id)
-        .eq('results_count', 0) // 키워드 저장용 더미 레코드만 삭제
-        .eq('credits_used', 0)
-        .lt('created_at', twoDaysAgo)
-    } catch (cleanupError) {
-      console.warn('Failed to cleanup old keywords:', cleanupError)
+    
+    const { data: recentKeywords, error: keywordsError } = await supabase
+      .from('search_history')
+      .select('keyword, platform, search_type, created_at')
+      .eq('user_id', user.id)
+      .gte('created_at', twoDaysAgo)
+      .not('keyword', 'is', null)
+      .neq('keyword', '')
+      .order('created_at', { ascending: false })
+    
+    if (keywordsError) {
+      console.error('최근 키워드 조회 실패:', keywordsError)
+      return NextResponse.json(
+        { error: '최근 키워드 조회 중 오류가 발생했습니다.' },
+        { status: 500 }
+      )
     }
     
-    // platform_searches 테이블에 키워드 저장 (통계용)
-    const { error } = await svc.from('platform_searches').insert({
-      user_id: user.id,
-      platform: platform,
-      search_type: 'keyword',
-      keyword: keyword.trim(),
-      results_count: 0, // 키워드 저장만을 위한 더미 count
-      credits_used: 0, // 키워드 저장만을 위한 더미 cost
-      created_at: new Date().toISOString()
+    // 중복 제거 (키워드 기준) 및 최신순 정렬
+    const uniqueKeywords = []
+    const seenKeywords = new Set()
+    
+    for (const record of recentKeywords || []) {
+      if (!seenKeywords.has(record.keyword)) {
+        seenKeywords.add(record.keyword)
+        uniqueKeywords.push({
+          keyword: record.keyword,
+          platform: record.platform,
+          search_type: record.search_type,
+          created_at: record.created_at
+        })
+      }
+    }
+    
+    const result = {
+      success: true,
+      recent: uniqueKeywords // 48시간 이내 모든 키워드 반환 (클라이언트에서 페이지네이션)
+    }
+    
+    console.log('🔑 /api/me/recent-keywords 응답:', {
+      total: uniqueKeywords.length,
+      returned: result.recent.length,
+      keywords: result.recent.map(k => k.keyword)
     })
     
-    if (error) {
-      console.error('Failed to save keyword:', error)
-      // 키워드 저장 실패는 치명적이지 않으므로 성공으로 처리
-      // 대부분 중복이나 제약 조건 위반으로 인한 것
-    }
+    const response = NextResponse.json(result)
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate')
+    response.headers.set('Pragma', 'no-cache')
+    response.headers.set('Expires', '0')
+    return response
     
-    console.log(`Keyword saved successfully: ${keyword} for platform ${platform}`)
-    return Response.json({ success: true })
   } catch (error) {
-    console.error('POST /api/me/recent-keywords error:', error)
-    return new Response('Bad Request', { status: 400 })
+    console.error('최근 키워드 API 오류:', error)
+    return NextResponse.json(
+      { error: '최근 키워드 조회 중 오류가 발생했습니다.' },
+      { status: 500 }
+    )
   }
 }

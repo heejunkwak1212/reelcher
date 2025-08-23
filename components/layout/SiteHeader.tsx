@@ -32,7 +32,7 @@ export default function SiteHeader() {
     <header className="sticky top-0 z-40 backdrop-blur supports-[backdrop-filter]:bg-white/70 border-b border-gray-200">
       <div className="max-w-6xl mx-auto px-4 h-16 grid grid-cols-3 items-center">
         <div className="flex items-center gap-2">
-          <Link href="/" prefetch={true} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+          <Link href="/" prefetch={true} className="flex items-center gap-0.05 hover:opacity-80 transition-opacity">
             <picture>
               <source srcSet="/logo.svg" type="image/svg+xml" />
               <source srcSet="/favicon-64x64.png" type="image/png" />

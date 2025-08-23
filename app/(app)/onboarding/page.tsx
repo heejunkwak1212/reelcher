@@ -53,9 +53,9 @@ export default function OnboardingPage() {
       
       toast({
         title: '온보딩 완료',
-        description: '환영합니다! 본인인증을 진행해주세요.',
+        description: '환영합니다! 릴처를 시작해보세요.',
       })
-      router.replace('/verify')
+      router.replace('/dashboard')
     } catch (e) {
       toast({
         title: '오류',

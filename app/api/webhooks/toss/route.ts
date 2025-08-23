@@ -8,10 +8,13 @@ export const runtime = 'nodejs'
 
 const tossSchema = z.object({
   eventType: z.string(),
-  orderId: z.string(),
-  userId: z.string(),
-  amount: z.number().int().nonnegative(),
-
+  data: z.object({
+    paymentKey: z.string(),
+    orderId: z.string(),
+    amount: z.number().int().nonnegative(),
+    status: z.string(),
+    customerKey: z.string().optional(),
+  })
 })
 
 function verifySignature(req: Request, body: string) {
@@ -28,8 +31,26 @@ export async function POST(req: Request) {
     if (!verifySignature(req, bodyText)) return new Response('Invalid signature', { status: 401 })
     const payload = tossSchema.parse(JSON.parse(bodyText))
 
-    // Idempotency: use orderId as natural key via upsert-like safe update
-    // Top-up 기능 제거됨, 구독 플랜에서만 크레딧 지급
+    // 토스 웹훅 이벤트 처리
+    console.log('Toss webhook received:', payload)
+    
+    const { eventType, data } = payload
+    const { orderId, amount, status, paymentKey } = data
+    
+    // 결제 완료 이벤트 처리
+    if (eventType === 'PAYMENT_STATUS_CHANGED' && status === 'DONE') {
+      console.log(`Payment completed: orderId=${orderId}, amount=${amount}`)
+      
+      // 구독 결제인 경우 (orderId가 subscription_으로 시작)
+      if (orderId.startsWith('subscription_')) {
+        // 이미 자동결제 API에서 크레딧 지급이 처리되므로 여기서는 로그만 기록
+        console.log(`Subscription payment confirmed via webhook: ${orderId}`)
+      }
+      
+      // 멱등성을 위해 orderId로 중복 처리 방지
+      // 실제 구현에서는 processed_orders 테이블 등으로 관리할 수 있음
+    }
+    
     return Response.json({ ok: true })
   } catch (e) {
     const err: any = e

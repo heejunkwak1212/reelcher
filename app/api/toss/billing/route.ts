@@ -48,10 +48,48 @@ export async function PUT(req: Request) {
       if (!s.billing_key || s.status !== 'active') continue
       const delta = planToCredits[s.plan as keyof typeof planToCredits] || 0
       if (!delta) continue
-      // Here you would call Toss auto-pay API with s.billing_key; we skip in sample
-      const { data: cr } = await svc.from('credits').select('balance,reserved').eq('user_id', s.user_id).single()
-      await svc.from('credits').upsert({ user_id: s.user_id as any, balance: (cr?.balance || 0) + delta, reserved: cr?.reserved || 0 })
-      await svc.from('subscriptions').update({ renewed_at: now.toISOString(), next_charge_at: next.toISOString() }).eq('user_id', s.user_id)
+      // 토스 공식 가이드에 따른 빌링키로 자동결제 승인
+      const planToPrices: Record<string, number> = { starter: 19000, pro: 49000, business: 119000 }
+      const amount = planToPrices[s.plan as keyof typeof planToPrices] || 0
+      
+      if (amount > 0) {
+        const secret = process.env.TOSS_SECRET_KEY
+        if (!secret) continue
+        
+        const orderId = `subscription_${s.user_id}_${Date.now()}`
+        const auth = Buffer.from(`${secret}:`).toString('base64')
+        
+        try {
+          // 빌링키로 자동결제 승인 API 호출
+          const paymentRes = await fetch(`https://api.tosspayments.com/v1/billing/${s.billing_key}`, {
+            method: 'POST',
+            headers: { 'Authorization': `Basic ${auth}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              customerKey: `customer_${s.user_id}`,
+              amount: amount,
+              orderId: orderId,
+              orderName: `릴처 ${s.plan.toUpperCase()} 플랜 월 구독료`
+            })
+          })
+          
+          if (!paymentRes.ok) {
+            console.error(`Auto payment failed for user ${s.user_id}:`, await paymentRes.text())
+            continue
+          }
+          
+          const paymentResult = await paymentRes.json()
+          console.log(`Auto payment success for user ${s.user_id}:`, paymentResult)
+          
+          // 결제 성공 시에만 크레딧 지급 및 구독 갱신
+          const { data: cr } = await svc.from('credits').select('balance,reserved').eq('user_id', s.user_id).single()
+          await svc.from('credits').upsert({ user_id: s.user_id as any, balance: (cr?.balance || 0) + delta, reserved: cr?.reserved || 0 })
+          await svc.from('subscriptions').update({ renewed_at: now.toISOString(), next_charge_at: next.toISOString() }).eq('user_id', s.user_id)
+        } catch (error) {
+          console.error(`Auto payment error for user ${s.user_id}:`, error)
+          // 결제 실패 시 구독 상태를 일시정지로 변경할 수 있음
+          // await svc.from('subscriptions').update({ status: 'payment_failed' }).eq('user_id', s.user_id)
+        }
+      }
     }
     return Response.json({ ok: true })
   } catch {

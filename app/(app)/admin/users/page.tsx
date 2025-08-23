@@ -15,22 +15,19 @@ export default function AdminUsers() {
   const q = useQuery({
     queryKey: ['admin-users', page],
     queryFn: async () => {
-      const res = await fetch(`/api/admin/users?page=${page}&pageSize=50`, { cache: 'no-store' })
+      const res = await fetch(`/api/admin/users`, { 
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' }
+      })
       if (!res.ok) throw new Error('load failed')
       return res.json() as Promise<{ 
-        items: any[]; 
-        profiles: any[]; 
-        credits: any[]; 
-        searchStats: Record<string, { totalCost: number; searchCount: number }>; 
-        total: number 
+        users: any[]; 
+        totalUsers: number;
       }>
     },
   })
   
-  const rows = q.data?.items || []
-  const profiles = q.data?.profiles || []
-  const credits = q.data?.credits || []
-  const searchStats = q.data?.searchStats || {}
+  const users = q.data?.users || []
   
   // Delete user mutation
   const deleteUserMutation = useMutation({
@@ -62,11 +59,6 @@ export default function AdminUsers() {
     }
   })
   
-  // Helper functions
-  const getProfile = (userId: string) => profiles.find(p => p.user_id === userId)
-  const getCredits = (userId: string) => credits.find(c => c.user_id === userId)
-  const getSearchStats = (userId: string) => searchStats[userId] || { totalCost: 0, searchCount: 0 }
-  
   const handleDeleteUser = (userId: string, userEmail: string) => {
     if (confirm(`정말로 사용자 "${userEmail}"를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`)) {
       setDeletingUserId(userId)
@@ -95,7 +87,7 @@ export default function AdminUsers() {
           }}>관리자 추가</button>
         </div>
       </div>
-      <div className="text-sm text-gray-600">총 {q.data?.total ?? 0}명</div>
+      <div className="text-sm text-gray-600">총 {q.data?.totalUsers ?? 0}명</div>
       <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
@@ -107,58 +99,51 @@ export default function AdminUsers() {
                 <th className="p-3 text-left w-28 font-medium text-gray-700">전화번호</th>
                 <th className="p-3 text-left w-20 font-medium text-gray-700">인증</th>
                 <th className="p-3 text-left w-16 font-medium text-gray-700">잔액</th>
-                <th className="p-3 text-left w-20 font-medium text-gray-700">사용량</th>
+                <th className="p-3 text-left w-20 font-medium text-gray-700">사용 크레딧</th>
                 <th className="p-3 text-left w-16 font-medium text-gray-700">검색수</th>
                 <th className="p-3 text-left w-24 font-medium text-gray-700">Created</th>
                 <th className="p-3 text-left w-20 font-medium text-gray-700">액션</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((u) => {
-                const profile = getProfile(u.id)
-                const credit = getCredits(u.id)
-                const stats = getSearchStats(u.id)
+              {users.map((u) => {
                 return (
-                  <tr key={u.id} className="border-b border-gray-100 hover:bg-gray-50">
+                  <tr key={u.user_id} className="border-b border-gray-100 hover:bg-gray-50">
                     <td className="p-3 whitespace-nowrap text-xs font-mono text-gray-500">
-                      {u.id.slice(-8)}
+                      {u.user_id.slice(-8)}
                     </td>
-                    <td className="p-3 text-gray-900">{u.email || '-'}</td>
+                    <td className="p-3 text-gray-900">{u.email || u.user_id || '-'}</td>
                     <td className="p-3">
                       <div className="flex items-center gap-1">
                         <User className="h-3 w-3 text-gray-400" />
-                        <span className="text-xs text-gray-600">{profile?.display_name || '-'}</span>
+                        <span className="text-xs text-gray-600">{u.display_name || '-'}</span>
                       </div>
                     </td>
                     <td className="p-3">
                       <div className="flex items-center gap-1">
                         <Phone className="h-3 w-3 text-gray-400" />
-                        <span className="text-xs text-gray-600">{profile?.phone_number || '-'}</span>
+                        <span className="text-xs text-gray-600">-</span>
                       </div>
                     </td>
                     <td className="p-3 text-center">
-                      {profile?.is_verified ? (
-                        <ShieldCheck className="h-4 w-4 text-green-500 mx-auto" />
-                      ) : (
-                        <Shield className="h-4 w-4 text-gray-400 mx-auto" />
-                      )}
+                      <Shield className="h-4 w-4 text-gray-400 mx-auto" />
                     </td>
                     <td className="p-3 text-right text-xs text-gray-600">
-                      {(credit?.balance || 0).toLocaleString()}
+                      {(u.credits_balance || 0).toLocaleString()}
                     </td>
                     <td className="p-3 text-right font-medium text-xs text-gray-900">
-                      {stats.totalCost.toLocaleString()}
+                      {(u.month_credits_used || 0).toLocaleString()}
                     </td>
                     <td className="p-3 text-center text-xs text-gray-600">
-                      {stats.searchCount}
+                      {u.total_searches || 0}
                     </td>
                     <td className="p-3 whitespace-nowrap text-xs text-gray-500">
                       {u.created_at ? new Date(u.created_at).toLocaleDateString('ko-KR') : '-'}
                     </td>
                     <td className="p-3 text-center">
                       <button
-                        onClick={() => handleDeleteUser(u.id, u.email)}
-                        disabled={deletingUserId === u.id}
+                        onClick={() => handleDeleteUser(u.user_id, u.user_id)}
+                        disabled={deletingUserId === u.user_id}
                         className="h-7 w-7 p-0 border border-gray-200 rounded-md bg-white hover:bg-red-50 hover:border-red-200 transition-colors flex items-center justify-center"
                       >
                         <Trash2 className="h-3 w-3 text-gray-500 hover:text-red-500" />
@@ -174,7 +159,7 @@ export default function AdminUsers() {
       <div className="flex items-center justify-end gap-2">
         <button className="px-3 py-1.5 border border-gray-200 rounded-md bg-white text-sm hover:bg-gray-50 transition-colors" onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={page<=1}>이전</button>
         <span className="text-sm text-gray-600 px-2">{page}</span>
-        <button className="px-3 py-1.5 border border-gray-200 rounded-md bg-white text-sm hover:bg-gray-50 transition-colors" onClick={()=>setPage(p=>p+1)} disabled={(rows.length||0) < 50}>다음</button>
+        <button className="px-3 py-1.5 border border-gray-200 rounded-md bg-white text-sm hover:bg-gray-50 transition-colors" onClick={()=>setPage(p=>p+1)} disabled={(users.length||0) < 50}>다음</button>
       </div>
     </div>
   )

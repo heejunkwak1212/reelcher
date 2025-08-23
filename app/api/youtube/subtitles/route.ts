@@ -19,9 +19,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '로그인이 필요합니다' }, { status: 401 })
     }
 
-    // 사용자 정보 확인 (관리자 체크)
+    // 사용자 정보 확인 (관리자 체크) - profiles 테이블 사용
     const { data: userData, error: userError } = await supabase
-      .from('users')
+      .from('profiles')
       .select('role')
       .eq('user_id', user.id)
       .single()
@@ -33,24 +33,30 @@ export async function POST(req: NextRequest) {
     if (!isAdmin) {
       const requiredCredits = 10 // 유튜브 자막 추출: 10 크레딧
 
-      // 크레딧 예약
-      const { data: reservationData, error: reservationError } = await supabase.rpc(
-        'reserve_credits',
-        { 
-          user_id: user.id, 
-          amount: requiredCredits,
-          source: 'youtube_subtitle_extraction'
-        }
-      )
+      // 현재 크레딧 상태 확인
+      const { data: creditData, error: creditError } = await supabase
+        .from('credits')
+        .select('balance, reserved')
+        .eq('user_id', user.id)
+        .single()
 
-      if (reservationError || !reservationData) {
+      if (creditError || !creditData) {
+        return NextResponse.json(
+          { error: '크레딧 정보를 확인할 수 없습니다.' },
+          { status: 500 }
+        )
+      }
+
+      // 사용 가능한 크레딧 확인 (예약 시스템 제거)
+      if (creditData.balance < requiredCredits) {
         return NextResponse.json(
           { error: '크레딧이 부족합니다.' },
           { status: 402 }
         )
       }
 
-      transactionId = reservationData.transaction_id
+      console.log(`💰 YouTube 자막 추출 크레딧 사전 확인 완료: 잔액=${creditData.balance}, 필요=${requiredCredits}`)
+      transactionId = `youtube_subtitles_${Date.now()}_${requiredCredits}`
     }
 
     // 자막 추출 쿨다운 체크 (30초)
@@ -110,9 +116,63 @@ export async function POST(req: NextRequest) {
     // 성공 로깅
     console.log(`[YouTube Subtitle] 성공 - User: ${user.id}, Length: ${result.subtitles?.length || 0}자`)
 
-    // 크레딧 커밋 (관리자가 아닌 경우)
+    // 크레딧 차감 (관리자가 아닌 경우)
     if (!isAdmin && transactionId) {
-      await supabase.rpc('commit_credits', { transaction_id: transactionId })
+      try {
+        const requiredCredits = 10
+        
+        // 현재 크레딧 조회 후 차감
+        const { data: currentCredits } = await supabase
+          .from('credits')
+          .select('balance')
+          .eq('user_id', user.id)
+          .single()
+        
+        if (currentCredits) {
+          const newBalance = Math.max(0, currentCredits.balance - requiredCredits)
+          
+          console.log(`💰 YouTube 자막 추출 크레딧 차감 세부사항:`, {
+            사용자ID: user.id,
+            현재잔액: currentCredits.balance,
+            실제사용: requiredCredits,
+            새잔액: newBalance
+          })
+          
+          await supabase
+            .from('credits')
+            .update({ 
+              balance: newBalance
+            })
+            .eq('user_id', user.id)
+        }
+        
+        console.log(`✅ YouTube 자막 추출 크레딧 차감 성공: ${requiredCredits}`)
+        
+        // 자막 추출 기록 저장 (search_history 테이블)
+        try {
+          const { error: logError } = await supabase
+            .from('search_history')
+            .insert({
+              user_id: user.id,
+              platform: 'youtube',
+              search_type: 'subtitle_extraction',
+              keyword: url, // URL을 키워드로 저장
+              filters: {},
+              results_count: 1, // 자막 추출은 1건으로 카운트
+              credits_used: requiredCredits
+            })
+          
+          if (logError) {
+            console.error('❌ YouTube 자막 추출 기록 저장 실패:', logError)
+          } else {
+            console.log(`✅ YouTube 자막 추출 기록 저장 성공`)
+          }
+        } catch (error) {
+          console.error('❌ YouTube 자막 추출 기록 저장 오류:', error)
+        }
+      } catch (error) {
+        console.error('❌ YouTube 자막 추출 크레딧 차감 실패:', error)
+      }
     }
 
     // YouTube 자막 추출 기록 저장 (platform_searches 테이블)

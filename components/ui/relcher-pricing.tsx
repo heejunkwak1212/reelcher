@@ -99,7 +99,7 @@ export function RelcherPricing({
     setPendingPlan(null);
   };
 
-  // 토스페이 호출 함수
+  // 토스페이 호출 함수 - 본인정보 입력을 포함한 빌링키 발급
   const openToss = async (plan: 'starter' | 'pro' | 'business') => {
     try {
       const anyWin = window as any;
@@ -113,7 +113,7 @@ export function RelcherPricing({
           }
           const s = document.createElement('script');
           s.id = id;
-          s.src = 'https://js.tosspayments.com/v1';
+          s.src = 'https://js.tosspayments.com/v2/standard';
           s.async = true;
           s.defer = true;
           s.onload = () => resolve();
@@ -126,18 +126,33 @@ export function RelcherPricing({
         alert('NEXT_PUBLIC_TOSS_CLIENT_KEY가 설정되지 않았습니다'); 
         return;
       }
+      
       const me = await fetch('/api/me', { cache: 'no-store' }).then(r => r.json());
-      const customerKey = me?.id || 'user';
+      // 토스 공식 가이드 준수 - 사용자별 일관된 customerKey 사용
+      const customerKey = me?.id ? `user_${me.id}` : `guest_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+      
+      // V2 SDK 초기화 (토스 공식 가이드 준수)
       const tossPayments = anyWin.TossPayments(clientKey);
       const origin = window.location.origin;
-      // Redirect flow: Toss 결제창 → successUrl(우리)로 돌아오면 authKey를 받아 서버에서 billingKey 발급
-      await tossPayments.requestBillingAuth('카드', {
-        customerKey,
-        successUrl: `${origin}/toss/billing/return?plan=${plan}`,
-        failUrl: `${origin}/toss/fail`
+      
+      console.log('Starting billing auth with customerKey:', customerKey);
+      console.log('TossPayments object:', tossPayments);
+      
+      // payment 인스턴스 생성 (V2 SDK 방식)
+      const payment = tossPayments.payment({
+        customerKey: customerKey
+      });
+      
+      // 빌링키 발급 요청 (토스 공식 가이드 100% 준수)
+      await payment.requestBillingAuth({
+        method: "CARD", // 자동결제(빌링)는 카드만 지원합니다
+        successUrl: `${origin}/toss/billing/return?plan=${plan}&customerKey=${customerKey}`,
+        failUrl: `${origin}/pricing?error=billing_failed&plan=${plan}`,
+        customerEmail: me.email || "customer123@gmail.com",
+        customerName: me.display_name || "김토스"
       });
     } catch (e) {
-      console.error(e);
+      console.error('Toss billing auth error:', e);
       alert('결제창 호출에 실패했습니다');
     }
   };

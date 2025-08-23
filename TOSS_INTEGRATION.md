@@ -1,8 +1,22 @@
-# 토스 본인인증 통합 가이드
+# 본인인증 통합 가이드 (현재 비활성화)
 
-## 🔵 **토스 인증 활성화 방법**
+## 🔴 **현재 상태: 모든 본인인증 비활성화**
 
-현재 토스 인증은 비용 문제로 비활성화되어 있습니다. 필요시 아래 단계를 따라 활성화할 수 있습니다.
+카카오와 토스 본인인증 모두 고정비/변동비 부담으로 현재 비활성화되어 있습니다.
+
+### 💰 **비용 현황**
+- **카카오 인증**: 월 10만원 고정비 + 150-200원/건
+- **토스 인증**: 월 고정비 없음 + 300-500원/건  
+
+### 📋 **비활성화된 컴포넌트들**
+- ✅ `components/auth/VerificationModal.tsx` - 토스 버튼 숨김
+- ✅ `app/(app)/verify/page.tsx` - 토스 버튼 숨김
+- ✅ 카카오 인증 관련 API 라우트 비활성화
+- ✅ 토스 인증 관련 API 라우트 비활성화
+
+---
+
+## 🔵 **토스 인증 활성화 방법** (추후 필요시)
 
 ### 1. 환경 변수 설정
 
@@ -16,7 +30,7 @@ TOSS_CLIENT_SECRET=your_toss_client_secret_here
 
 **`components/auth/VerificationModal.tsx`**
 ```tsx
-// 201-205행의 주석을 해제하세요
+// 토스 버튼 활성화 (현재 주석 처리됨)
 <Button onClick={() => setShowTossModal(true)} className="flex-1 bg-blue-600 hover:bg-blue-700">
   토스로 인증하기
 </Button>
@@ -24,12 +38,39 @@ TOSS_CLIENT_SECRET=your_toss_client_secret_here
 
 **`app/(app)/verify/page.tsx`**
 ```tsx
-// 73-83행의 주석을 해제하세요
+// 토스 버튼 활성화 (현재 주석 처리됨)
 <Button
   onClick={handleTossVerification}
   className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
 >
   토스로 인증하기
+</Button>
+```
+
+## 🟡 **카카오 인증 활성화 방법** (추후 필요시)
+
+### 1. 카카오 개발자센터 설정
+- 월 10만원 고정비 결제
+- 간편인증 API 신청 및 승인
+- Client ID/Secret 발급
+
+### 2. 환경 변수 설정
+```bash
+# .env.local
+KAKAO_CLIENT_ID=your_kakao_client_id
+KAKAO_CLIENT_SECRET=your_kakao_client_secret
+```
+
+### 3. API 라우트 활성화
+- `app/api/auth/kakao-cert/` 폴더 내 파일들 활성화
+- 각 파일 상단의 비활성화 주석 제거
+
+### 4. UI 컴포넌트 활성화
+**`components/auth/VerificationModal.tsx`**
+```tsx
+// 카카오 버튼 활성화 (현재 숨김 처리됨)
+<Button onClick={() => setShowKakaoModal(true)} className="flex-1 bg-yellow-500 hover:bg-yellow-600">
+  카카오로 인증하기  
 </Button>
 ```
 

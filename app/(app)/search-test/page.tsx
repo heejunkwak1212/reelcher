@@ -337,10 +337,8 @@ function SearchTestPageContent() {
   const [searchType, setSearchType] = useState<'keyword' | 'url' | 'profile'>('keyword')
   const [expandedTitleRow, setExpandedTitleRow] = useState<string | null>(null) // 확장된 제목 행 관리
   
-  // 본인인증 관련 상태
-  const { isVerified } = useAuthStore()
-  const [showVerificationModal, setShowVerificationModal] = useState(false)
-  const [pendingSearchAction, setPendingSearchAction] = useState<(() => void) | null>(null)
+  // 본인인증 관련 상태 (비활성화됨 - 하드코딩으로 대체)
+  const isVerified = true // 본인인증 비활성화로 인해 항상 true로 설정
 
   // 전역 오류 처리
   useEffect(() => {
@@ -450,11 +448,19 @@ function SearchTestPageContent() {
   const [minViews, setMinViews] = useState<number>(0)
   const [period, setPeriod] = useState<'day' | 'week' | 'month' | 'month2' | 'month3' | 'month6' | 'year' | 'all'>('month2')
   
-  // YouTube API 키 관리
+  // YouTube API 키 관리 (Supabase 기반)
   const [youtubeApiKey, setYoutubeApiKey] = useState<string>('')
   const [savedApiKeysOpen, setSavedApiKeysOpen] = useState(false)
-  const [savedApiKeys, setSavedApiKeys] = useState<string[]>([])
+  const [savedApiKeys, setSavedApiKeys] = useState<Array<{
+    id: string
+    platform: string
+    api_key: string
+    key_name?: string
+    is_active: boolean
+    created_at: string
+  }>>([])
   const [newApiKey, setNewApiKey] = useState<string>('')
+  const [newApiKeyName, setNewApiKeyName] = useState<string>('')
   
   // TikTok 전용 필터
   const [minLikes, setMinLikes] = useState<number>(0)
@@ -596,70 +602,119 @@ function SearchTestPageContent() {
     }
   }
 
-  // Load saved API keys from localStorage on mount
+  // Load saved API keys from Supabase on mount
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('reelcher.youtube.savedApiKeys')
-      if (saved) {
-        try {
-          const keys = JSON.parse(saved)
-          if (Array.isArray(keys)) {
-            setSavedApiKeys(keys)
-          }
-        } catch (e) {
-          console.error('Failed to parse saved API keys:', e)
-        }
-      }
-      
-      // Load last used API key
-      const lastKey = localStorage.getItem('reelcher.youtube.lastApiKey')
-      if (lastKey) {
-        setYoutubeApiKey(lastKey)
-      }
-    }
+    loadApiKeys()
   }, [])
 
-  // API 키 관련 유틸리티 함수들
-  const saveApiKeys = (keys: string[]) => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('reelcher.youtube.savedApiKeys', JSON.stringify(keys))
-      setSavedApiKeys(keys)
+  const loadApiKeys = async () => {
+    try {
+      const response = await fetch('/api/user-api-keys?platform=youtube')
+      if (response.ok) {
+        const { apiKeys } = await response.json()
+        setSavedApiKeys(apiKeys || [])
+        
+        // 활성화된 키가 있으면 자동으로 설정
+        const activeKey = apiKeys?.find((key: any) => key.is_active)
+        if (activeKey) {
+          setYoutubeApiKey(activeKey.api_key)
+        }
+      }
+    } catch (error) {
+      console.error('API 키 로딩 오류:', error)
     }
   }
 
-  const saveLastUsedApiKey = (key: string) => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('reelcher.youtube.lastApiKey', key)
-    }
-  }
-
-  const addNewApiKey = () => {
+  // API 키 관련 유틸리티 함수들 (Supabase 기반)
+  const addNewApiKey = async () => {
     if (!newApiKey.trim()) {
       alert('API 키를 입력해주세요.')
       return
     }
     
     const trimmedKey = newApiKey.trim()
-    if (savedApiKeys.includes(trimmedKey)) {
+    if (savedApiKeys.some(key => key.api_key === trimmedKey)) {
       alert('이미 저장된 API 키입니다.')
       return
     }
     
-    const updatedKeys = [...savedApiKeys, trimmedKey]
-    saveApiKeys(updatedKeys)
-    setNewApiKey('')
-    alert('API 키가 저장되었습니다.')
+    try {
+      const response = await fetch('/api/user-api-keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          platform: 'youtube',
+          apiKey: trimmedKey,
+          keyName: newApiKeyName.trim() || undefined
+        })
+      })
+      
+      const result = await response.json()
+      if (response.ok) {
+        setNewApiKey('')
+        setNewApiKeyName('')
+        alert(result.message)
+        await loadApiKeys() // 목록 새로고침
+        setYoutubeApiKey(trimmedKey) // 새 키로 자동 설정
+      } else {
+        alert(result.error || 'API 키 저장에 실패했습니다.')
+      }
+    } catch (error) {
+      console.error('API 키 저장 오류:', error)
+      alert('API 키 저장 중 오류가 발생했습니다.')
+    }
   }
 
-  const deleteApiKey = (keyToDelete: string) => {
-    const updatedKeys = savedApiKeys.filter(key => key !== keyToDelete)
-    saveApiKeys(updatedKeys)
+  const deleteApiKey = async (keyId: string) => {
+    try {
+      const response = await fetch('/api/user-api-keys', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: keyId })
+      })
+      
+      const result = await response.json()
+      if (response.ok) {
+        alert(result.message)
+        await loadApiKeys() // 목록 새로고침
+        
+        // 삭제된 키가 현재 사용중이었다면 초기화
+        const deletedKey = savedApiKeys.find(key => key.id === keyId)
+        if (deletedKey && youtubeApiKey === deletedKey.api_key) {
+          setYoutubeApiKey('')
+        }
+      } else {
+        alert(result.error || 'API 키 삭제에 실패했습니다.')
+      }
+    } catch (error) {
+      console.error('API 키 삭제 오류:', error)
+      alert('API 키 삭제 중 오류가 발생했습니다.')
+    }
   }
 
-  const useApiKey = (key: string) => {
-    setYoutubeApiKey(key)
-    saveLastUsedApiKey(key)
-    setSavedApiKeysOpen(false)
+  const useApiKey = async (keyData: { id: string; api_key: string }) => {
+    try {
+      // 해당 키를 활성화
+      const response = await fetch('/api/user-api-keys', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          id: keyData.id,
+          isActive: true 
+        })
+      })
+      
+      if (response.ok) {
+        setYoutubeApiKey(keyData.api_key)
+        setSavedApiKeysOpen(false)
+        await loadApiKeys() // 활성 상태 업데이트
+      }
+    } catch (error) {
+      console.error('API 키 활성화 오류:', error)
+      // 오류가 발생해도 UI에서는 일단 사용
+      setYoutubeApiKey(keyData.api_key)
+      setSavedApiKeysOpen(false)
+    }
   }
 
   // Load user data immediately from Supabase client + API
@@ -681,10 +736,21 @@ function SearchTestPageContent() {
         }
 
         // Second: Fetch full user data from API (background update)
-        const userRes = await fetch('/api/me')
+        const userRes = await fetch('/api/me?scope=search-stats', { 
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache' }
+        })
         if (userRes.ok) {
           const userData = await userRes.json()
+          console.log('✅ 초기 로딩 - 사용자 데이터:', userData)
           setUser(userData)
+          setMyCredits(userData.credits || 0)
+          setTodayCount(userData.today || 0)  // todaySearches → today 수정
+          setMonthCount(userData.month || 0)  // monthSearches → month 수정
+          setMonthCredits(userData.monthCredits || 0)
+          setRecentKeywords(userData.recent || [])  // recentKeywords → recent 수정
+          setIsAdmin(userData.role === 'admin')
+          setPlan(userData.plan || 'free')
         } else if (!session?.user) {
           setUser(null)
         }
@@ -699,6 +765,7 @@ function SearchTestPageContent() {
   const [monthCount, setMonthCount] = useState<number>(0)
   const [recentKeywords, setRecentKeywords] = useState<string[]>([])
   const [monthCredits, setMonthCredits] = useState<number>(0)
+  const [keywordPage, setKeywordPage] = useState(0) // 최근 키워드 페이지네이션
   const [isAdmin, setIsAdmin] = useState<boolean>(false)
   const [plan, setPlan] = useState<'free' | 'starter' | 'pro' | 'business' | string>('free')
   const prevLimitRef = useRef<typeof limit>(limit)
@@ -748,13 +815,46 @@ function SearchTestPageContent() {
   const loadStats = async () => {
     try {
       console.log('Loading stats for platform:', platform)
-      const stats = await fetch('/api/me?scope=search-stats', { cache: 'no-store' }).then(r=>r.ok?r.json():null).catch(()=>null)
-      console.log('Stats loaded:', stats)
-      if (stats) {
-        setTodayCount(Number(stats.today || 0))
-        setMonthCount(Number(stats.month || 0))
-        setMonthCredits(Number(stats.monthCredits || 0))
-        if (Array.isArray(stats.recent)) setRecentKeywords(stats.recent as string[])
+      const cacheHeaders = {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
+      
+      const [statsRes, keywordsRes] = await Promise.all([
+        fetch('/api/me/stats', { cache: 'no-store', headers: cacheHeaders }),
+        fetch('/api/me/recent-keywords', { cache: 'no-store', headers: cacheHeaders })
+      ])
+      
+      // Process stats
+      if (statsRes.ok) {
+        const stats = await statsRes.json()
+        setTodayCount(Number(stats.today_searches || 0))
+        setMonthCount(Number(stats.month_searches || 0)) // 이번달 검색수 추가
+        setMonthCredits(Number(stats.month_credits || 0)) // month_credits는 크레딧 사용량
+        console.log('✅ 통계 데이터 로드 완료:', {
+          today: stats.today_searches,
+          month: stats.month_searches,
+          monthCredits: stats.month_credits
+        })
+      } else {
+        console.warn('⚠️ loadStats 실패, 기본값 설정')
+        setTodayCount(0)
+        setMonthCount(0)
+        setMonthCredits(0)
+      }
+      
+      // Process keywords
+      if (keywordsRes.ok) {
+        const keywords = await keywordsRes.json()
+        if (Array.isArray(keywords.recent)) {
+          const keywordStrings = keywords.recent.map((k: any) => k.keyword).filter(Boolean)
+          setRecentKeywords(keywordStrings)
+          console.log('✅ 최근 키워드 로드 완료:', keywordStrings.length)
+        }
+      } else {
+        console.warn('⚠️ loadStats에서 키워드 로드 실패')
+        // 실패 시 현재 상태 유지 (빈 배열로 리셋하지 않음)
       }
     } catch (error) {
       console.error('Error loading stats:', error)
@@ -762,22 +862,38 @@ function SearchTestPageContent() {
   }
   const loadCredits = async () => {
     try {
-      const res = await fetch('/api/me', { cache: 'no-store' })
+      const res = await fetch('/api/me', { 
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      })
       if (res.ok) {
         const j = await res.json()
         setMyCredits(typeof j?.credits === 'number' ? j.credits : null)
         setIsAdmin(j?.role === 'admin')
         if (j?.plan) setPlan(j.plan)
+        console.log('크레딧 정보 업데이트 완료:', j.credits)
       }
-    } catch {}
+    } catch (error) {
+      console.error('Error loading credits:', error)
+    }
   }
   
   // Combined reload for faster refreshes
   const reloadUserData = async () => {
     try {
+      const cacheHeaders = {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
+      
       const [userRes, statsRes] = await Promise.all([
-        fetch('/api/me', { cache: 'no-store' }),
-        fetch('/api/me?scope=search-stats', { cache: 'no-store' })
+        fetch('/api/me', { cache: 'no-store', headers: cacheHeaders }),
+        fetch('/api/me?scope=search-stats', { cache: 'no-store', headers: cacheHeaders })
       ])
       
       if (userRes.ok) {
@@ -793,8 +909,16 @@ function SearchTestPageContent() {
         setMonthCount(Number(stats.month || 0))
         setMonthCredits(Number(stats.monthCredits || 0))
         if (Array.isArray(stats.recent)) setRecentKeywords(stats.recent as string[])
+        console.log('통합 데이터 로드 완료:', {
+          today: stats.today,
+          month: stats.month,
+          monthCredits: stats.monthCredits,
+          recent: stats.recent?.length || 0
+        })
       }
-    } catch {}
+    } catch (error) {
+      console.error('Error reloading user data:', error)
+    }
   }
   
 
@@ -814,31 +938,77 @@ function SearchTestPageContent() {
     return `${m}:${String(r).padStart(2,'0')}`
   }
 
-  // 본인인증 확인 함수
+  // 검색 전 확인 및 실행 함수
   const checkVerificationAndRun = () => {
-    // 관리자는 본인인증 패스
-    if (isAdmin || isVerified) {
-      run()
-      return
+    // 검색 전 알림 팝업 표시
+    const showSearchConfirmation = () => {
+      return new Promise<boolean>((resolve) => {
+        const modal = document.createElement('div')
+        modal.className = 'fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4'
+        
+        const creditCosts = {
+          instagram: { 30: 100, 60: 200, 90: 300, 120: 400 },
+          youtube: { 30: 50, 60: 100, 90: 150, 120: 200 },
+          tiktok: { 30: 100, 60: 200, 90: 300, 120: 400 }
+        }
+        
+        const platformCosts = creditCosts[platform as keyof typeof creditCosts] || {}
+        const currentCost = (platformCosts as any)[Number(limit)] || 0
+        const platformName = platform === 'youtube' ? 'YouTube' : platform === 'tiktok' ? 'TikTok' : 'Instagram'
+        
+        modal.innerHTML = `
+          <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+            <div class="text-lg font-semibold text-gray-800 mb-3">${platformName} 검색</div>
+            <div class="text-sm text-gray-600 mb-4">
+              ${limit}개 결과를 검색합니다.<br/>
+              <span class="font-medium text-blue-600">${currentCost} 크레딧</span>이 차감됩니다.
+            </div>
+            <div class="flex items-center justify-end gap-3">
+              <button id="cancel-btn" class="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">취소</button>
+              <button id="confirm-btn" class="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">검색 시작</button>
+            </div>
+          </div>
+        `
+        
+        const cancelBtn = modal.querySelector('#cancel-btn')
+        const confirmBtn = modal.querySelector('#confirm-btn')
+        
+        cancelBtn?.addEventListener('click', () => {
+          document.body.removeChild(modal)
+          resolve(false)
+        })
+        
+        confirmBtn?.addEventListener('click', () => {
+          document.body.removeChild(modal)
+          resolve(true)
+        })
+        
+        document.body.appendChild(modal)
+      })
     }
-    setPendingSearchAction(() => run)
-    setShowVerificationModal(true)
+    
+    // 검색 확인 후 실행
+    showSearchConfirmation().then((confirmed) => {
+      if (confirmed) {
+        run()
+      }
+    })
   }
 
-  // 본인인증 성공 시 실행될 함수
-  const handleVerificationSuccess = () => {
-    setShowVerificationModal(false)
-    if (pendingSearchAction) {
-      pendingSearchAction()
-      setPendingSearchAction(null)
-    }
-  }
+  // 본인인증 성공 시 실행될 함수 (비활성화됨)
+  // const handleVerificationSuccess = () => {
+  //   setShowVerificationModal(false)
+  //   if (pendingSearchAction) {
+  //     pendingSearchAction()
+  //     setPendingSearchAction(null)
+  //   }
+  // }
 
-  // 본인인증 모달 닫기 함수
-  const handleVerificationClose = () => {
-    setShowVerificationModal(false)
-    setPendingSearchAction(null)
-  }
+  // 본인인증 모달 닫기 함수 (비활성화됨)
+  // const handleVerificationClose = () => {
+  //   setShowVerificationModal(false)
+  //   setPendingSearchAction(null)
+  // }
 
   const run = async () => {
     // 새 검색 시 페이지 리셋
@@ -863,8 +1033,8 @@ function SearchTestPageContent() {
         return { '30': 100, '60': 200, '90': 300, '120': 400, '5': 0 }[String(limit)] ?? 0
       } else if (platform === 'youtube') {
         if (searchType === 'keyword') {
-          // YouTube 키워드 검색: 기존 체계
-          return { '30': 100, '60': 200, '90': 300, '120': 400, '5': 0 }[String(limit)] ?? 0
+          // YouTube 키워드 검색: 할인된 체계 (Instagram 대비 50% 할인)
+          return { '30': 50, '60': 100, '90': 150, '120': 200, '5': 0 }[String(limit)] ?? 0
         } else {
           // YouTube URL 검색: 새로운 체계
           return { '15': 25, '30': 50, '50': 70, '5': 0 }[String(limit)] ?? 0
@@ -1167,6 +1337,9 @@ function SearchTestPageContent() {
       setRaw(JSON.stringify(json, null, 2))
       finishProgress()
       
+      // 검색 완료 후 즉시 통계 업데이트
+      Promise.all([loadStats(), loadCredits()]).catch(console.warn)
+      
       // 검색 성공 시 최근 키워드를 서버에 저장 (모든 플랫폼, 키워드 검색만, URL 검색 제외)
       console.log(`키워드 저장 조건 체크: arr.length=${arr.length}, searchType=${searchType}, platform=${platform}`)
       if (arr.length > 0 && searchType === 'keyword') {
@@ -1199,9 +1372,6 @@ function SearchTestPageContent() {
           }
         }
       }
-      
-      // Immediately refresh stats and credits after settlement (모든 검색에서 통계 업데이트)
-      await Promise.all([loadStats(), loadCredits()])
       // 환불 안내 (플랫폼별 크레딧 계산)
       try {
         let returned = 0
@@ -1222,19 +1392,19 @@ function SearchTestPageContent() {
           
           if (platform === 'youtube') {
             if (searchType === 'keyword') {
-              // YouTube 키워드 검색: 기존 체계
+              // YouTube 키워드 검색: 할인된 체계 (Instagram 대비 50% 할인)
               if (requested === 30) {
-                actualCredits = Math.round((returned / 30) * 100)
-                reserved = 100
+                actualCredits = Math.round((returned / 30) * 50)
+                reserved = 50
               } else if (requested === 60) {
-                actualCredits = Math.round((returned / 60) * 200)
-                reserved = 200
+                actualCredits = Math.round((returned / 60) * 100)
+                reserved = 100
               } else if (requested === 90) {
-                actualCredits = Math.round((returned / 90) * 300)
-                reserved = 300
+                actualCredits = Math.round((returned / 90) * 150)
+                reserved = 150
               } else if (requested === 120) {
-                actualCredits = Math.round((returned / 120) * 400)
-                reserved = 400
+                actualCredits = Math.round((returned / 120) * 200)
+                reserved = 200
               }
             } else {
               // YouTube URL 검색: 새로운 체계
@@ -1383,38 +1553,136 @@ function SearchTestPageContent() {
     return () => clearInterval(i)
   }, [turnstileSiteKey])
 
-  // load my credits, role, user info, and search counters/recent keywords
-  useEffect(() => {
-    (async () => {
-      try {
-        // Parallel API calls for faster loading
-        const [userRes, statsRes] = await Promise.all([
-          fetch('/api/me', { cache: 'no-store' }),
-          fetch('/api/me?scope=search-stats', { cache: 'no-store' })
-        ])
-        
-        // Process user data
-        if (userRes.ok) {
-          const j = await userRes.json()
+  // 데이터 새로고침 함수
+  const refreshData = async () => {
+    try {
+      console.log('🔄 데이터 새로고침 시작')
+      const cacheHeaders = {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }
+      
+      // Parallel API calls for faster loading with timestamp to prevent caching
+      const timestamp = Date.now()
+      const [userRes, statsRes, keywordsRes] = await Promise.all([
+        fetch(`/api/me?_t=${timestamp}`, { cache: 'no-store', headers: cacheHeaders }).catch(e => {
+          console.error('❌ 사용자 API 호출 실패:', e)
+          return new Response(JSON.stringify({ error: 'Failed to fetch user data' }), { status: 500 })
+        }),
+        fetch(`/api/me/stats?_t=${timestamp}`, { cache: 'no-store', headers: cacheHeaders }).catch(e => {
+          console.error('❌ 통계 API 호출 실패:', e)
+          return new Response(JSON.stringify({ error: 'Failed to fetch stats' }), { status: 500 })
+        }),
+        fetch(`/api/me/recent-keywords?_t=${timestamp}`, { cache: 'no-store', headers: cacheHeaders }).catch(e => {
+          console.error('❌ 키워드 API 호출 실패:', e)
+          return new Response(JSON.stringify({ error: 'Failed to fetch keywords' }), { status: 500 })
+        })
+      ])
+      
+      // Process user data with safe JSON parsing
+      if (userRes.ok) {
+        try {
+          const j = await userRes.json().catch(() => ({}))
           setMyCredits(typeof j?.credits === 'number' ? j.credits : null)
           setIsAdmin(j?.role === 'admin')
           setUser(j?.user || null)
           if (j?.plan) setPlan(j.plan)
+          console.log('✅ 사용자 데이터 새로고침 완료:', { credits: j?.credits, role: j?.role, plan: j?.plan })
+        } catch (parseError) {
+          console.error('❌ 사용자 데이터 JSON 파싱 실패:', parseError)
+          setMyCredits(null)
         }
-        
-        // Process stats data
-        if (statsRes.ok) {
-          const stats = await statsRes.json()
-          setTodayCount(Number(stats.today || 0))
-          setMonthCount(Number(stats.month || 0))
-          if (Array.isArray(stats.recent)) setRecentKeywords(stats.recent as string[])
-          setMonthCredits(Number(stats.monthCredits || 0))
-        }
-      } catch (error) {
-        console.error('Failed to load user data:', error)
+      } else {
+        console.error('❌ 사용자 데이터 새로고침 실패:', userRes.status, userRes.statusText)
+        setMyCredits(null)
       }
-    })()
+      
+      // Process stats data with safe JSON parsing
+      if (statsRes.ok) {
+        try {
+          const stats = await statsRes.json().catch(() => ({}))
+          const todaySearches = Number(stats.today_searches || 0)
+          const monthSearches = Number(stats.month_searches || 0)
+          const monthCreditsUsed = Number(stats.month_credits || 0)
+          
+          setTodayCount(todaySearches)
+          setMonthCount(monthSearches)
+          setMonthCredits(monthCreditsUsed)
+          
+          console.log('✅ 통계 데이터 새로고침 완료:', {
+            today: todaySearches,
+            month: monthSearches,
+            monthCredits: monthCreditsUsed
+          })
+        } catch (parseError) {
+          console.error('❌ 통계 데이터 JSON 파싱 실패:', parseError)
+          setTodayCount(0)
+          setMonthCount(0)
+          setMonthCredits(0)
+        }
+      } else {
+        console.error('❌ 통계 데이터 새로고침 실패:', statsRes.status, statsRes.statusText)
+        setTodayCount(0)
+        setMonthCount(0)
+        setMonthCredits(0)
+      }
+      
+      // Process keywords data with safe JSON parsing
+      if (keywordsRes.ok) {
+        try {
+          const keywords = await keywordsRes.json().catch(() => ({ recent: [] }))
+          if (Array.isArray(keywords.recent)) {
+            const keywordStrings = keywords.recent.map((k: any) => k.keyword || k).filter(Boolean)
+            setRecentKeywords(keywordStrings)
+            console.log('✅ 최근 키워드 새로고침 완료:', keywordStrings.length, '개')
+          } else {
+            console.warn('⚠️ keywords.recent이 배열이 아님:', keywords)
+            setRecentKeywords([])
+          }
+        } catch (parseError) {
+          console.error('❌ 키워드 데이터 JSON 파싱 실패:', parseError)
+          setRecentKeywords([])
+        }
+      } else {
+        console.error('❌ 최근 키워드 새로고침 실패:', keywordsRes.status, keywordsRes.statusText)
+        setRecentKeywords([])
+      }
+    } catch (error) {
+      console.error('❌ 데이터 새로고침 실패:', error)
+    }
+  }
+
+  // load my credits, role, user info, and search counters/recent keywords
+  useEffect(() => {
+    refreshData()
   }, [])
+  
+  // 검색 성공 후 데이터 새로고침을 위해 글로벌 함수로 노출
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__refreshSearchData = refreshData
+    }
+  }, [refreshData])
+
+  // 검색 후 자동으로 데이터 새로고침 (결과 개수가 변경될 때)
+  useEffect(() => {
+    if (baseItems && baseItems.length > 0) {
+      // 검색 결과가 나온 후 1초 뒤에 데이터 새로고침
+      const timer = setTimeout(() => {
+        refreshData()
+      }, 1000)
+      return () => clearTimeout(timer)
+    }
+  }, [baseItems?.length])
+
+  // 키보드 이벤트 처리
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !loading) {
+      e.preventDefault()
+      checkVerificationAndRun()
+    }
+  }
 
   const showUpgradeModal = (message = '해당 기능은 스타터 플랜부터 이용이 가능해요') => {
     const modal = document.createElement('div')
@@ -1439,15 +1707,43 @@ function SearchTestPageContent() {
         <div className="max-w-[1320px] mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             {/* Logo */}
-            <Link href="/" className="flex items-center gap-0.5 hover:opacity-80 transition-opacity">
-              <img 
-                src="/logo.svg" 
-                alt="Reelcher" 
-                className="w-12 h-12"
-              />
-              <h1 className="text-2xl font-bold text-gray-900" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>
-                Reelcher
-              </h1>
+            <Link href="/" className="flex items-center gap-0.05 hover:opacity-80 transition-opacity">
+              <picture>
+                <source srcSet="/logo.svg" type="image/svg+xml" />
+                <source srcSet="/favicon-64x64.png" type="image/png" />
+                <img
+                  src="/icon-64"
+                  alt="Reelcher Logo"
+                  className="w-10 h-10 flex-shrink-0"
+                  loading="eager"
+                  decoding="sync"
+                  style={{
+                    imageRendering: 'crisp-edges'
+                  } as React.CSSProperties & {
+                    WebkitImageRendering?: string;
+                    MozImageRendering?: string;
+                    msImageRendering?: string;
+                  }}
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    if (target.src.includes('icon-64')) {
+                      target.src = '/favicon-64x64.png';
+                    } else if (target.src.includes('favicon-64x64.png')) {
+                      target.src = '/favicon-32x32.png';
+                    } else if (target.src.includes('favicon-32x32.png')) {
+                      target.style.display = 'none';
+                      const parent = target.parentElement;
+                      if (parent && !parent.querySelector('.text-logo-fallback')) {
+                        const textLogo = document.createElement('div');
+                        textLogo.className = 'text-logo-fallback w-10 h-10 bg-black text-white rounded flex items-center justify-center font-bold text-sm';
+                        textLogo.textContent = 'R';
+                        parent.insertBefore(textLogo, target);
+                      }
+                    }
+                  }}
+                />
+              </picture>
+              <span className="font-bold text-xl text-black">Reelcher</span>
             </Link>
             
             {/* Navigation */}
@@ -1477,39 +1773,48 @@ function SearchTestPageContent() {
       <div className="max-w-[1320px] mx-auto p-6 pt-8 space-y-8">
         
         {/* Platform Selection Tabs */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-          <div className="p-6 border-b border-gray-200">
-            <h2 className="text-xl font-semibold text-gray-800 mb-4">플랫폼 선택</h2>
-            <div className="flex items-center gap-3 bg-gray-100 p-1 rounded-lg w-fit">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm w-full max-w-[400px]">
+          <div className="p-4 border-b border-gray-200">
+            <h2 className="text-lg font-semibold text-gray-700 mb-3">플랫폼 선택</h2>
+            <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-lg w-full">
               <button
                 onClick={() => handlePlatformSwitch('instagram')}
-                className={`px-6 py-3 rounded-md text-sm font-medium transition-all ${
+                className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center justify-center gap-2 ${
                   platform === 'instagram'
                     ? 'bg-white text-gray-900 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
-                📷 Instagram
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
+                </svg>
+                Instagram
               </button>
               <button
                 onClick={() => handlePlatformSwitch('youtube')}
-                className={`px-6 py-3 rounded-md text-sm font-medium transition-all ${
+                className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center justify-center gap-2 ${
                   platform === 'youtube'
                     ? 'bg-white text-gray-900 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
-                🎥 YouTube
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                </svg>
+                YouTube
               </button>
               <button
                 onClick={() => handlePlatformSwitch('tiktok')}
-                className={`px-6 py-3 rounded-md text-sm font-medium transition-all ${
+                className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center justify-center gap-2 ${
                   platform === 'tiktok'
                     ? 'bg-white text-gray-900 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
-                🎵 TikTok
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M19.589 6.686a4.793 4.793 0 0 1-3.77-4.245V2h-3.445v13.672a2.896 2.896 0 0 1-5.201 1.743l-.002-.001.002.001a2.895 2.895 0 0 1 3.183-4.51v-3.5a6.329 6.329 0 0 0-1.032-.083 6.411 6.411 0 0 0-6.41 6.41 6.411 6.411 0 0 0 6.41 6.41 6.411 6.411 0 0 0 6.41-6.41V9.054a8.05 8.05 0 0 0 4.6 1.432v-3.4a4.751 4.751 0 0 1-.745-.4z"/>
+                </svg>
+                TikTok
               </button>
             </div>
             
@@ -1528,14 +1833,13 @@ function SearchTestPageContent() {
                     value={youtubeApiKey} 
                     onChange={(e) => {
                       setYoutubeApiKey(e.target.value)
-                      saveLastUsedApiKey(e.target.value)
                     }} 
                   />
                   <button
                     onClick={() => setSavedApiKeysOpen(true)}
                     className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white hover:bg-gray-50 text-gray-700 font-medium transition-all whitespace-nowrap"
                   >
-                    저장된 API 키
+                    내 API 키
                   </button>
                   <button
                     onClick={() => window.open('https://www.notion.so/API-2521b7e096df800f96f6d494596f5e5c?source=copy_link', '_blank')}
@@ -2112,7 +2416,7 @@ function SearchTestPageContent() {
         <div className="w-[600px] space-y-5" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>
           <div className="flex gap-6">
             {/* 좌측: 검색 통계 + 크레딧 사용량 (하나의 박스에 구분선으로 분리) */}
-            <div className="flex-1 p-6 border border-gray-200 rounded-lg bg-gray-50 min-h-[220px]">
+            <div className="flex-1 p-6 border border-gray-200 rounded-lg bg-gray-50 flex flex-col">
               {/* 검색 통계 */}
               <div className="text-base font-semibold text-gray-700 mb-5">검색 통계</div>
               <div className="space-y-4 text-sm mb-6">
@@ -2144,20 +2448,74 @@ function SearchTestPageContent() {
             </div>
 
             {/* 우측: 나의 최근 키워드 (별도 박스) */}
-            <div className="flex-1 p-6 border border-gray-200 rounded-lg bg-gray-50 min-h-[220px]">
-              <div className="text-base font-semibold text-gray-700 mb-5">나의 최근 키워드</div>
-              <div className="flex flex-wrap gap-3">
-                {(recentKeywords.length ? recentKeywords : [...new Set(keywords.filter(Boolean))]).slice(0,6).map(k => (
-                  <Badge 
-                    key={k} 
-                    variant="outline"
-                    className="cursor-pointer hover:bg-gray-100 transition-colors text-sm px-3 py-1 border-gray-200 hover:border-gray-300"
-                    onClick={() => setKeywords([k])}
-                  >
-                    {k}
-                  </Badge>
-                ))}
+            <div className="flex-1 p-6 border border-gray-200 rounded-lg bg-gray-50 flex flex-col justify-between">
+              {/* 상단 콘텐츠 (제목 + 키워드)를 하나로 묶음 */}
+              <div>
+                <div className="text-base font-semibold text-gray-700 mb-4">나의 최근 키워드</div>
+                <div className="flex flex-wrap gap-3 content-start">
+                  {recentKeywords.length > 0 ? (() => {
+                    const itemsPerPage = 11 // 페이지당 키워드 개수
+                    const currentPageKeywords = recentKeywords.slice(
+                      keywordPage * itemsPerPage,
+                      (keywordPage + 1) * itemsPerPage
+                    )
+
+                    return currentPageKeywords.map(k => {
+                      const displayText = k.length > 7 ? k.substring(0, 7) + '...' : k
+                      return (
+                        <Badge
+                          key={k}
+                          variant="outline"
+                          className="cursor-pointer hover:bg-gray-100 transition-colors text-sm px-3 py-1 border-gray-200 hover:border-gray-300"
+                          onClick={() => setKeywords([k])}
+                          title={k}
+                        >
+                          {displayText}
+                        </Badge>
+                      )
+                    })
+                  })() : (
+                    <div className="text-sm text-gray-500">
+                      키워드 검색 후 입력된 키워드가 표시돼요.
+                    </div>
+                  )}
+                </div>
               </div>
+
+              {/* 페이지네이션 버튼 */}
+              {(() => {
+                const itemsPerPage = 11 // 페이지당 키워드 개수
+                const totalPages = Math.ceil(recentKeywords.length / itemsPerPage)
+                
+                // 키워드가 하나라도 있을 때 페이지네이션을 보여주되, 버튼은 비활성화 처리합니다.
+                if (recentKeywords.length === 0) return null
+
+                return (
+                  <div className="flex items-center justify-center gap-2 mt-4 pt-2 pb-1 border-t border-gray-200">
+                    <button
+                      onClick={() => setKeywordPage(Math.max(0, keywordPage - 1))}
+                      disabled={keywordPage === 0}
+                      className="p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                      </svg>
+                    </button>
+                    <span className="text-xs text-gray-500">
+                      {keywordPage + 1} / {totalPages}
+                    </span>
+                    <button
+                      onClick={() => setKeywordPage(Math.min(totalPages - 1, keywordPage + 1))}
+                      disabled={keywordPage >= totalPages - 1}
+                      className="p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  </div>
+                )
+              })()}
             </div>
           </div>
         </div>
@@ -2520,21 +2878,30 @@ function SearchTestPageContent() {
             {/* 새 API 키 추가 */}
             <div className="mb-4 p-3 border border-gray-200 rounded-lg bg-gray-50">
               <div className="text-sm font-medium text-gray-700 mb-2">새 API 키 추가</div>
-              <div className="flex gap-3">
+              <div className="space-y-2">
                 <input 
                   type="text"
-                  className="flex-1 h-8 border border-gray-300 rounded px-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
-                  placeholder="새 API 키를 입력하세요..."
-                  value={newApiKey}
-                  onChange={(e) => setNewApiKey(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && addNewApiKey()}
+                  className="w-full h-8 border border-gray-300 rounded px-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
+                  placeholder="API 키 이름 (선택사항)"
+                  value={newApiKeyName}
+                  onChange={(e) => setNewApiKeyName(e.target.value)}
                 />
-                <button 
-                  className="px-3 py-1 text-sm bg-black text-white rounded hover:bg-gray-800"
-                  onClick={addNewApiKey}
-                >
-                  추가
-                </button>
+                <div className="flex gap-3">
+                  <input 
+                    type="text"
+                    className="flex-1 h-8 border border-gray-300 rounded px-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
+                    placeholder="새 API 키를 입력하세요..."
+                    value={newApiKey}
+                    onChange={(e) => setNewApiKey(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && addNewApiKey()}
+                  />
+                  <button 
+                    className="px-3 py-1 text-sm bg-black text-white rounded hover:bg-gray-800"
+                    onClick={addNewApiKey}
+                  >
+                    추가
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -2544,36 +2911,38 @@ function SearchTestPageContent() {
               {savedApiKeys.length === 0 ? (
                 <div className="text-sm text-gray-500 text-center py-4">저장된 API 키가 없습니다</div>
               ) : (
-                savedApiKeys.map((key, index) => (
-                  <div key={index} className="flex items-center gap-3 p-3 border border-gray-200 rounded bg-white">
-                    <div className="flex-1 text-sm font-mono">
-                      {key.length > 20 ? `${key.substring(0, 20)}...` : key}
+                savedApiKeys.map((keyData) => (
+                  <div key={keyData.id} className={`flex items-center gap-3 p-3 border rounded ${
+                    keyData.is_active ? 'border-green-400 bg-green-50' : 'border-gray-200 bg-white'
+                  }`}>
+                    <div className="flex-1">
+                      <div className="text-sm font-medium text-gray-900">
+                        {keyData.key_name || '이름 없음'}
+                        {keyData.is_active && <span className="ml-2 text-xs text-green-600 font-medium">(현재 사용중)</span>}
+                      </div>
+                      <div className="text-xs font-mono text-gray-500">
+                        {keyData.api_key.length > 30 ? `${keyData.api_key.substring(0, 30)}...` : keyData.api_key}
+                      </div>
+                      <div className="text-xs text-gray-400">
+                        {new Date(keyData.created_at).toLocaleDateString('ko-KR')}
+                      </div>
                     </div>
-                    <button 
-                      className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
-                      onClick={() => useApiKey(key)}
-                    >
-                      사용
-                    </button>
-                    <button 
-                      className="px-2 py-1 text-xs bg-gray-600 text-white rounded hover:bg-gray-700"
-                      onClick={() => {
-                        navigator.clipboard.writeText(key)
-                        alert('API 키가 클립보드에 복사되었습니다')
-                      }}
-                    >
-                      복사
-                    </button>
-                    <button 
-                      className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
-                      onClick={() => {
-                        if (confirm('이 API 키를 삭제하시겠습니까?')) {
-                          deleteApiKey(key)
-                        }
-                      }}
-                    >
-                      삭제
-                    </button>
+                    <div className="flex gap-2">
+                      {!keyData.is_active && (
+                        <button 
+                          className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
+                          onClick={() => useApiKey(keyData)}
+                        >
+                          사용
+                        </button>
+                      )}
+                      <button 
+                        className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+                        onClick={() => deleteApiKey(keyData.id)}
+                      >
+                        삭제
+                      </button>
+                    </div>
                   </div>
                 ))
               )}
@@ -2589,12 +2958,12 @@ function SearchTestPageContent() {
       )}
       </div>
       
-      {/* 본인인증 모달 */}
-      <VerificationModal
+      {/* 본인인증 모달 (비활성화됨) */}
+      {/* <VerificationModal
         isOpen={showVerificationModal}
         onClose={handleVerificationClose}
         onSuccess={handleVerificationSuccess}
-      />
+      /> */}
     </div>
   )
 }
@@ -3171,19 +3540,30 @@ function SubtitleDialog({ url, platform }: { url: string; platform?: string }) {
   }
   const ensureCredits = async (): Promise<boolean> => {
     try {
-      const res = await fetch('/api/me', { cache: 'no-store' })
+      // 크레딧 정보를 더 정확하게 가져오기 (reserved 고려)
+      const res = await fetch('/api/me?scope=credits-detail', { cache: 'no-store' })
       if (!res.ok) return false
       const j = await res.json().catch(() => ({}))
-      const credits = Number(j?.credits || 0)
+      
+      // balance와 reserved를 모두 고려한 사용 가능 크레딧 계산
+      const balance = Number(j?.balance || 0)
+      const reserved = Number(j?.reserved || 0)
+      const availableCredits = balance - reserved
+      
       const requiredCredits = platform === 'youtube' ? 10 : 20
       const platformName = platform === 'youtube' ? 'YouTube' : (platform === 'tiktok' ? 'TikTok' : 'Instagram')
       
-      if (!Number.isFinite(credits) || credits < requiredCredits) { 
+      console.log(`🔍 자막 추출 크레딧 체크: 잔액=${balance}, 예약=${reserved}, 사용가능=${availableCredits}, 필요=${requiredCredits}, 플랫폼=${platformName}`)
+      
+      if (!Number.isFinite(availableCredits) || availableCredits < requiredCredits) { 
+        console.warn(`❌ 크레딧 부족: 사용가능=${availableCredits}, 필요=${requiredCredits}`)
         showCreditModal(`${platformName} 자막 추출에는 ${requiredCredits} 크레딧이 필요해요. 업그레이드 또는 충전 후 다시 시도해 주세요.`); 
         return false 
       }
+      console.log(`✅ 크레딧 충분: 사용가능=${availableCredits}, 필요=${requiredCredits}`)
       return true
-    } catch {
+    } catch (error) {
+      console.error('❌ 크레딧 체크 오류:', error)
       return false
     }
   }

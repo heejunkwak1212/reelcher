@@ -8,15 +8,11 @@ export default function AdminCredits() {
     queryFn: async () => {
       const res = await fetch('/api/admin/users?page=1&pageSize=200', { cache: 'no-store' })
       if (!res.ok) throw new Error('load failed')
-      return res.json() as Promise<{ items: any[]; profiles: any[]; credits: any[]; total: number }>
+      return res.json() as Promise<{ users: any[]; totalUsers: number }>
     },
   })
-  const rows = (q.data?.items || []).map((u) => ({
-    id: u.id,
-    email: u.email,
-  }))
-  const creditMap = new Map<string, any>()
-  ;(q.data?.credits || []).forEach((c: any) => creditMap.set(c.user_id, c))
+  
+  const users = q.data?.users || []
   const [email, setEmail] = useState('')
   const [delta, setDelta] = useState(1000)
   const charge = async () => {
@@ -51,16 +47,13 @@ export default function AdminCredits() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((u) => {
-              const c = creditMap.get(u.id) || {}
-              return (
-                <tr key={u.id} className="odd:bg-white even:bg-neutral-50">
-                  <td className="p-2 border border-gray-200 whitespace-nowrap">{u.email || u.id}</td>
-                  <td className="p-2 border border-gray-200 text-right">{c.balance ?? 0}</td>
-                  <td className="p-2 border border-gray-200 text-right">{c.reserved ?? 0}</td>
-                </tr>
-              )
-            })}
+            {users.map((user) => (
+              <tr key={user.user_id} className="odd:bg-white even:bg-neutral-50">
+                <td className="p-2 border border-gray-200 whitespace-nowrap">{user.email || user.display_name || user.user_id}</td>
+                <td className="p-2 border border-gray-200 text-right">{user.credits_balance ?? 0}</td>
+                <td className="p-2 border border-gray-200 text-right">{user.credits_reserved ?? 0}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>

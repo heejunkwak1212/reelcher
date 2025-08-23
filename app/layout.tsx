@@ -105,7 +105,7 @@ export default async function RootLayout({
           <SupabaseProvider user={user}>
             <ThemeProvider />
             {/* Toss SDK */}
-            <script src="https://js.tosspayments.com/v1" async defer></script>
+            <script src="https://js.tosspayments.com/v2/standard" async defer></script>
             {children}
           </SupabaseProvider>
         </ErrorBoundary>

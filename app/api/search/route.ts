@@ -69,6 +69,10 @@ export async function POST(req: Request) {
     const supabaseForAuth = await supabaseServer()
     const { data: { user } } = await supabaseForAuth.auth.getUser()
     if (!user) return new Response('Unauthorized', { status: 401 })
+
+    // 디버깅: 사용자 정보 로깅
+    console.log('🔍 Instagram API - User ID:', user.id)
+    console.log('🔍 Instagram API - User Email:', user.email)
     
     let isAdmin = false
     try {
@@ -628,11 +632,116 @@ export async function POST(req: Request) {
           // 검색 기록 저장 실패는 응답에 영향을 주지 않음
         }
         
-        // Retention: keep personal search logs only 2 days
-        const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
-        await svc.from('searches').delete().lt('created_at', twoDaysAgo).eq('user_id', user.id)
+        // 키워드 검색인 경우에만 최근 키워드로 저장 (2일간 보관)
+        if (input.keyword?.trim()) {
+          // 2일 이상된 키워드 기록 정리
+          const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
+          await svc.from('platform_searches')
+            .delete()
+            .eq('user_id', user.id)
+            .eq('platform', 'instagram')
+            .eq('search_type', 'keyword')
+            .eq('results_count', 0) // 키워드 저장용 더미 레코드만 삭제
+            .is('credits_used', null) // null로 구분
+            .lt('created_at', twoDaysAgo)
+          
+          // 기존 동일 키워드 더미 레코드 삭제 (중복 방지)
+          await svc.from('platform_searches')
+            .delete()
+            .eq('user_id', user.id)
+            .eq('platform', 'instagram')
+            .eq('search_type', 'keyword')
+            .eq('keyword', input.keyword.trim())
+            .eq('results_count', 0) // 키워드 저장용 더미 레코드만 삭제
+            .is('credits_used', null) // null로 구분
+          
+          // 최근 키워드 저장 (더미 레코드)
+          await svc.from('platform_searches').insert({
+            user_id: user.id,
+            platform: 'instagram',
+            search_type: 'keyword',
+            keyword: input.keyword.trim(),
+            results_count: 0, // 키워드 저장만을 위한 더미 count
+            credits_used: null, // null로 구분 (관리자 0과 구분)
+            created_at: new Date().toISOString()
+          })
+        }
+        
+        // ==========================================
+        // 🔄 단순화된 후처리 로직 (Instagram)
+        // ==========================================
+        
+        // 1. 동적 크레딧 계산 (실제 반환된 결과 수 기반)
+        const actualCreditsUsed = Math.floor(sorted.length / 30) * 100 // Instagram은 100크레딧
+        const requestedResults = parseInt(input.resultsLimit) || 30
+        const requiredCredits = Math.floor(requestedResults / 30) * 100 // 원래 예약된 크레딧
+        console.log(`💰 Instagram 실제 크레딧 사용량: ${actualCreditsUsed} (결과 수: ${sorted.length}), 원래 예약: ${requiredCredits}`)
+        
+        // 2. A. 사용자 크레딧 차감 (credits 테이블 직접 UPDATE)
+        if (actualCreditsUsed > 0) {
+          try {
+            // 현재 크레딧 조회 후 차감
+            const { data: currentCredits } = await supabase
+              .from('credits')
+              .select('balance, reserved')
+              .eq('user_id', user.id)
+              .single()
+            
+            if (currentCredits) {
+              const newBalance = Math.max(0, currentCredits.balance - actualCreditsUsed)
+              
+              console.log(`💰 Instagram 크레딧 차감 세부사항:`, {
+                사용자ID: user.id,
+                현재잔액: currentCredits.balance,
+                현재예약: currentCredits.reserved,
+                실제사용: actualCreditsUsed,
+                새잔액: newBalance
+              })
+              
+              const { error: creditError } = await supabase
+                .from('credits')
+                .update({ 
+                  balance: newBalance
+                })
+                .eq('user_id', user.id)
+              
+              if (creditError) {
+                console.error('❌ Instagram 크레딧 차감 실패:', creditError)
+              } else {
+                console.log(`✅ Instagram 크레딧 차감 성공: ${actualCreditsUsed}`)
+              }
+            }
+          } catch (error) {
+            console.error('❌ Instagram 크레딧 차감 오류:', error)
+          }
+        }
+        
+        // 2. B. 검색 기록 저장 (search_history 테이블 직접 INSERT)
+        try {
+          const { error: logError } = await supabase
+            .from('search_history')
+            .insert({
+              user_id: user.id,
+              platform: 'instagram', // 플랫폼 명시
+              search_type: 'hashtag',
+              keyword: plainHashtag || '',
+              filters: { period: 'month2', minViews: 0 },
+              results_count: sorted.length,
+              credits_used: actualCreditsUsed
+            })
+          
+          if (logError) {
+            console.error('❌ Instagram 검색 기록 저장 실패:', logError)
+          } else {
+            console.log('✅ Instagram 검색 기록 저장 성공 (search_history)')
+          }
+        } catch (error) {
+          console.error('❌ Instagram 검색 기록 저장 오류:', error)
+        }
+        
       } catch {}
-      return Response.json({ items: sorted, credits: { toCharge, basis: 100, per: 30 } })
+      const finalCreditsUsed = Math.floor(sorted.length / 30) * 100
+      return Response.json({ items: sorted, credits: { toCharge: finalCreditsUsed, basis: 100, per: 30 } })
     }
   } catch (e) {
     console.error('=== Instagram API 전체 에러 발생 ===')
@@ -791,28 +900,88 @@ async function handleProfileSearch(
       await settle(searchRows.length)
     }
     
-    // Instagram 프로필 검색 기록 저장
-    try {
-      const ssr = await supabaseServer()
-      const { data: { user: historyUser } } = await ssr.auth.getUser()
-      
-      if (historyUser) {
-        const { error: historyError } = await ssr.from('platform_searches').insert({
-          user_id: historyUser.id,
-          platform: 'instagram',
-          search_type: 'profile',
-          keyword: username, // 프로필명을 키워드로 저장
-          filters: input.filters,
-          results_count: searchRows.length,
-          credits_used: 0 // 실제 사용된 크레딧은 settle에서 처리
-        })
+    // ==========================================
+    // 🔄 단순화된 후처리 로직 (Instagram 프로필)
+    // ==========================================
+    
+    // 1. 동적 크레딧 계산
+    const actualCreditsUsed = Math.floor(searchRows.length / 30) * 100 // Instagram은 100크레딧
+    console.log(`💰 Instagram 프로필 실제 크레딧 사용량: ${actualCreditsUsed} (결과 수: ${searchRows.length})`)
+    
+    // 2. A. 사용자 크레딧 차감 (credits 테이블 직접 UPDATE)
+    if (actualCreditsUsed > 0) {
+      try {
+        const { createClient } = await import('@supabase/supabase-js')
+        const svc = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_ROLE_KEY!,
+          { auth: { persistSession: false } }
+        )
         
-        if (historyError) {
-          console.error('Instagram 프로필 검색 기록 저장 실패:', historyError)
+        // 현재 크레딧 조회 후 차감
+        const { data: currentCredits } = await svc
+          .from('credits')
+          .select('balance, reserved')
+          .eq('user_id', userId)
+          .single()
+        
+        if (currentCredits) {
+          const newBalance = Math.max(0, currentCredits.balance - actualCreditsUsed)
+          
+          console.log(`💰 Instagram 프로필 크레딧 차감 세부사항:`, {
+            사용자ID: userId,
+            현재잔액: currentCredits.balance,
+            현재예약: currentCredits.reserved,
+            실제사용: actualCreditsUsed,
+            새잔액: newBalance
+          })
+          
+          const { error: creditError } = await svc
+            .from('credits')
+            .update({ 
+              balance: newBalance
+            })
+            .eq('user_id', userId)
+          
+          if (creditError) {
+            console.error('❌ Instagram 크레딧 차감 실패:', creditError)
+          } else {
+            console.log(`✅ Instagram 크레딧 차감 성공: ${actualCreditsUsed}`)
+          }
         }
+      } catch (error) {
+        console.error('❌ Instagram 크레딧 차감 오류:', error)
       }
-    } catch (historyError) {
-      console.error('Instagram 프로필 검색 기록 저장 실패:', historyError)
+    }
+    
+    // 2. B. 검색 기록 저장 (search_history 테이블 직접 INSERT)
+    try {
+      const { createClient } = await import('@supabase/supabase-js')
+      const svc = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        { auth: { persistSession: false } }
+      )
+      
+      const { error: logError } = await svc
+        .from('search_history')
+        .insert({
+          user_id: userId,
+          platform: 'instagram', // 플랫폼 명시
+          search_type: 'profile',
+          keyword: username,
+          filters: input.filters || {},
+          results_count: searchRows.length,
+          credits_used: actualCreditsUsed
+        })
+      
+      if (logError) {
+        console.error('❌ Instagram 검색 기록 저장 실패:', logError)
+      } else {
+        console.log('✅ Instagram 검색 기록 저장 성공 (search_history)')
+      }
+    } catch (error) {
+      console.error('❌ Instagram 검색 기록 저장 오류:', error)
     }
     
     return Response.json({

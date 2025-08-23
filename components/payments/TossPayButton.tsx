@@ -16,7 +16,7 @@ export default function TossPayButton({ amount = 1000, label = '결제 테스트
     const id = 'tosspayments-js'
     if (!document.getElementById(id)) {
       const s = document.createElement('script')
-      s.src = 'https://js.tosspayments.com/v1/payment'
+      s.src = 'https://js.tosspayments.com/v2/standard'
       s.async = true
       s.id = id
       s.onload = () => setReady(true)
@@ -28,9 +28,16 @@ export default function TossPayButton({ amount = 1000, label = '결제 테스트
 
   const pay = async () => {
     if (!clientKey || !window.TossPayments) return alert('Toss 클라이언트 키가 없습니다')
-    const tp = window.TossPayments(clientKey)
+    const tossPayments = window.TossPayments(clientKey)
     const origin = typeof window !== 'undefined' ? window.location.origin : ''
-    await tp.requestPayment('카드', {
+    
+    // V2 SDK 사용 - payment 인스턴스 생성 후 requestPayment 호출
+    const payment = tossPayments.payment({
+      customerKey: `guest_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`
+    })
+    
+    await payment.requestPayment({
+      method: 'CARD',
       amount,
       orderId: `order_${Date.now()}`,
       orderName: 'Relcher 크레딧 테스트',

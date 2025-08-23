@@ -22,9 +22,13 @@ export async function POST(req: Request) {
     const { data: { user } } = await ssr.auth.getUser()
     if (!user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
 
-    // 사용자 정보 확인 (관리자 체크)
+    // 디버깅: 사용자 정보 로깅
+    console.log('🔍 Captions API - User ID:', user.id)
+    console.log('🔍 Captions API - User Email:', user.email)
+
+    // 사용자 정보 확인 (관리자 체크) - profiles 테이블 사용
     const { data: userData, error: userError } = await ssr
-      .from('users')
+      .from('profiles')
       .select('role')
       .eq('user_id', user.id)
       .single()
@@ -34,25 +38,36 @@ export async function POST(req: Request) {
 
     // 관리자가 아닌 경우에만 크레딧 처리
     if (!isAdmin) {
-      const requiredCredits = 20 // Instagram/TikTok 자막 추출: 20 크레딧
-
-      // 크레딧 예약
-      const { data: reservationData, error: reservationError } = await ssr.rpc(
-        'reserve_credits',
-        { 
-          user_id: user.id, 
-          amount: requiredCredits,
-          source: 'instagram_tiktok_subtitle_extraction'
-        }
-      )
-
-      if (reservationError || !reservationData) {
-        return new Response(JSON.stringify({
-          error: '크레딧이 부족합니다.'
-        }), { status: 402 })
+      // 플랫폼별 크레딧 비용 (URL에서 플랫폼 감지)
+      let requiredCredits = 20 // 기본값: Instagram/TikTok
+      if (input.url.includes('youtube.com') || input.url.includes('youtu.be')) {
+        requiredCredits = 10 // YouTube
       }
 
-      transactionId = reservationData.transaction_id
+      // 현재 크레딧 상태 확인
+      const { data: creditData, error: creditError } = await ssr
+        .from('credits')
+        .select('balance, reserved')
+        .eq('user_id', user.id)
+        .single()
+
+      if (creditError || !creditData) {
+        return new Response(
+          JSON.stringify({ error: '크레딧 정보를 확인할 수 없습니다.' }),
+          { status: 500 }
+        )
+      }
+
+      // 사용 가능한 크레딧 확인 (예약 시스템 제거)
+      if (creditData.balance < requiredCredits) {
+        return new Response(
+          JSON.stringify({ error: '크레딧이 부족합니다.' }),
+          { status: 402 }
+        )
+      }
+
+      console.log(`💰 자막 추출 크레딧 사전 확인 완료: 잔액=${creditData.balance}, 필요=${requiredCredits}`)
+      transactionId = `captions_${Date.now()}_${requiredCredits}`
     }
 
     // 자막 추출 쿨다운 체크 (30초)
@@ -87,9 +102,66 @@ export async function POST(req: Request) {
       text = text.replace(/\[\s*\d+(?:\.\d+)?s\s*-\s*\d+(?:\.\d+)?s\s*\]\s*/g, '')
       text = text.replace(/\s{2,}/g, ' ').trim()
     }
-    // 크레딧 커밋 (관리자가 아닌 경우)
+    // 크레딧 차감 (관리자가 아닌 경우)
     if (!isAdmin && transactionId) {
-      await ssr.rpc('commit_credits', { transaction_id: transactionId })
+      try {
+        const requiredCredits = input.url.includes('youtube.com') || input.url.includes('youtu.be') ? 10 : 20
+        
+        // 현재 크레딧 조회 후 차감
+        const { data: currentCredits } = await ssr
+          .from('credits')
+          .select('balance')
+          .eq('user_id', user.id)
+          .single()
+        
+        if (currentCredits) {
+          const newBalance = Math.max(0, currentCredits.balance - requiredCredits)
+          
+          console.log(`💰 자막 추출 크레딧 차감 세부사항:`, {
+            사용자ID: user.id,
+            현재잔액: currentCredits.balance,
+            실제사용: requiredCredits,
+            새잔액: newBalance
+          })
+          
+          await ssr
+            .from('credits')
+            .update({ 
+              balance: newBalance
+            })
+            .eq('user_id', user.id)
+        }
+        
+        console.log(`✅ 자막 추출 크레딧 차감 성공: ${requiredCredits}`)
+        
+        // 자막 추출 기록 저장 (search_history 테이블)
+        try {
+          const platform = input.url.includes('youtube.com') || input.url.includes('youtu.be') ? 'youtube' : 
+                           input.url.includes('tiktok.com') ? 'tiktok' : 'instagram'
+          
+          const { error: logError } = await ssr
+            .from('search_history')
+            .insert({
+              user_id: user.id,
+              platform: platform,
+              search_type: 'subtitle_extraction',
+              keyword: input.url, // URL을 키워드로 저장
+              filters: {},
+              results_count: 1, // 자막 추출은 1건으로 카운트
+              credits_used: requiredCredits
+            })
+          
+          if (logError) {
+            console.error('❌ 자막 추출 기록 저장 실패:', logError)
+          } else {
+            console.log(`✅ ${platform} 자막 추출 기록 저장 성공`)
+          }
+        } catch (error) {
+          console.error('❌ 자막 추출 기록 저장 오류:', error)
+        }
+      } catch (error) {
+        console.error('❌ 자막 추출 크레딧 차감 실패:', error)
+      }
     }
     
     // 자막 추출 기록 저장 (platform_searches 테이블)

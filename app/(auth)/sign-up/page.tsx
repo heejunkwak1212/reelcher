@@ -14,6 +14,8 @@ import { Eye, EyeOff, Mail, Lock, User, CheckCircle, XCircle } from 'lucide-reac
 export default function SignUpPage() {
   const router = useRouter()
   const supabase = supabaseBrowser()
+
+  // 로그인된 사용자는 middleware에서 자동 리다이렉트됨
   
   const [formData, setFormData] = useState({
     name: '',

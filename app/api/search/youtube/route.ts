@@ -45,6 +45,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // 디버깅: 사용자 정보 로깅
+    console.log('🔍 YouTube API - User ID:', user.id)
+    console.log('🔍 YouTube API - User Email:', user.email)
+
     // 요청 본문 파싱 및 검증
     const body = await request.json()
     const validatedData = youtubeSearchSchema.parse(body)
@@ -72,10 +76,11 @@ export async function POST(request: NextRequest) {
 
     const isAdmin = userData?.role === 'admin'
     let transactionId = null
+    let requiredCredits = 0 // 스코프 이동
 
     console.log('관리자 여부:', isAdmin, 'resultsLimit:', searchRequest.resultsLimit)
 
-    // 관리자가 아닌 경우에만 크레딧 처리
+    // 관리자가 아닌 경우에만 크레딧 확인 (예약 시스템 제거)
     if (!isAdmin) {
       // 크레딧 계산 (YouTube는 Instagram보다 저렴하게)
       const creditCosts: Record<number, number> = {
@@ -85,28 +90,33 @@ export async function POST(request: NextRequest) {
         90: 150,  // Instagram 300 → YouTube 150
         120: 200  // Instagram 400 → YouTube 200
       }
-      const requiredCredits = creditCosts[searchRequest.resultsLimit] || 0
+      requiredCredits = creditCosts[searchRequest.resultsLimit] || 0
 
-      // 크레딧이 필요한 경우에만 예약
+      // 크레딧이 필요한 경우에만 잔액 확인
       if (requiredCredits > 0) {
-        // 크레딧 예약
-        const { data: reservationData, error: reservationError } = await supabase.rpc(
-          'reserve_credits',
-          { 
-            user_id: user.id, 
-            amount: requiredCredits,
-            source: `youtube_${searchRequest.searchType}_search`
-          }
-        )
+        // 현재 크레딧 상태 확인
+        const { data: creditData, error: creditError } = await supabase
+          .from('credits')
+          .select('balance')
+          .eq('user_id', user.id)
+          .single()
 
-        if (reservationError || !reservationData) {
+        if (creditError || !creditData) {
+          return NextResponse.json(
+            { error: '크레딧 정보를 확인할 수 없습니다.' },
+            { status: 500 }
+          )
+        }
+
+        // 잔여 크레딧 확인 (예약 없이 단순 잔액만 확인)
+        if (creditData.balance < requiredCredits) {
           return NextResponse.json(
             { error: '크레딧이 부족합니다.' },
             { status: 402 }
           )
         }
 
-        transactionId = reservationData.transaction_id
+        console.log(`💰 YouTube 크레딧 사전 확인 완료: 잔액=${creditData.balance}, 필요=${requiredCredits}`)
       }
     }
 
@@ -127,30 +137,36 @@ export async function POST(request: NextRequest) {
     // 크레딧 정산 처리
     if (!isAdmin && transactionId) {
       // 관리자가 아닌 경우에만 크레딧 커밋 (정산)
-      const { error: commitError } = await supabase.rpc(
-        'commit_credits',
-        {
-          transaction_id: transactionId,
-          actual_amount: actualCredits,
-          metadata: {
-            platform: 'youtube',
-            searchType: searchRequest.searchType,
-            query: searchRequest.query,
-            actualResults,
-            requestedResults: searchRequest.resultsLimit
-          }
-        }
-      )
+      try {
+        // 현재 크레딧 상태 다시 조회
+        const { data: currentCredit, error: getCurrentError } = await supabase
+          .from('credits')
+          .select('balance, reserved')
+          .eq('user_id', user.id)
+          .single()
 
-      if (commitError) {
-        console.error('크레딧 커밋 실패:', commitError)
-        // 롤백
-        await supabase.rpc('rollback_credits', { transaction_id: transactionId })
+        if (getCurrentError || !currentCredit) {
+          throw new Error('크레딧 정보 조회 실패')
+        }
+
+        // 실제 차감할 크레딧 계산 (예약된 크레딧에서 차감하고, 차액은 반환)
+        const refundAmount = requiredCredits - actualCredits
         
-        return NextResponse.json(
-          { error: '크레딧 처리 중 오류가 발생했습니다.' },
-          { status: 500 }
-        )
+        // 크레딧 정산: balance에서 실제 크레딧 차감, reserved에서 예약 크레딧 제거
+        const { error: commitError } = await supabase
+          .from('credits')
+          .update({
+            balance: currentCredit.balance - actualCredits,
+            reserved: Math.max(0, currentCredit.reserved - requiredCredits)
+          })
+          .eq('user_id', user.id)
+
+        if (commitError) {
+          throw commitError
+        }
+
+      } catch (error) {
+        console.error('❌ YouTube 크레딧 차감 실패:', error)
       }
     }
     
@@ -159,55 +175,73 @@ export async function POST(request: NextRequest) {
       console.log('관리자 계정 - 크레딧 처리 생략 (무료)')
     }
 
-    // Supabase 서비스 클라이언트 생성 (검색 기록 및 통계 업데이트용)
-    const svc = (await import('@/lib/supabase/service')).supabaseService()
+    // ==========================================
+    // 🔄 단순화된 후처리 로직 (Response 반환 직전)
+    // ==========================================
     
-    // 검색 기록 저장 (모든 사용자) - platform_searches 테이블 사용
+    // 1. 동적 크레딧 계산 (실제 반환된 결과 수 기반)
+    const actualCreditsUsed = isAdmin ? 0 : Math.floor((actualResults || 0) / 30) * 50 // YouTube는 50크레딧
+    console.log(`💰 실제 크레딧 사용량: ${actualCreditsUsed} (결과 수: ${actualResults})`)
+    
+    // 2. A. 사용자 크레딧 차감 (credits 테이블 직접 UPDATE)
+    if (!isAdmin && actualCreditsUsed > 0) {
+      try {
+        // 현재 크레딧 조회 후 차감
+        const { data: currentCredits } = await supabase
+          .from('credits')
+          .select('balance')
+          .eq('user_id', user.id)
+          .single()
+        
+                if (currentCredits) {
+          const newBalance = Math.max(0, currentCredits.balance - actualCreditsUsed)
+          
+          console.log(`💰 YouTube 크레딧 차감 세부사항:`, {
+            사용자ID: user.id,
+            현재잔액: currentCredits.balance,
+            실제사용: actualCreditsUsed,
+            새잔액: newBalance
+          })
+          
+          const { error: creditError } = await supabase
+            .from('credits')
+            .update({
+              balance: newBalance
+            })
+            .eq('user_id', user.id)
+          
+          if (creditError) {
+            console.error('❌ 크레딧 차감 실패:', creditError)
+          } else {
+            console.log(`✅ YouTube 크레딧 차감 성공 - 실제사용: ${actualCreditsUsed}, 예약해제: ${requiredCredits}`)
+          }
+        }
+      } catch (error) {
+        console.error('❌ 크레딧 차감 오류:', error)
+      }
+    }
+    
+    // 2. B. 검색 기록 저장 (search_history 테이블 직접 INSERT)
     try {
-      const { error: historyError } = await svc
-        .from('platform_searches')
+      const { error: logError } = await supabase
+        .from('search_history')
         .insert({
           user_id: user.id,
-          platform: 'youtube',
-          search_type: searchRequest.searchType,
-          keyword: searchRequest.query,
-          url: searchRequest.url,
-          filters: searchRequest.filters,
+          platform: 'youtube', // 플랫폼 명시
+          search_type: searchRequest.searchType || 'keyword',
+          keyword: searchRequest.query || '',
+          filters: searchRequest.filters || {},
           results_count: actualResults || 0,
-          credits_used: isAdmin ? 0 : (actualCredits || 0)
+          credits_used: actualCreditsUsed
         })
-
-      if (historyError) {
-        console.error('YouTube 검색 기록 저장 실패:', historyError)
-        // 검색 기록 저장 실패는 응답에 영향을 주지 않음
-      }
       
-      // 키워드 검색인 경우에만 최근 키워드로 저장 (2일간 보관)
-      if (searchRequest.searchType === 'keyword' && searchRequest.query?.trim()) {
-        // 2일 이상된 키워드 기록 정리
-        const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
-        await svc.from('platform_searches')
-          .delete()
-          .eq('user_id', user.id)
-          .eq('platform', 'youtube')
-          .eq('search_type', 'keyword')
-          .eq('results_count', 0) // 키워드 저장용 더미 레코드만 삭제
-          .eq('credits_used', 0)
-          .lt('created_at', twoDaysAgo)
-        
-        // 최근 키워드 저장 (더미 레코드)
-        await svc.from('platform_searches').insert({
-          user_id: user.id,
-          platform: 'youtube',
-          search_type: 'keyword',
-          keyword: searchRequest.query.trim(),
-          results_count: 0, // 키워드 저장만을 위한 더미 count
-          credits_used: 0, // 키워드 저장만을 위한 더미 cost
-          created_at: new Date().toISOString()
-        })
+      if (logError) {
+        console.error('❌ 검색 기록 저장 실패:', logError)
+      } else {
+        console.log('✅ 검색 기록 저장 성공 (search_history)')
       }
-    } catch (historyError) {
-      console.error('YouTube 검색 기록 저장 실패:', historyError)
+    } catch (error) {
+      console.error('❌ 검색 기록 저장 오류:', error)
     }
 
     // 검색 통계 업데이트 (모든 사용자)
@@ -219,7 +253,7 @@ export async function POST(request: NextRequest) {
       const firstOfMonth = `${yyyy}-${mm}-01`
       const todayStr = todayUtc.toISOString().slice(0,10)
       
-      const { data: row } = await svc.from('search_counters')
+      const { data: row } = await supabase.from('search_counters')
         .select('month_start,month_count,today_date,today_count')
         .eq('user_id', user.id)
         .single()
@@ -243,7 +277,7 @@ export async function POST(request: NextRequest) {
       month_count += 1
       today_count += 1
       
-      const { error: counterError } = await svc.from('search_counters').upsert({ 
+      const { error: counterError } = await supabase.from('search_counters').upsert({ 
         user_id: user.id,
         month_start, 
         month_count, 
@@ -267,7 +301,7 @@ export async function POST(request: NextRequest) {
       results: searchResponse?.results || [],
       totalCount: searchResponse?.totalCount || 0,
       searchType: searchResponse?.searchType || 'keyword',
-      creditsUsed: actualCredits || 0,
+      creditsUsed: actualCreditsUsed, // 실제 사용된 크레딧 반환
       metadata: searchResponse?.metadata || {}
     })
 
@@ -282,7 +316,7 @@ export async function POST(request: NextRequest) {
 
     // 변수 존재 여부 확인 (catch 블록에서는 상위 스코프 변수에 접근할 수 없을 수 있음)
     let localIsAdmin = false
-    let localTransactionId = null
+    let localTransactionId: string | null = null
     let localSupabase = null
     
     try {
@@ -311,14 +345,7 @@ export async function POST(request: NextRequest) {
       isAdmin: localIsAdmin
     })
 
-    // 크레딧 롤백 시도 (가능한 경우에만)
-    if (!localIsAdmin && localTransactionId && localSupabase) {
-      try {
-        await localSupabase.rpc('rollback_credits', { transaction_id: localTransactionId })
-      } catch (rollbackError) {
-        console.error('크레딧 롤백 실패:', rollbackError)
-      }
-    }
+    // 예약 시스템 제거로 롤백 불필요
 
     // YouTube API 에러 처리
     if (error instanceof YouTubeAPIError) {

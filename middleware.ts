@@ -63,14 +63,14 @@ export async function middleware(req: NextRequest) {
   if (needsProfileCheck) {
     const { data: profileData } = await supabase
       .from('profiles')
-      .select('onboarding_completed, role, is_verified')
+      .select('onboarding_completed, role')
       .eq('user_id', user.id)
       .single()
     profile = profileData
   }
 
-  // 5. 인증 완료된 사용자가 sign-up, verify 페이지 접근시 대시보드로 리다이렉트
-  if (profile?.is_verified && (pathname.startsWith('/sign-up') || pathname.startsWith('/verify'))) {
+  // 5. 로그인한 사용자가 인증 페이지 접근시 대시보드로 리다이렉트
+  if (pathname.startsWith('/sign-up') || pathname.startsWith('/sign-in')) {
     const url = req.nextUrl.clone()
     url.pathname = '/dashboard'
     return NextResponse.redirect(url)

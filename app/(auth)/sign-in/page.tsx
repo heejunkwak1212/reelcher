@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useState } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabaseBrowser } from '@/lib/supabase/client'
@@ -23,6 +23,8 @@ export default function SignInPage() {
 
   // Check for email verification message
   const message = searchParams.get('message')
+
+  // 로그인된 사용자는 middleware에서 자동 리다이렉트됨
 
   const signInWithEmail = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -121,7 +123,44 @@ export default function SignInPage() {
         <div className="bg-white rounded-2xl shadow-xl p-8">
           {/* Header */}
           <div className="text-center mb-8">
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">릴처 로그인</h1>
+            <div className="flex items-center justify-center gap-0.05 mb-4">
+              <picture>
+                <source srcSet="/logo.svg" type="image/svg+xml" />
+                <source srcSet="/favicon-64x64.png" type="image/png" />
+                <img
+                  src="/icon-64"
+                  alt="Reelcher Logo"
+                  className="w-8 h-8 flex-shrink-0"
+                  loading="eager"
+                  decoding="sync"
+                  style={{
+                    imageRendering: 'crisp-edges'
+                  } as React.CSSProperties & {
+                    WebkitImageRendering?: string;
+                    MozImageRendering?: string;
+                    msImageRendering?: string;
+                  }}
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    if (target.src.includes('icon-64')) {
+                      target.src = '/favicon-64x64.png';
+                    } else if (target.src.includes('favicon-64x64.png')) {
+                      target.src = '/favicon-32x32.png';
+                    } else if (target.src.includes('favicon-32x32.png')) {
+                      target.style.display = 'none';
+                      const parent = target.parentElement;
+                      if (parent && !parent.querySelector('.text-logo-fallback')) {
+                        const textLogo = document.createElement('div');
+                        textLogo.className = 'text-logo-fallback w-8 h-8 bg-black text-white rounded flex items-center justify-center font-bold text-sm';
+                        textLogo.textContent = 'R';
+                        parent.insertBefore(textLogo, target);
+                      }
+                    }
+                  }}
+                />
+              </picture>
+              <span className="font-bold text-xl text-black">Reelcher</span>
+            </div>
           </div>
 
           {/* Signup success message */}
@@ -161,7 +200,7 @@ export default function SignInPage() {
             </div>
 
             {/* Password Field */}
-            <div className="space-y-2">
+        <div className="space-y-2">
               <Label htmlFor="password" className="text-sm font-medium text-gray-700">
                 비밀번호
               </Label>
@@ -237,7 +276,7 @@ export default function SignInPage() {
                 <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
               </svg>
               {loading === 'google' ? 'Google로 이동 중...' : 'Google로 계속하기'}
-            </Button>
+          </Button>
 
             <Button
               type="button"
@@ -249,7 +288,7 @@ export default function SignInPage() {
                 <path fill="currentColor" d="M12 3c5.799 0 10.5 3.664 10.5 8.185 0 4.52-4.701 8.184-10.5 8.184a13.5 13.5 0 0 1-1.727-.11l-4.408 2.883c-.501.265-.678.236-.472-.413l.892-3.678c-2.88-1.46-4.785-3.99-4.785-6.866C1.5 6.665 6.201 3 12 3z"/>
               </svg>
               {loading === 'kakao' ? 'Kakao로 이동 중...' : 'Kakao로 계속하기'}
-            </Button>
+          </Button>
           </div>
         </div>
       </div>

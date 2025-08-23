@@ -35,6 +35,25 @@ export class YouTubeDownloader {
     }
   }
 
+  private static extractVideoId(url: string): string | null {
+    try {
+      const parsedUrl = new URL(url)
+      
+      if (parsedUrl.hostname === 'youtu.be') {
+        return parsedUrl.pathname.slice(1)
+      }
+      
+      if (parsedUrl.hostname.includes('youtube.com')) {
+        const searchParams = parsedUrl.searchParams
+        return searchParams.get('v')
+      }
+      
+      return null
+    } catch {
+      return null
+    }
+  }
+
   static async downloadVideo(url: string, options: DownloadOptions = {}): Promise<DownloadResult> {
     if (!this.isYouTubeUrl(url)) {
       return { success: false, error: 'Invalid YouTube URL' }
@@ -259,10 +278,82 @@ export class YouTubeDownloader {
     return result
   }
 
+  // 대안 방법: YouTube API를 사용한 자막 추출 (API 키 불필요)
+  static async extractSubtitlesAlternative(videoId: string): Promise<SubtitleResult> {
+    try {
+      // YouTube의 자막 트랙 정보 가져오기
+      const trackListUrl = `https://www.youtube.com/api/timedtext?type=list&v=${videoId}`
+      const trackResponse = await fetch(trackListUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+        }
+      })
+
+      if (!trackResponse.ok) {
+        throw new Error('자막 트랙 정보를 가져올 수 없습니다')
+      }
+
+      const trackListText = await trackResponse.text()
+      
+      // XML 파싱하여 자막 언어 찾기
+      const langRegex = /lang_code="(ko|en|ja|zh)"/g
+      const matches = trackListText.match(langRegex)
+      
+      if (!matches || matches.length === 0) {
+        throw new Error('지원되는 자막이 없습니다')
+      }
+
+      // 한국어 우선, 없으면 영어
+      const preferredLang = matches.find(m => m.includes('ko')) || matches.find(m => m.includes('en')) || matches[0]
+      const langCode = preferredLang.match(/lang_code="([^"]+)"/)?.[1] || 'en'
+
+      // 자막 내용 가져오기
+      const subtitleUrl = `https://www.youtube.com/api/timedtext?lang=${langCode}&v=${videoId}&fmt=vtt`
+      const subtitleResponse = await fetch(subtitleUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+        }
+      })
+
+      if (!subtitleResponse.ok) {
+        throw new Error('자막 내용을 가져올 수 없습니다')
+      }
+
+      const subtitleContent = await subtitleResponse.text()
+      const cleanText = this.parseVttToCleanText(subtitleContent)
+
+      return {
+        success: true,
+        subtitles: cleanText
+      }
+    } catch (error) {
+      console.error('Alternative subtitle extraction failed:', error)
+      return { success: false, error: error instanceof Error ? error.message : '자막 추출 실패' }
+    }
+  }
+
   static async extractSubtitles(url: string): Promise<SubtitleResult> {
     if (!this.isYouTubeUrl(url)) {
       return { success: false, error: 'Invalid YouTube URL' }
     }
+
+    // 비디오 ID 추출
+    const videoId = this.extractVideoId(url)
+    if (!videoId) {
+      return { success: false, error: 'YouTube 비디오 ID를 찾을 수 없습니다' }
+    }
+
+    // 먼저 대안 방법 시도
+    console.log(`[YouTube Subtitle] 대안 방법으로 자막 추출 시도: ${videoId}`)
+    const alternativeResult = await this.extractSubtitlesAlternative(videoId)
+    
+    if (alternativeResult.success) {
+      console.log(`[YouTube Subtitle] 대안 방법 성공`)
+      return alternativeResult
+    }
+
+    console.log(`[YouTube Subtitle] 대안 방법 실패, yt-dlp 시도: ${alternativeResult.error}`)
+    // 대안 방법 실패 시 기존 yt-dlp 방법 사용
 
     const args = [
       '--no-warnings',
@@ -272,11 +363,17 @@ export class YouTubeDownloader {
       '--sub-langs', 'ko,en,ko-orig,ja,zh,zh-Hans,zh-Hant', // 주요 언어만
       '--sub-format', 'vtt',     // VTT 형식
       '--skip-download',         // 비디오는 다운로드하지 않음
-      '--sleep-interval', '2',   // 요청 간 2초 대기
-      '--max-sleep-interval', '10', // 최대 10초 대기
-      '--retries', '2',          // 2회 재시도
-      '--socket-timeout', '30',  // 소켓 타임아웃 30초
+      '--sleep-interval', '3',   // 요청 간 3초 대기 (증가)
+      '--max-sleep-interval', '15', // 최대 15초 대기 (증가)
+      '--retries', '5',          // 5회 재시도 (증가)
+      '--socket-timeout', '60',  // 소켓 타임아웃 60초 (증가)
       '--encoding', 'utf-8',
+      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36', // User-Agent 추가
+      '--referer', 'https://www.youtube.com/', // Referer 추가
+      '--ignore-errors',         // 에러 무시하고 계속 진행
+      '--no-abort-on-error',     // 에러 시 중단하지 않음
+      '--fragment-retries', '10', // Fragment 재시도 (중요!)
+      '--retry-sleep', '5',      // 재시도 간격
       url
     ]
 

@@ -15,76 +15,121 @@ export async function GET(req: Request) {
       await svc.from('profiles').update({ plan: 'business' }).eq('user_id', user.id)
       ;(prof as any).plan = 'business'
     }
-    const { data: cr } = await svc.from('credits').select('balance').eq('user_id', user.id).single()
+    const { data: cr } = await svc.from('credits').select('balance, reserved').eq('user_id', user.id).single()
     const url = new URL(req.url)
     const scope = url.searchParams.get('scope')
     if (scope === 'search-stats') {
       try {
-        // search_counters 테이블에서 정확한 통계 가져오기
-        const { data: counters, error: countersError } = await svc.from('search_counters')
-          .select('today_count, month_count')
+        // search_history 테이블에서 모든 통계를 직접 계산 (/api/me/stats와 동일한 방식)
+        const { data: searchHistory, error: statsError } = await svc
+          .from('search_history')
+          .select('created_at, credits_used, keyword')
           .eq('user_id', user.id)
-          .single()
-
-        if (countersError) {
-          console.log('search_counters에서 데이터 없음, 0으로 초기화:', countersError.message)
+        
+        if (statsError) {
+          console.error('🔴 search-stats 조회 실패:', statsError)
+          return Response.json({ 
+            today: 0, 
+            month: 0, 
+            recent: [], 
+            monthCredits: 0,
+            credits: (cr?.balance || 0) as number
+          })
         }
-
-        const today = Number(counters?.today_count || 0)
-        const month = Number(counters?.month_count || 0)
-
-        console.log('검색 통계 조회 결과:', { today, month, counters })
-
-        // recent keywords: last 2 days (platform_searches 테이블에서 키워드 검색용 더미 레코드 조회)
-        const since = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
-        const { data: rec, error: keywordError } = await svc.from('platform_searches')
-          .select('keyword, created_at, platform')
-          .eq('user_id', user.id)
-          .eq('search_type', 'keyword')
-          .eq('results_count', 0) // 키워드 저장용 더미 레코드만
-          .eq('credits_used', 0)
-          .gte('created_at', since)
-          .order('created_at', { ascending: false })
-          .limit(50)
-
-        if (keywordError) {
-          console.error('최근 키워드 조회 오류:', keywordError)
-        }
-
-        // 중복 제거하되 플랫폼 정보도 포함
-        const keywordMap = new Map()
-        ;(rec || []).forEach((r: any) => {
-          if (r.keyword && !keywordMap.has(r.keyword)) {
-            keywordMap.set(r.keyword, { keyword: r.keyword, platform: r.platform, created_at: r.created_at })
+        
+        const now = new Date()
+        const today_date = now.toISOString().split('T')[0] // YYYY-MM-DD
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+        
+        let today = 0
+        let month = 0
+        let monthCredits = 0
+        const recentKeywordEntries: { keyword: string; created_at: string }[] = []
+        
+        for (const record of searchHistory || []) {
+          const recordDate = new Date(record.created_at)
+          const recordDateStr = recordDate.toISOString().split('T')[0]
+          
+          // 오늘 검색 수
+          if (recordDateStr === today_date) {
+            today++
           }
-        })
-        const recent = Array.from(keywordMap.values()).slice(0, 12).map(item => item.keyword)
-
-        console.log('최근 키워드 조회 결과:', { recent: recent.length, keywordError })
-
-        // month credit usage: sum of credits_used for current month (platform_searches 테이블)
-        const monthStartIso = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).toISOString()
-        const { data: monthRows, error: creditError } = await svc.from('platform_searches')
-          .select('credits_used, created_at')
-          .eq('user_id', user.id)
-          .gte('created_at', monthStartIso)
-          .gt('results_count', 0) // 실제 검색 기록만 (더미 레코드 제외)
-
-        if (creditError) {
-          console.error('월 크레딧 사용량 조회 오류:', creditError)
+          
+          // 이번 달 검색 수 및 크레딧 사용량
+          if (recordDate >= monthStart) {
+            month++
+            monthCredits += Number(record.credits_used || 0)
+          }
+          
+          // 최근 키워드 수집 (2일 이내)
+          const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000)
+          if (recordDate >= twoDaysAgo && record.keyword) {
+            recentKeywordEntries.push({
+              keyword: record.keyword,
+              created_at: record.created_at
+            })
+          }
         }
+        
+        // 키워드를 최신순으로 정렬하고 중복 제거
+        const uniqueKeywords = []
+        const seenKeywords = new Set()
+        
+        // 최신순으로 정렬
+        recentKeywordEntries.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        
+        for (const entry of recentKeywordEntries) {
+          if (!seenKeywords.has(entry.keyword)) {
+            seenKeywords.add(entry.keyword)
+            uniqueKeywords.push(entry.keyword)
+          }
+        }
+        
+        const recentKeywords = uniqueKeywords
 
-        const monthCredits = (monthRows || []).reduce((sum, r: any) => sum + (Number(r?.credits_used || 0) || 0), 0)
+        console.log('🔄 search-stats API 응답 (search_history 기반):', { today, month, monthCredits, recent: recentKeywords.length })
         
-        console.log('월 크레딧 사용량 조회 결과:', { monthCredits, monthRows: monthRows?.length || 0, creditError })
-        
-        return Response.json({ today, month, recent, monthCredits })
+        return Response.json({ 
+          today, 
+          month, 
+          recent: recentKeywords, // 48시간 이내 모든 키워드 (클라이언트에서 페이지네이션)
+          monthCredits,
+          credits: (cr?.balance || 0) as number
+        })
       } catch (error) {
         console.error('search-stats 조회 전체 오류:', error)
-        return Response.json({ today: 0, month: 0, recent: [], monthCredits: 0 })
+        return Response.json({ 
+          today: 0, 
+          month: 0, 
+          recent: [], 
+          monthCredits: 0,
+          credits: (cr?.balance || 0) as number  // 오류 시에도 크레딧 정보 포함
+        })
       }
     }
-    return Response.json({ id: user.id, email: user.email, role: prof?.role || 'user', plan: prof?.plan || 'free', display_name: prof?.display_name, credits: (cr?.balance || 0) as number })
+    
+    if (scope === 'credits-detail') {
+      const response = Response.json({ 
+        id: user.id, 
+        email: user.email, 
+        role: prof?.role || 'user', 
+        plan: prof?.plan || 'free', 
+        display_name: prof?.display_name, 
+        credits: (cr?.balance || 0) as number,
+        balance: (cr?.balance || 0) as number,
+        reserved: (cr?.reserved || 0) as number
+      })
+      response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate')
+      response.headers.set('Pragma', 'no-cache')
+      response.headers.set('Expires', '0')
+      return response
+    }
+    
+    const response = Response.json({ id: user.id, email: user.email, role: prof?.role || 'user', plan: prof?.plan || 'free', display_name: prof?.display_name, credits: (cr?.balance || 0) as number })
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate')
+    response.headers.set('Pragma', 'no-cache')
+    response.headers.set('Expires', '0')
+    return response
   } catch {
     return new Response('Bad Request', { status: 400 })
   }

@@ -137,19 +137,30 @@ export function VerificationModal({ isOpen, onClose, onSuccess }: VerificationMo
             
 
 
+            {/* 본인인증 비활성화 안내 */}
+            <div className="w-full p-4 bg-gray-50 border border-gray-200 rounded-lg text-center mb-4">
+              <div className="text-sm text-gray-600 mb-2">
+                <strong>본인인증 일시 비활성화</strong>
+              </div>
+              <div className="text-xs text-gray-500">
+                서비스 초기 단계로 인해 본인인증 기능이 일시적으로 비활성화되어 있습니다.<br/>
+                향후 서비스 안정화 후 카카오/토스 본인인증을 제공할 예정입니다.
+              </div>
+            </div>
+
             <div className="space-y-3">
+              {/* 카카오/토스 인증 버튼 비활성화
               <div className="flex gap-2">
                 <Button onClick={handleStartVerification} className="flex-1 bg-yellow-400 hover:bg-yellow-500 text-black">
                   카카오로 인증하기
                 </Button>
-                {/* 토스 인증 - 비용 문제로 임시 비활성화 (향후 활성화 가능)
                 <Button onClick={() => setShowTossModal(true)} className="flex-1 bg-blue-600 hover:bg-blue-700">
                   토스로 인증하기
                 </Button>
-                */}
               </div>
+              */}
               <Button variant="outline" onClick={handleClose} className="w-full">
-                취소
+                닫기
               </Button>
             </div>
           </div>
