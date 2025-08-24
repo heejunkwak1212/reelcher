@@ -9,11 +9,12 @@ export default async function HistoryPage() {
   const { data: { user } } = await ssr.auth.getUser()
   if (!user) return null
   
-  // search_history 테이블에서 검색 이력 조회
+  // search_history 테이블에서 검색 이력 조회 (자막 추출 제외)
   const { data: searches } = await ssr
     .from('search_history')
     .select('created_at, platform, search_type, keyword, results_count, credits_used, filters')
     .eq('user_id', user.id)
+    .neq('search_type', 'subtitle_extraction') // 자막 추출 제외
     .order('created_at', { ascending: false })
     .limit(50)
   
@@ -45,7 +46,8 @@ export default async function HistoryPage() {
             
             // 검색 타입별 표시
             const searchTypeText = s.search_type === 'profile' ? '프로필' : 
-                                  s.search_type === 'url' ? 'URL' : '키워드'
+                                  s.search_type === 'url' ? 'URL' : 
+                                  s.search_type === 'hashtag' ? '해시태그' : '키워드'
             
             return (
               <div key={idx} className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-sm transition-shadow">
@@ -69,10 +71,20 @@ export default async function HistoryPage() {
                   </span>
                 </div>
                 
-                {/* 키워드/URL 표시 */}
+                {/* 키워드/URL/프로필 표시 */}
                 <div className="mb-3">
                   <div className="text-sm font-medium text-gray-900 truncate">
-                    {s.keyword || '검색어 없음'}
+                    {s.search_type === 'url' ? (
+                      <span className="text-blue-600" title={s.keyword}>
+                        {s.keyword || 'URL 없음'}
+                      </span>
+                    ) : s.search_type === 'profile' ? (
+                      <span className="text-purple-600" title={s.keyword}>
+                        {s.keyword || '프로필 없음'}
+                      </span>
+                    ) : (
+                      s.keyword || '검색어 없음'
+                    )}
                   </div>
                 </div>
                 

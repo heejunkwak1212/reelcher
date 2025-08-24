@@ -73,6 +73,7 @@ export async function middleware(req: NextRequest) {
   if (pathname.startsWith('/sign-up') || pathname.startsWith('/sign-in')) {
     const url = req.nextUrl.clone()
     url.pathname = '/dashboard'
+    console.log(`🔒 로그인된 사용자의 인증 페이지 접근 차단: ${pathname} → /dashboard`)
     return NextResponse.redirect(url)
   }
 
@@ -82,12 +83,14 @@ export async function middleware(req: NextRequest) {
     if (onboardingCompleted) {
       const url = req.nextUrl.clone()
       url.pathname = '/dashboard'
+      console.log(`🔒 온보딩 완료된 사용자의 온보딩 페이지 접근 차단: ${pathname} → /dashboard`)
       return NextResponse.redirect(url)
     }
   } else if (needsProfileCheck && profile?.onboarding_completed === false) {
     // 온보딩이 완료되지 않은 사용자는 온보딩 페이지로 리다이렉트
     const url = req.nextUrl.clone()
     url.pathname = '/onboarding'
+    console.log(`📝 온보딩 미완료 사용자를 온보딩 페이지로 리다이렉트: ${pathname} → /onboarding`)
     return NextResponse.redirect(url)
   }
 

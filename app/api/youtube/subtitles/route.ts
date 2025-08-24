@@ -148,7 +148,7 @@ export async function POST(req: NextRequest) {
         
         console.log(`✅ YouTube 자막 추출 크레딧 차감 성공: ${requiredCredits}`)
         
-        // 자막 추출 기록 저장 (search_history 테이블)
+        // 자막 추출 기록 저장 (search_history 테이블) - URL 대신 "자막 추출"로 저장
         try {
           const { error: logError } = await supabase
             .from('search_history')
@@ -156,8 +156,8 @@ export async function POST(req: NextRequest) {
               user_id: user.id,
               platform: 'youtube',
               search_type: 'subtitle_extraction',
-              keyword: url, // URL을 키워드로 저장
-              filters: {},
+              keyword: '자막 추출', // URL 대신 "자막 추출"로 저장 (최근 키워드에 URL이 나타나지 않게)
+              filters: { url: url }, // URL은 filters에 저장
               results_count: 1, // 자막 추출은 1건으로 카운트
               credits_used: requiredCredits
             })
@@ -197,11 +197,37 @@ export async function POST(req: NextRequest) {
       console.error('YouTube 자막 추출 기록 저장 실패:', historyError)
     }
 
-    return NextResponse.json({
+    // 응답에 업데이트된 크레딧 정보 포함 (실시간 업데이트용)
+    let responseData: any = {
       success: true,
       subtitles: result.subtitles,
       title: result.title
-    })
+    }
+    
+    if (!isAdmin) {
+      try {
+        // 업데이트된 크레딧 정보 조회
+        const { data: updatedCredits } = await supabase
+          .from('credits')
+          .select('balance, reserved')
+          .eq('user_id', user.id)
+          .single()
+        
+        if (updatedCredits) {
+          responseData.credits = {
+            balance: updatedCredits.balance,
+            reserved: updatedCredits.reserved,
+            used: 10 // YouTube 자막 추출은 10 크레딧
+          }
+          console.log(`✅ YouTube 자막 추출 후 크레딧 정보 포함:`, responseData.credits)
+        }
+      } catch (error) {
+        console.error('❌ 크레딧 정보 조회 오류:', error)
+        // 크레딧 정보 조회 실패해도 자막은 반환
+      }
+    }
+    
+    return NextResponse.json(responseData)
 
   } catch (error) {
     console.error('자막 추출 오류:', error)

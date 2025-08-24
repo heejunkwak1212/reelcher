@@ -15,6 +15,8 @@ const nextConfig: NextConfig = {
   // Optimize images for better performance
   images: {
     formats: ['image/webp', 'image/avif'],
+    dangerouslyAllowSVG: true,
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
   },
   eslint: {
     // Allow Vercel build to pass even if ESLint errors exist.

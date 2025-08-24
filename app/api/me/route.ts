@@ -23,7 +23,7 @@ export async function GET(req: Request) {
         // search_history 테이블에서 모든 통계를 직접 계산 (/api/me/stats와 동일한 방식)
         const { data: searchHistory, error: statsError } = await svc
           .from('search_history')
-          .select('created_at, credits_used, keyword')
+          .select('created_at, credits_used, keyword, search_type')
           .eq('user_id', user.id)
         
         if (statsError) {
@@ -61,9 +61,9 @@ export async function GET(req: Request) {
             monthCredits += Number(record.credits_used || 0)
           }
           
-          // 최근 키워드 수집 (2일 이내)
+          // 최근 키워드 수집 (2일 이내, 자막 추출 제외)
           const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000)
-          if (recordDate >= twoDaysAgo && record.keyword) {
+          if (recordDate >= twoDaysAgo && record.keyword && (record as any).search_type !== 'subtitle_extraction') {
             recentKeywordEntries.push({
               keyword: record.keyword,
               created_at: record.created_at

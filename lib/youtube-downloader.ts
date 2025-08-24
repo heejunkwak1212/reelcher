@@ -281,53 +281,73 @@ export class YouTubeDownloader {
   // 대안 방법: YouTube API를 사용한 자막 추출 (API 키 불필요)
   static async extractSubtitlesAlternative(videoId: string): Promise<SubtitleResult> {
     try {
-      // YouTube의 자막 트랙 정보 가져오기
-      const trackListUrl = `https://www.youtube.com/api/timedtext?type=list&v=${videoId}`
-      const trackResponse = await fetch(trackListUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
-        }
-      })
-
-      if (!trackResponse.ok) {
-        throw new Error('자막 트랙 정보를 가져올 수 없습니다')
-      }
-
-      const trackListText = await trackResponse.text()
+      console.log(`[YouTube Subtitle Alternative] 비디오 ID: ${videoId}`)
       
-      // XML 파싱하여 자막 언어 찾기
-      const langRegex = /lang_code="(ko|en|ja|zh)"/g
-      const matches = trackListText.match(langRegex)
-      
-      if (!matches || matches.length === 0) {
-        throw new Error('지원되는 자막이 없습니다')
+      // 여러 가지 자막 타입 시도 (자동 생성 자막 포함)
+      const subtitleUrls = [
+        // 한국어 자막들 (원본, 자동생성)
+        `https://www.youtube.com/api/timedtext?lang=ko&v=${videoId}&fmt=vtt`,
+        `https://www.youtube.com/api/timedtext?lang=ko&v=${videoId}&fmt=vtt&kind=asr`,
+        `https://www.youtube.com/api/timedtext?lang=ko-orig&v=${videoId}&fmt=vtt`,
+        
+        // 영어 자막들 (원본, 자동생성)  
+        `https://www.youtube.com/api/timedtext?lang=en&v=${videoId}&fmt=vtt`,
+        `https://www.youtube.com/api/timedtext?lang=en&v=${videoId}&fmt=vtt&kind=asr`,
+        `https://www.youtube.com/api/timedtext?lang=en-orig&v=${videoId}&fmt=vtt`,
+        
+        // 일본어, 중국어 자막
+        `https://www.youtube.com/api/timedtext?lang=ja&v=${videoId}&fmt=vtt`,
+        `https://www.youtube.com/api/timedtext?lang=zh&v=${videoId}&fmt=vtt`,
+        `https://www.youtube.com/api/timedtext?lang=zh-Hans&v=${videoId}&fmt=vtt`,
+        `https://www.youtube.com/api/timedtext?lang=zh-Hant&v=${videoId}&fmt=vtt`,
+      ]
+
+      const headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': 'text/vtt,application/x-subrip,text/plain,*/*',
+        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Cache-Control': 'no-cache',
+        'Referer': 'https://www.youtube.com/'
       }
 
-      // 한국어 우선, 없으면 영어
-      const preferredLang = matches.find(m => m.includes('ko')) || matches.find(m => m.includes('en')) || matches[0]
-      const langCode = preferredLang.match(/lang_code="([^"]+)"/)?.[1] || 'en'
+      // 각 자막 URL 순서대로 시도
+      for (const subtitleUrl of subtitleUrls) {
+        try {
+          console.log(`[YouTube Subtitle Alternative] 시도: ${subtitleUrl}`)
+          
+          const subtitleResponse = await fetch(subtitleUrl, { 
+            headers
+          })
 
-      // 자막 내용 가져오기
-      const subtitleUrl = `https://www.youtube.com/api/timedtext?lang=${langCode}&v=${videoId}&fmt=vtt`
-      const subtitleResponse = await fetch(subtitleUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+          if (subtitleResponse.ok) {
+            const subtitleContent = await subtitleResponse.text()
+            
+            // 유효한 VTT 내용인지 확인
+            if (subtitleContent.trim() && 
+                (subtitleContent.includes('WEBVTT') || subtitleContent.includes('-->'))) {
+              
+              const cleanText = this.parseVttToCleanText(subtitleContent)
+              
+              if (cleanText && cleanText.trim().length > 10) { // 최소 10자 이상
+                console.log(`[YouTube Subtitle Alternative] 성공: ${subtitleUrl}`)
+                return {
+                  success: true,
+                  subtitles: cleanText
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.log(`[YouTube Subtitle Alternative] 실패: ${subtitleUrl} - ${error instanceof Error ? error.message : 'Unknown error'}`)
+          continue // 다음 URL 시도
         }
-      })
-
-      if (!subtitleResponse.ok) {
-        throw new Error('자막 내용을 가져올 수 없습니다')
       }
 
-      const subtitleContent = await subtitleResponse.text()
-      const cleanText = this.parseVttToCleanText(subtitleContent)
-
-      return {
-        success: true,
-        subtitles: cleanText
-      }
+      // 모든 URL 실패
+      throw new Error('모든 자막 URL에서 자막을 찾을 수 없습니다')
+      
     } catch (error) {
-      console.error('Alternative subtitle extraction failed:', error)
+      console.error('[YouTube Subtitle Alternative] 최종 실패:', error)
       return { success: false, error: error instanceof Error ? error.message : '자막 추출 실패' }
     }
   }
@@ -343,17 +363,7 @@ export class YouTubeDownloader {
       return { success: false, error: 'YouTube 비디오 ID를 찾을 수 없습니다' }
     }
 
-    // 먼저 대안 방법 시도
-    console.log(`[YouTube Subtitle] 대안 방법으로 자막 추출 시도: ${videoId}`)
-    const alternativeResult = await this.extractSubtitlesAlternative(videoId)
-    
-    if (alternativeResult.success) {
-      console.log(`[YouTube Subtitle] 대안 방법 성공`)
-      return alternativeResult
-    }
-
-    console.log(`[YouTube Subtitle] 대안 방법 실패, yt-dlp 시도: ${alternativeResult.error}`)
-    // 대안 방법 실패 시 기존 yt-dlp 방법 사용
+    console.log(`[YouTube Subtitle] yt-dlp로 자막 추출 시도: ${videoId}`)
 
     const args = [
       '--no-warnings',
@@ -363,17 +373,19 @@ export class YouTubeDownloader {
       '--sub-langs', 'ko,en,ko-orig,ja,zh,zh-Hans,zh-Hant', // 주요 언어만
       '--sub-format', 'vtt',     // VTT 형식
       '--skip-download',         // 비디오는 다운로드하지 않음
-      '--sleep-interval', '3',   // 요청 간 3초 대기 (증가)
-      '--max-sleep-interval', '15', // 최대 15초 대기 (증가)
-      '--retries', '5',          // 5회 재시도 (증가)
-      '--socket-timeout', '60',  // 소켓 타임아웃 60초 (증가)
+      '--sleep-interval', '1',   // 요청 간 1초 대기 (줄임)
+      '--max-sleep-interval', '5', // 최대 5초 대기 (줄임)
+      '--retries', '10',         // 10회 재시도 (증가)
+      '--socket-timeout', '30',  // 소켓 타임아웃 30초 (줄임)
       '--encoding', 'utf-8',
-      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36', // User-Agent 추가
-      '--referer', 'https://www.youtube.com/', // Referer 추가
+      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      '--referer', 'https://www.youtube.com/',
       '--ignore-errors',         // 에러 무시하고 계속 진행
       '--no-abort-on-error',     // 에러 시 중단하지 않음
-      '--fragment-retries', '10', // Fragment 재시도 (중요!)
-      '--retry-sleep', '5',      // 재시도 간격
+      '--fragment-retries', '15', // Fragment 재시도 (증가)
+      '--retry-sleep', '2',      // 재시도 간격 (줄임)
+      '--extractor-args', 'youtube:player_client=android', // 모바일 클라이언트로 시도
+      '--extractor-args', 'youtube:player_client=web',     // 웹 클라이언트로 시도
       url
     ]
 
@@ -425,10 +437,10 @@ export class YouTubeDownloader {
               return
             }
             
-            // 자막 파일 필터링 - 더 유연한 패턴으로 수정
+            // 자막 파일 필터링 - 모든 .vtt 파일 포함
             const subtitleFiles = files.filter(file => 
               file.endsWith('.vtt') && 
-              (file.includes('.ko') || file.includes('.en') || file.includes('auto') || file.includes('live_chat'))
+              !file.includes('live_chat') // live_chat만 제외
             )
 
             console.log('찾은 자막 파일들:', subtitleFiles)
@@ -495,7 +507,7 @@ export class YouTubeDownloader {
             const files = await fs.readdir(tempDir)
             const subtitleFiles = files.filter(file => 
               file.endsWith('.vtt') && 
-              (file.includes('.ko') || file.includes('.en') || file.includes('auto') || file.includes('live_chat'))
+              !file.includes('live_chat') // live_chat만 제외
             )
 
             if (subtitleFiles.length > 0) {

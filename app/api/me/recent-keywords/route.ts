@@ -27,6 +27,7 @@ export async function GET(request: NextRequest) {
       .gte('created_at', twoDaysAgo)
       .not('keyword', 'is', null)
       .neq('keyword', '')
+      .neq('search_type', 'subtitle_extraction') // 자막 추출 제외
       .order('created_at', { ascending: false })
     
     if (keywordsError) {

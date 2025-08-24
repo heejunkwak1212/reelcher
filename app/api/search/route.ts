@@ -186,9 +186,18 @@ export async function POST(req: Request) {
     
     // 기존 키워드 검색 로직
     console.log('Instagram 키워드 검색 시작')
+    console.log('🔍 입력 파라미터:', {
+      keyword: input.keyword,
+      searchType: input.searchType,
+      filters: input.filters,
+      limit: input.limit
+    })
+    
+    // 원본 키워드 저장 (유튜브와 동일하게)
+    const originalKeyword = input.keyword || ''
     
     // Auto-detect region from keyword language (very simple heuristic)
-    const keywordHasKorean = /[\uac00-\ud7af]/.test(input.keyword || '')
+    const keywordHasKorean = /[\uac00-\ud7af]/.test(originalKeyword)
     const inferredRegion = keywordHasKorean ? 'KR' : undefined
     // Use Task default proxy (Automatic). We don't override proxy to avoid pool exhaustion.
     const proxyOpt: Record<string, unknown> = {}
@@ -196,7 +205,7 @@ export async function POST(req: Request) {
     // Multi keyword normalization (max 3). Fallback to single keyword
     const rawKeywords: string[] = Array.isArray((input as any).keywords) && (input as any).keywords!.length
       ? ((input as any).keywords as string[])
-      : [input.keyword || '']
+      : [originalKeyword]
     const normalizedKeywords = Array.from(new Set(
       rawKeywords.map(k => k
         .replace(/^#/, '')
@@ -206,6 +215,12 @@ export async function POST(req: Request) {
       ).filter(Boolean)
     )).slice(0, 3)
     const plainHashtag = normalizedKeywords[0]
+    
+    console.log('🏷️ 키워드 변환:', {
+      originalKeyword,
+      plainHashtag,
+      normalizedKeywords
+    })
 
     // 1) Hashtag Scraper (reels only) → collect URLs to feed into details
     // Setup abort handling: if client disconnects, abort all Apify runs (best-effort)
@@ -220,7 +235,7 @@ export async function POST(req: Request) {
       return x?.url || x?.postUrl || x?.link || (sc ? `https://www.instagram.com/p/${sc}/` : undefined)
     }
     // Use Task configured for reels; override hashtags/limit only
-    const taskId = 'upscale_jiminy/instagram-hashtag-scraper-task'
+    const taskId = 'distracting_wholemeal/instagram-hashtag-scraper-task'
     let hashtagItems: IHashtagItem[] = []
     const hashtagErrors: string[] = []
     // Date filter disabled in stage-1 (MVP). Keep helper stub for future use.
@@ -315,7 +330,7 @@ export async function POST(req: Request) {
     let cursorRounds = 0
     if (reelUrls.length > 0) {
       const batchSize = 30
-      const detailsTaskId = 'upscale_jiminy/instagram-scraper-task'
+      const detailsTaskId = 'distracting_wholemeal/instagram-scraper-task'
       const maxIdx = Math.min(reelUrls.length, target)
       const batches: string[][] = []
       for (let i = 0; i < maxIdx; i += batchSize) {
@@ -348,7 +363,7 @@ export async function POST(req: Request) {
       const chunkSize = 30
       for (let i = 0; i < usernames.length; i += chunkSize) {
         const slice = usernames.slice(i, i + chunkSize)
-        const started = await startTaskRun({ taskId: 'upscale_jiminy/instagram-profile-scraper-task', token, input: { usernames: slice, ...proxyOpt } })
+        const started = await startTaskRun({ taskId: 'distracting_wholemeal/instagram-profile-scraper-task', token, input: { usernames: slice, ...proxyOpt } })
         apifyRunIds.add(started.runId)
         const res = await waitForRunItems<IProfileSummary>({ token, runId: started.runId })
         profiles.push(...res.items)
@@ -458,7 +473,7 @@ export async function POST(req: Request) {
         .map(r => r.username as string)
       const uniqueMissing = Array.from(new Set(missingUsernames)).filter(u => !profiles.some(p => p.username === u))
       if (uniqueMissing.length === 0) break
-      const started = await startTaskRun({ taskId: 'upscale_jiminy/instagram-profile-scraper-task', token, input: { usernames: uniqueMissing.slice(0, 20), ...proxyOpt } })
+      const started = await startTaskRun({ taskId: 'distracting_wholemeal/instagram-profile-scraper-task', token, input: { usernames: uniqueMissing.slice(0, 20), ...proxyOpt } })
       apifyRunIds.add(started.runId)
       const more = await waitForRunItems<IProfileSummary>({ token, runId: started.runId })
       const moreProfiles = more.items
@@ -532,54 +547,9 @@ export async function POST(req: Request) {
     // Filters (period removed)
     const filtered = rows
     const finalRows = filtered
-    if (input.debug) {
-      // Default sort views desc for consistency
-      const sorted = [...finalRows].sort((a, b) => ((b.views ?? 0) - (a.views ?? 0)))
-      const finalCount = sorted.length
-      const prorationSuggestion = Math.floor((finalCount / 30) * 100)
-      const creditsToCharge = prorationSuggestion
-      if (settle) await settle(finalCount)
-      // Log search
-      try {
-        await supabase.from('searches').insert({
-          user_id: user.id,
-          keyword: plainHashtag,
-          requested: Number(input.limit),
-          returned: finalCount,
-          cost: creditsToCharge,
-        })
-      } catch {}
-      return Response.json({
-        items: sorted,
-        debug: {
-          inferredRegion,
-          collected: reels.length,
-          uniqueUrls: new Set(reels.map(r => (r as any).url)).size,
-          hashtagItems: 0,
-          usernamesCollected: usernames.length,
-          rounds: cursorRounds,
-          sample: reels.slice(0, 3).map(r => ({ url: getUrl(r), hasVideo: !!(r as any)?.videoUrl })),
-          inputs: {
-            hashtagInput: { hashtags: [plainHashtag], resultsLimit, whatToScrape: 'reels' },
-            detailsPreferred: { hashtags: [plainHashtag], resultsLimit: target, whatToScrape: 'reels', ...proxyOpt },
-          },
-          apify: {
-            hashtagRun: {},
-            hashtagError: undefined,
-            hashtagRunGlobal: null,
-          },
-          fallbackPlan: reels.length < target ? `used fallbacks to reach ${reels.length}/${target}` : 'not needed',
-          stages: {
-            detailsFetched: reels.length,
-            profilesFetched: profiles.length,
-            rowsWithFollowers: rows.filter(r => typeof r.followers === 'number').length,
-            backfillRounds,
-          },
-          prorationSuggestion,
-        },
-        credits: { toCharge: creditsToCharge, basis: 100, per: 30 },
-      })
-    }
+    
+    // 통합된 처리 로직 (디버그/일반 모드 구분 제거)
+    console.log('🔄 Instagram 최종 처리 시작')
     {
       const sorted = [...finalRows].sort((a, b) => ((b.views ?? 0) - (a.views ?? 0)))
       const finalCount = sorted.length
@@ -594,154 +564,174 @@ export async function POST(req: Request) {
           returned: finalCount,
           cost: toCharge,
         })
-      } catch {}
+      } catch (searchLogError) {
+        console.error('❌ searches 테이블 로그 저장 실패:', searchLogError)
+      }
+      
+      // 메인 후처리 로직 시작  
+      console.log('🔄 Instagram 후처리 시작')
       try {
+        // 키워드 정보 재확인
+        const searchKeyword = input.keyword || ''
+        console.log('🔑 처리할 키워드:', searchKeyword)
+        
         // Update counters atomically via service role to avoid RLS edge cases
         const svc = (await import('@/lib/supabase/service')).supabaseService()
-        const todayUtc = new Date()
-        const yyyy = todayUtc.getUTCFullYear()
-        const mm = String(todayUtc.getUTCMonth() + 1).padStart(2, '0')
-        const firstOfMonth = `${yyyy}-${mm}-01`
-        const { data: row } = await svc.from('search_counters').select('month_start,month_count,today_date,today_count').eq('user_id', user.id).single()
-        let month_start = row?.month_start || firstOfMonth
-        let month_count = Number(row?.month_count || 0)
-        let today_date = row?.today_date || todayUtc.toISOString().slice(0,10)
-        let today_count = Number(row?.today_count || 0)
-        // reset if month crossed
-        if (String(month_start) !== firstOfMonth) { month_start = firstOfMonth; month_count = 0 }
-        // reset if day crossed
-        const todayStr = todayUtc.toISOString().slice(0,10)
-        if (String(today_date) !== todayStr) { today_date = todayStr; today_count = 0 }
-        month_count += 1
-        today_count += 1
-        await svc.from('search_counters').upsert({ user_id: user.id as any, month_start, month_count, today_date, today_count, updated_at: new Date().toISOString() as any })
-        
-        // Instagram 키워드 검색 기록 저장 (통합된 테이블 사용)
-        const { error: historyError } = await svc.from('platform_searches').insert({
-          user_id: user.id,
-          platform: 'instagram',
-          search_type: 'keyword',
-          keyword: input.keyword,
-          filters: input.filters,
-          results_count: sorted.length,
-          credits_used: toCharge
-        })
-        
-        if (historyError) {
-          console.error('Instagram 검색 기록 저장 실패:', historyError)
-          // 검색 기록 저장 실패는 응답에 영향을 주지 않음
-        }
-        
-        // 키워드 검색인 경우에만 최근 키워드로 저장 (2일간 보관)
-        if (input.keyword?.trim()) {
-          // 2일 이상된 키워드 기록 정리
-          const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
-          await svc.from('platform_searches')
-            .delete()
-            .eq('user_id', user.id)
-            .eq('platform', 'instagram')
-            .eq('search_type', 'keyword')
-            .eq('results_count', 0) // 키워드 저장용 더미 레코드만 삭제
-            .is('credits_used', null) // null로 구분
-            .lt('created_at', twoDaysAgo)
-          
-          // 기존 동일 키워드 더미 레코드 삭제 (중복 방지)
-          await svc.from('platform_searches')
-            .delete()
-            .eq('user_id', user.id)
-            .eq('platform', 'instagram')
-            .eq('search_type', 'keyword')
-            .eq('keyword', input.keyword.trim())
-            .eq('results_count', 0) // 키워드 저장용 더미 레코드만 삭제
-            .is('credits_used', null) // null로 구분
-          
-          // 최근 키워드 저장 (더미 레코드)
-          await svc.from('platform_searches').insert({
+      const todayUtc = new Date()
+      const yyyy = todayUtc.getUTCFullYear()
+      const mm = String(todayUtc.getUTCMonth() + 1).padStart(2, '0')
+      const firstOfMonth = `${yyyy}-${mm}-01`
+      const { data: row } = await svc.from('search_counters').select('month_start,month_count,today_date,today_count').eq('user_id', user.id).single()
+      let month_start = row?.month_start || firstOfMonth
+      let month_count = Number(row?.month_count || 0)
+      let today_date = row?.today_date || todayUtc.toISOString().slice(0,10)
+      let today_count = Number(row?.today_count || 0)
+      // reset if month crossed
+      if (String(month_start) !== firstOfMonth) { month_start = firstOfMonth; month_count = 0 }
+      // reset if day crossed
+      const todayStr = todayUtc.toISOString().slice(0,10)
+      if (String(today_date) !== todayStr) { today_date = todayStr; today_count = 0 }
+      month_count += 1
+      today_count += 1
+      
+      // search_counters 테이블 업데이트
+      await svc.from('search_counters').upsert({ 
+        user_id: user.id as any, 
+        month_start, 
+        month_count, 
+        today_date, 
+        today_count, 
+        updated_at: new Date().toISOString() as any 
+      })
+      
+      // 검색 기록 저장 (search_history 테이블) - 키워드 검색으로 통일
+      console.log('💾 search_history 저장 시도 중:', {
+        user_id: user.id,
+        platform: 'instagram',
+        search_type: 'keyword',
+        keyword: searchKeyword,
+        results_count: sorted.length,
+        credits_used: toCharge
+      })
+      
+      try {
+        const { error: logError } = await supabase
+          .from('search_history')
+          .insert({
             user_id: user.id,
             platform: 'instagram',
+            search_type: 'keyword', // 인스타그램은 모두 키워드 검색으로 처리
+            keyword: searchKeyword, // 원본 키워드 저장 (유튜브와 동일)
+            filters: input.filters || {},
+            results_count: sorted.length,
+            credits_used: toCharge
+          })
+        
+        if (logError) {
+          console.error('❌ Instagram 검색 기록 저장 실패:', logError)
+          console.error('❌ 에러 세부사항:', JSON.stringify(logError, null, 2))
+        } else {
+          console.log('✅ Instagram 검색 기록 저장 성공!', {
             search_type: 'keyword',
-            keyword: input.keyword.trim(),
-            results_count: 0, // 키워드 저장만을 위한 더미 count
-            credits_used: null, // null로 구분 (관리자 0과 구분)
-            created_at: new Date().toISOString()
+            keyword: searchKeyword,
+            credits_used: toCharge,
+            results_count: sorted.length
           })
         }
-        
-        // ==========================================
-        // 🔄 단순화된 후처리 로직 (Instagram)
-        // ==========================================
-        
-        // 1. 동적 크레딧 계산 (실제 반환된 결과 수 기반)
-        const actualCreditsUsed = Math.floor(sorted.length / 30) * 100 // Instagram은 100크레딧
-        const requestedResults = parseInt(input.resultsLimit) || 30
-        const requiredCredits = Math.floor(requestedResults / 30) * 100 // 원래 예약된 크레딧
-        console.log(`💰 Instagram 실제 크레딧 사용량: ${actualCreditsUsed} (결과 수: ${sorted.length}), 원래 예약: ${requiredCredits}`)
-        
-        // 2. A. 사용자 크레딧 차감 (credits 테이블 직접 UPDATE)
-        if (actualCreditsUsed > 0) {
-          try {
-            // 현재 크레딧 조회 후 차감
-            const { data: currentCredits } = await supabase
-              .from('credits')
-              .select('balance, reserved')
-              .eq('user_id', user.id)
-              .single()
-            
-            if (currentCredits) {
-              const newBalance = Math.max(0, currentCredits.balance - actualCreditsUsed)
-              
-              console.log(`💰 Instagram 크레딧 차감 세부사항:`, {
-                사용자ID: user.id,
-                현재잔액: currentCredits.balance,
-                현재예약: currentCredits.reserved,
-                실제사용: actualCreditsUsed,
-                새잔액: newBalance
-              })
-              
-              const { error: creditError } = await supabase
-                .from('credits')
-                .update({ 
-                  balance: newBalance
-                })
-                .eq('user_id', user.id)
-              
-              if (creditError) {
-                console.error('❌ Instagram 크레딧 차감 실패:', creditError)
-              } else {
-                console.log(`✅ Instagram 크레딧 차감 성공: ${actualCreditsUsed}`)
-              }
-            }
-          } catch (error) {
-            console.error('❌ Instagram 크레딧 차감 오류:', error)
-          }
-        }
-        
-        // 2. B. 검색 기록 저장 (search_history 테이블 직접 INSERT)
+      } catch (error) {
+        console.error('❌ Instagram 검색 기록 저장 오류:', error)
+        console.error('❌ 오류 스택:', (error as Error)?.stack)
+      }
+      
+      // 크레딧 차감 (credits 테이블)
+      console.log(`💰 크레딧 차감 시도: ${toCharge} 크레딧`)
+      if (toCharge > 0) {
         try {
-          const { error: logError } = await supabase
-            .from('search_history')
-            .insert({
-              user_id: user.id,
-              platform: 'instagram', // 플랫폼 명시
-              search_type: 'hashtag',
-              keyword: plainHashtag || '',
-              filters: { period: 'month2', minViews: 0 },
-              results_count: sorted.length,
-              credits_used: actualCreditsUsed
-            })
+          const { data: currentCredits } = await supabase
+            .from('credits')
+            .select('balance, reserved')
+            .eq('user_id', user.id)
+            .single()
           
-          if (logError) {
-            console.error('❌ Instagram 검색 기록 저장 실패:', logError)
+          if (currentCredits) {
+            const newBalance = Math.max(0, currentCredits.balance - toCharge)
+            
+            console.log(`💰 Instagram 크레딧 차감 세부사항:`, {
+              사용자ID: user.id,
+              현재잔액: currentCredits.balance,
+              사용량: toCharge,
+              새잔액: newBalance,
+              키워드: searchKeyword
+            })
+            
+            const { error: creditError } = await supabase
+              .from('credits')
+              .update({ balance: newBalance })
+              .eq('user_id', user.id)
+            
+            if (creditError) {
+              console.error('❌ Instagram 크레딧 차감 실패:', creditError)
+            } else {
+              console.log(`✅ Instagram 크레딧 차감 성공: ${toCharge} 크레딧`)
+            }
           } else {
-            console.log('✅ Instagram 검색 기록 저장 성공 (search_history)')
+            console.error('❌ 사용자 크레딧 정보 조회 실패')
           }
         } catch (error) {
-          console.error('❌ Instagram 검색 기록 저장 오류:', error)
+          console.error('❌ Instagram 크레딧 차감 오류:', error)
         }
-        
-      } catch {}
-      const finalCreditsUsed = Math.floor(sorted.length / 30) * 100
-      return Response.json({ items: sorted, credits: { toCharge: finalCreditsUsed, basis: 100, per: 30 } })
+      } else {
+        console.log('💰 차감할 크레딧 없음 (0 크레딧)')
+      }
+      } catch (mainError) {
+        console.error('❌ Instagram 메인 처리 블록 오류:', mainError)
+        console.error('❌ 메인 처리 스택:', (mainError as Error)?.stack)
+      }
+      
+      console.log('🎯 Instagram 검색 완료:', {
+        키워드: input.keyword || '',
+        결과수: sorted.length,
+        크레딧: toCharge
+      })
+      
+      // 디버그 모드일 때는 추가 정보 포함
+      if (input.debug) {
+        return Response.json({
+          items: sorted,
+          debug: {
+            inferredRegion,
+            collected: reels.length,
+            uniqueUrls: new Set(reels.map(r => (r as any).url)).size,
+            hashtagItems: 0,
+            usernamesCollected: usernames.length,
+            rounds: cursorRounds,
+            sample: reels.slice(0, 3).map(r => ({ url: getUrl(r), hasVideo: !!(r as any)?.videoUrl })),
+            inputs: {
+              hashtagInput: { hashtags: [plainHashtag], resultsLimit, whatToScrape: 'reels' },
+              detailsPreferred: { hashtags: [plainHashtag], resultsLimit: target, whatToScrape: 'reels', ...proxyOpt },
+            },
+            apify: {
+              hashtagRun: {},
+              hashtagError: undefined,
+              hashtagRunGlobal: null,
+            },
+            fallbackPlan: reels.length < target ? `used fallbacks to reach ${reels.length}/${target}` : 'not needed',
+            stages: {
+              detailsFetched: reels.length,
+              profilesFetched: profiles.length,
+              rowsWithFollowers: rows.filter(r => typeof r.followers === 'number').length,
+              backfillRounds,
+            },
+            prorationSuggestion: toCharge,
+          },
+          credits: { toCharge, basis: 100, per: 30 },
+        })
+      } else {
+        return Response.json({ 
+          items: sorted, 
+          credits: { toCharge, basis: 100, per: 30 } 
+        })
+      }
     }
   } catch (e) {
     console.error('=== Instagram API 전체 에러 발생 ===')
@@ -812,7 +802,7 @@ async function handleProfileSearch(
     try { req.signal.addEventListener('abort', onAbort, { once: true }) } catch {}
     
     // Instagram Scraper 태스크 실행 (2단계 스크래퍼 직접 사용)
-    const taskId = 'upscale_jiminy/instagram-scraper-task'
+         const taskId = 'distracting_wholemeal/instagram-scraper-task'
     const profileUrl_full = `https://www.instagram.com/${username}/`
     
     console.log('Instagram 스크래퍼 태스크 시작:', taskId)

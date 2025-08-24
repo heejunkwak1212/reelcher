@@ -50,6 +50,7 @@ export default function DashboardPage() {
             .from('search_history')
             .select('*')
             .eq('user_id', user.id)
+            .neq('search_type', 'subtitle_extraction') // 자막 추출 제외
             .order('created_at', { ascending: false })
             .limit(5),
           fetch('/api/me/stats', { 
@@ -179,21 +180,22 @@ export default function DashboardPage() {
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm font-medium text-gray-900">
                             {search.search_type === 'profile' ? (
-                              <button 
-                                className="text-blue-600 hover:text-blue-800 underline"
-                                onClick={() => alert(`프로필: ${search.keyword || search.profile_username || '알 수 없음'}`)}
-                              >
-                                프로필
-                              </button>
+                              <div className="flex flex-col">
+                                <span className="text-purple-600 font-medium">{search.keyword || '프로필 없음'}</span>
+                                <span className="text-xs text-gray-500">프로필 검색</span>
+                              </div>
                             ) : search.search_type === 'url' ? (
-                              <button 
-                                className="text-blue-600 hover:text-blue-800 underline"
-                                onClick={() => alert(`URL: ${search.url || '알 수 없음'}`)}
-                              >
-                                URL
-                              </button>
+                              <div className="flex flex-col">
+                                <span className="text-blue-600 font-medium truncate max-w-xs" title={search.keyword}>
+                                  {search.keyword || 'URL 없음'}
+                                </span>
+                                <span className="text-xs text-gray-500">URL 검색</span>
+                              </div>
                             ) : (
-                              search.keyword || '검색어 없음'
+                              <div className="flex flex-col">
+                                <span>{search.keyword || '검색어 없음'}</span>
+                                <span className="text-xs text-gray-500">키워드 검색</span>
+                              </div>
                             )}
                           </div>
                         </td>

@@ -177,7 +177,7 @@ export async function POST(request: NextRequest) {
       }
       
       const started = await startTaskRun({ 
-        taskId: 'mlyTt5q6sAjY7z9ZV', // 새로운 스크래퍼 ID
+        taskId: 'distracting_wholemeal/tiktok-scraper-task', // 새로운 스크래퍼 ID
         token: process.env.APIFY_TOKEN!, 
         input: taskInput
       })

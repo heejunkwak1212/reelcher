@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
+import { ResponsiveLogo } from '@/components/ui/logo'
 import { VerificationModal } from '@/components/auth/VerificationModal'
 import { useAuthStore } from '@/store/auth'
 
@@ -369,6 +370,56 @@ function SearchTestPageContent() {
     }
   }, [])
   
+  // 자막 추출 후 크레딧 업데이트 이벤트 리스너 (검색통계는 업데이트하지 않음)
+  useEffect(() => {
+    const handleCreditsUpdate = (event: CustomEvent) => {
+      const { balance, used } = event.detail
+      console.log('📡 크레딧 업데이트 이벤트 수신 (자막추출):', { balance, used })
+      setMyCredits(balance)
+      // 자막 추출은 크레딧만 업데이트하고 검색통계는 업데이트하지 않음
+      loadCredits().catch(console.warn)
+    }
+    
+    // 검색통계 업데이트 이벤트 (키워드 검색시에만 발생)
+    const handleStatsUpdate = () => {
+      console.log('📡 검색통계 업데이트 이벤트 수신')
+      loadStats().catch(console.warn)
+    }
+    
+    document.body.addEventListener('relcher:creditsUpdate', handleCreditsUpdate as EventListener)
+    document.body.addEventListener('relcher:statsUpdate', handleStatsUpdate as EventListener)
+    
+    return () => {
+      document.body.removeEventListener('relcher:creditsUpdate', handleCreditsUpdate as EventListener)
+      document.body.removeEventListener('relcher:statsUpdate', handleStatsUpdate as EventListener)
+    }
+  }, [])
+  
+  // 자정 감지 및 자동 통계 리셋
+  useEffect(() => {
+    const checkMidnight = () => {
+      const now = new Date()
+      const midnight = new Date(now)
+      midnight.setHours(24, 0, 0, 0) // 다음날 00:00
+      
+      const timeUntilMidnight = midnight.getTime() - now.getTime()
+      
+      const timer = setTimeout(() => {
+        console.log('🕛 자정 감지: 오늘 검색량 초기화')
+        setTodayCount(0) // 즉시 UI 업데이트
+        loadStats().catch(console.warn) // 서버에서 최신 데이터 가져오기
+        
+        // 다음 자정을 위해 재귀 호출
+        checkMidnight()
+      }, timeUntilMidnight)
+      
+      return timer
+    }
+    
+    const timer = checkMidnight()
+    return () => clearTimeout(timer)
+  }, [])
+  
   // 페이지네이션 상태
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 30
@@ -439,6 +490,7 @@ function SearchTestPageContent() {
         break
     }
   }, [platform, searchType, keywords])
+  
   const [user, setUser] = useState<any>(null)
   // period UI removed for MVP
   const [limit, setLimit] = useState<'5' | '15' | '30' | '50' | '60' | '90' | '120'>('30')
@@ -1707,43 +1759,8 @@ function SearchTestPageContent() {
         <div className="max-w-[1320px] mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             {/* Logo */}
-            <Link href="/" className="flex items-center gap-0.05 hover:opacity-80 transition-opacity">
-              <picture>
-                <source srcSet="/logo.svg" type="image/svg+xml" />
-                <source srcSet="/favicon-64x64.png" type="image/png" />
-                <img
-                  src="/icon-64"
-                  alt="Reelcher Logo"
-                  className="w-10 h-10 flex-shrink-0"
-                  loading="eager"
-                  decoding="sync"
-                  style={{
-                    imageRendering: 'crisp-edges'
-                  } as React.CSSProperties & {
-                    WebkitImageRendering?: string;
-                    MozImageRendering?: string;
-                    msImageRendering?: string;
-                  }}
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement;
-                    if (target.src.includes('icon-64')) {
-                      target.src = '/favicon-64x64.png';
-                    } else if (target.src.includes('favicon-64x64.png')) {
-                      target.src = '/favicon-32x32.png';
-                    } else if (target.src.includes('favicon-32x32.png')) {
-                      target.style.display = 'none';
-                      const parent = target.parentElement;
-                      if (parent && !parent.querySelector('.text-logo-fallback')) {
-                        const textLogo = document.createElement('div');
-                        textLogo.className = 'text-logo-fallback w-10 h-10 bg-black text-white rounded flex items-center justify-center font-bold text-sm';
-                        textLogo.textContent = 'R';
-                        parent.insertBefore(textLogo, target);
-                      }
-                    }
-                  }}
-                />
-              </picture>
-              <span className="font-bold text-xl text-black">Reelcher</span>
+            <Link href="/" className="hover:opacity-80 transition-opacity">
+              <ResponsiveLogo />
             </Link>
             
             {/* Navigation */}
@@ -2849,7 +2866,7 @@ function SearchTestPageContent() {
         {raw}
       </pre>
       {progressOpen && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => {}}>
+        <div className="fixed inset-0 bg-black/40 z-60 flex items-center justify-center p-4" onClick={() => {}}>
           <div className="bg-white rounded shadow-lg w-full max-w-md p-5" onClick={(e)=>e.stopPropagation()}>
             <div className="text-base font-semibold mb-3">{progressTitle}</div>
             <div className="w-full h-3 bg-neutral-200 rounded">
@@ -3605,6 +3622,20 @@ function SubtitleDialog({ url, platform }: { url: string; platform?: string }) {
       cache.set(url, t)
       setText(t)
       setOpen(true)
+      
+      // 자막 추출 후 크레딧 정보만 업데이트 (검색통계는 업데이트하지 않음)
+      if (j?.credits) {
+        console.log('💰 자막 추출 후 크레딧 정보 업데이트:', j.credits)
+        // 크레딧 정보만 전역으로 업데이트하기 위해 커스텀 이벤트 발생
+        document.body.dispatchEvent(new CustomEvent('relcher:creditsUpdate', { 
+          detail: { 
+            balance: j.credits.balance,
+            used: j.credits.used 
+          } 
+        }))
+        
+        // 자막 추출은 검색이 아니므로 검색통계는 업데이트하지 않음
+      }
     } catch (e: any) {
       console.error('자막 추출 오류:', e)
       const errorMessage = e?.message || '자막 추출 실패'
@@ -3631,7 +3662,7 @@ function SubtitleDialog({ url, platform }: { url: string; platform?: string }) {
             </div>
             <div className="flex items-center justify-end gap-3 mt-4">
               <button className="px-3 py-1 border rounded" onClick={()=>setConfirmOpen(false)}>취소</button>
-              <button className="px-3 py-1 border rounded bg-black text-white" onClick={async ()=>{ const ok = await ensureCredits(); if (!ok) return; setConfirmOpen(false); load(); }}>추출 (20크레딧)</button>
+              <button className="px-3 py-1 border rounded bg-black text-white" onClick={async ()=>{ const ok = await ensureCredits(); if (!ok) return; setConfirmOpen(false); load(); }}>추출 ({platform === 'youtube' ? '10' : '20'}크레딧)</button>
             </div>
           </div>
         </div>

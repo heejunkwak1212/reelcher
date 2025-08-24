@@ -7,6 +7,7 @@ import { supabaseBrowser } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Logo } from '@/components/ui/logo'
 import { toast } from '@/hooks/use-toast'
 import { Eye, EyeOff, Mail, Lock } from 'lucide-react'
 
@@ -123,43 +124,8 @@ export default function SignInPage() {
         <div className="bg-white rounded-2xl shadow-xl p-8">
           {/* Header */}
           <div className="text-center mb-8">
-            <div className="flex items-center justify-center gap-0.05 mb-4">
-              <picture>
-                <source srcSet="/logo.svg" type="image/svg+xml" />
-                <source srcSet="/favicon-64x64.png" type="image/png" />
-                <img
-                  src="/icon-64"
-                  alt="Reelcher Logo"
-                  className="w-8 h-8 flex-shrink-0"
-                  loading="eager"
-                  decoding="sync"
-                  style={{
-                    imageRendering: 'crisp-edges'
-                  } as React.CSSProperties & {
-                    WebkitImageRendering?: string;
-                    MozImageRendering?: string;
-                    msImageRendering?: string;
-                  }}
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement;
-                    if (target.src.includes('icon-64')) {
-                      target.src = '/favicon-64x64.png';
-                    } else if (target.src.includes('favicon-64x64.png')) {
-                      target.src = '/favicon-32x32.png';
-                    } else if (target.src.includes('favicon-32x32.png')) {
-                      target.style.display = 'none';
-                      const parent = target.parentElement;
-                      if (parent && !parent.querySelector('.text-logo-fallback')) {
-                        const textLogo = document.createElement('div');
-                        textLogo.className = 'text-logo-fallback w-8 h-8 bg-black text-white rounded flex items-center justify-center font-bold text-sm';
-                        textLogo.textContent = 'R';
-                        parent.insertBefore(textLogo, target);
-                      }
-                    }
-                  }}
-                />
-              </picture>
-              <span className="font-bold text-xl text-black">Reelcher</span>
+            <div className="flex justify-center mb-4">
+              <Logo size="md" showText={true} />
             </div>
           </div>
 

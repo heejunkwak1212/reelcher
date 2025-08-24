@@ -91,9 +91,9 @@ export async function POST(req: Request) {
     // Sanitize: strip query/hash to avoid actor mis-detection
     const urlObj = new URL(input.url)
     const cleanUrl = `${urlObj.origin}${urlObj.pathname}`
-    const taskId = 'upscale_jiminy/tiktok-instagram-facebook-transcriber-task'
+         const taskId = 'distracting_wholemeal/tiktok-instagram-facebook-transcriber-task'
     // This actor expects 'start_urls' not 'directUrls'. If the param is wrong, it falls back to example URL.
-    const started = await startTaskRun({ taskId, token, input: { start_urls: cleanUrl, normalizeLanguageTo: input.lang || 'ko' } })
+    const started = await startTaskRun({ taskId, token, input: { start_urls: cleanUrl } })
     const out = await waitForRunItems<any[]>({ token, runId: started.runId })
     const first = Array.isArray(out.items) ? (out.items[0] as any) : undefined
     let text: string = first?.text || first?.transcript || first?.transcription || ''
@@ -134,7 +134,7 @@ export async function POST(req: Request) {
         
         console.log(`✅ 자막 추출 크레딧 차감 성공: ${requiredCredits}`)
         
-        // 자막 추출 기록 저장 (search_history 테이블)
+        // 자막 추출 기록 저장 (search_history 테이블) - URL 대신 "자막 추출"로 저장
         try {
           const platform = input.url.includes('youtube.com') || input.url.includes('youtu.be') ? 'youtube' : 
                            input.url.includes('tiktok.com') ? 'tiktok' : 'instagram'
@@ -145,8 +145,8 @@ export async function POST(req: Request) {
               user_id: user.id,
               platform: platform,
               search_type: 'subtitle_extraction',
-              keyword: input.url, // URL을 키워드로 저장
-              filters: {},
+              keyword: '자막 추출', // URL 대신 "자막 추출"로 저장 (최근 키워드에 URL이 나타나지 않게)
+              filters: { url: input.url }, // URL은 filters에 저장
               results_count: 1, // 자막 추출은 1건으로 카운트
               credits_used: requiredCredits
             })
@@ -164,29 +164,35 @@ export async function POST(req: Request) {
       }
     }
     
-    // 자막 추출 기록 저장 (platform_searches 테이블)
-    try {
-      const svc = (await import('@/lib/supabase/service')).supabaseService()
-      
-      const { error: historyError } = await svc
-        .from('platform_searches')
-        .insert({
-          user_id: user.id,
-          platform: 'instagram', // 자막 추출은 주로 Instagram 기반
-          search_type: 'subtitle_extraction',
-          keyword: cleanUrl, // URL을 키워드로 저장
-          results_count: text ? 1 : 0,
-          credits_used: isAdmin ? 0 : 20
-        })
-
-      if (historyError) {
-        console.error('자막 추출 기록 저장 실패:', historyError)
+    // 자막 추출은 최근 키워드로 저장하지 않음 (키워드 검색만 저장)
+    
+    // 응답에 업데이트된 크레딧 정보 포함 (실시간 업데이트용)
+    let responseData: any = { captions: text }
+    
+    if (!isAdmin) {
+      try {
+        // 업데이트된 크레딧 정보 조회
+        const { data: updatedCredits } = await ssr
+          .from('credits')
+          .select('balance, reserved')
+          .eq('user_id', user.id)
+          .single()
+        
+        if (updatedCredits) {
+          responseData.credits = {
+            balance: updatedCredits.balance,
+            reserved: updatedCredits.reserved,
+            used: input.url.includes('youtube.com') || input.url.includes('youtu.be') ? 10 : 20
+          }
+        }
+        
+        // 자막 추출은 검색통계에 집계되지 않음 (크레딧만 차감)
+      } catch (error) {
+        console.error('크레딧/통계 정보 조회 오류:', error)
       }
-    } catch (historyError) {
-      console.error('자막 추출 기록 저장 실패:', historyError)
     }
     
-    return new Response(JSON.stringify({ captions: text }), { headers: { 'content-type': 'application/json' } })
+    return new Response(JSON.stringify(responseData), { headers: { 'content-type': 'application/json' } })
   } catch (e: any) {
     console.error('자막 추출 오류:', e)
     

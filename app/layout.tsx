@@ -33,31 +33,11 @@ export const metadata: Metadata = {
   description: "인스타그램 릴스 데이터를 효율적으로 분석하고 트렌드를 파악하세요",
   icons: {
     icon: [
-      { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
-      { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
-      { url: '/favicon-48x48.png', sizes: '48x48', type: 'image/png' },
-      { url: '/favicon-64x64.png', sizes: '64x64', type: 'image/png' },
-      { url: '/icon-16', sizes: '16x16', type: 'image/png' },
-      { url: '/icon-32', sizes: '32x32', type: 'image/png' },
-      { url: '/icon-48', sizes: '48x48', type: 'image/png' },
-      { url: '/icon-64', sizes: '64x64', type: 'image/png' },
-      { url: '/icon', sizes: '256x256', type: 'image/png' },
-      { url: '/logo.svg', type: 'image/svg+xml', sizes: 'any' }
+      { url: '/favicon.ico', sizes: '32x32' },
+      { url: '/logo.svg', type: 'image/svg+xml' }
     ],
-    shortcut: [
-      { url: '/icon-32', sizes: '32x32' },
-      { url: '/favicon-16x16.png', sizes: '16x16' },
-      { url: '/favicon-32x32.png', sizes: '32x32' },
-      { url: '/favicon-48x48.png', sizes: '48x48' },
-      { url: '/favicon-64x64.png', sizes: '64x64' }
-    ],
-    apple: [
-      { url: '/apple-touch-icon.png', sizes: '180x180' },
-      { url: '/apple-icon', sizes: '512x512' }
-    ],
-    other: [
-      { rel: 'mask-icon', url: '/safari-pinned-tab.svg', color: '#000000' }
-    ]
+    shortcut: '/favicon.ico',
+    apple: '/logo.svg'
   },
   manifest: '/site.webmanifest',
 

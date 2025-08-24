@@ -98,18 +98,18 @@ export function DashboardSidebar({ user, plan = 'free', balance = 0, onSidebarCh
 
   const handleLogout = async () => {
     try {
-      const supabase = supabaseBrowser();
-      
-      const { error } = await supabase.auth.signOut();
-      if (error) {
-        console.error('로그아웃 오류:', error);
-        return;
+      const { performCompleteLogout } = await import('@/lib/auth-utils');
+      const result = await performCompleteLogout();
+      if (result.success) {
+        router.push('/');
+        router.refresh();
+      } else {
+        console.error('로그아웃 실패:', result.error);
+        alert('로그아웃 중 오류가 발생했습니다. 다시 시도해주세요.');
       }
-      
-      // 로그아웃 성공 시 홈페이지로 리다이렉트
-      router.push('/');
     } catch (error) {
-      console.error('로그아웃 처리 중 오류:', error);
+      console.error('로그아웃 함수 호출 오류:', error);
+      alert('로그아웃 중 오류가 발생했습니다.');
     }
   };
   
