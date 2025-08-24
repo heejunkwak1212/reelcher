@@ -9,6 +9,8 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { ResponsiveLogo } from '@/components/ui/logo'
 import { VerificationModal } from '@/components/auth/VerificationModal'
 import { useAuthStore } from '@/store/auth'
+import { Input } from '@/components/input'
+import { Input as ShadcnInput } from '@/components/ui/input'
 
 // 에러 바운더리 컴포넌트
 class ErrorBoundary extends Component<
@@ -337,6 +339,29 @@ function SearchTestPageContent() {
   const [platform, setPlatform] = useState<'instagram' | 'youtube' | 'tiktok'>('instagram')
   const [searchType, setSearchType] = useState<'keyword' | 'url' | 'profile'>('keyword')
   const [expandedTitleRow, setExpandedTitleRow] = useState<string | null>(null) // 확장된 제목 행 관리
+  
+  // Validation states
+  const [validationErrors, setValidationErrors] = useState<{[key: string]: string}>({})
+  const [showValidationErrors, setShowValidationErrors] = useState(false)
+
+  // Validation function
+  const validateInputs = () => {
+    const errors: {[key: string]: string} = {}
+    
+    if (searchType === 'keyword') {
+      if (!keywords[0] || keywords[0].trim() === '') {
+        errors.keywords = '필수 입력란을 확인해주세요.'
+      }
+    } else if (searchType === 'url' || searchType === 'profile') {
+      if (!keywords[0] || keywords[0].trim() === '') {
+        errors.keywords = '필수 입력란을 확인해주세요.'
+      }
+    }
+    
+    setValidationErrors(errors)
+    setShowValidationErrors(Object.keys(errors).length > 0)
+    return Object.keys(errors).length === 0
+  }
   
   // 본인인증 관련 상태 (비활성화됨 - 하드코딩으로 대체)
   const isVerified = true // 본인인증 비활성화로 인해 항상 true로 설정
@@ -703,7 +728,7 @@ function SearchTestPageContent() {
       
       const result = await response.json()
       if (response.ok) {
-        setNewApiKey('')
+    setNewApiKey('')
         setNewApiKeyName('')
         alert(result.message)
         await loadApiKeys() // 목록 새로고침
@@ -758,7 +783,7 @@ function SearchTestPageContent() {
       
       if (response.ok) {
         setYoutubeApiKey(keyData.api_key)
-        setSavedApiKeysOpen(false)
+    setSavedApiKeysOpen(false)
         await loadApiKeys() // 활성 상태 업데이트
       }
     } catch (error) {
@@ -992,6 +1017,10 @@ function SearchTestPageContent() {
 
   // 검색 전 확인 및 실행 함수
   const checkVerificationAndRun = () => {
+    // 입력 값 검증
+    if (!validateInputs()) {
+      return
+    }
     // 검색 전 알림 팝업 표시
     const showSearchConfirmation = () => {
       return new Promise<boolean>((resolve) => {
@@ -1099,9 +1128,30 @@ function SearchTestPageContent() {
     
     const nCredits = getCreditCost()
     
-    // 7일 옵트아웃 상태면 팝업 건너뛰고 바로 검색 진행
+    // 7일 옵트아웃 상태면 팝업 건너뛰지만 크레딧 체크는 필요
     if (until > now) {
       console.log('검색 시작 팝업 7일 옵트아웃으로 인해 팝업 건너뛰기')
+      // 크레딧 부족 체크
+      if ((myCredits || 0) < nCredits) {
+        const creditModal = (message = '업그레이드를 통해 보다 향상된 혜택을 누려보세요!') => {
+          const modal = document.createElement('div')
+          modal.className = 'fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4'
+          modal.innerHTML = `
+            <div class="bg-white rounded shadow-lg w-full max-w-md p-5">
+              <div class="text-base font-semibold mb-3">크레딧이 부족해요</div>
+              <div class="text-sm text-neutral-700">${message}</div>
+              <div class="flex items-center justify-end gap-3 mt-4">
+                <button id="cnl" class="px-3 py-2 border rounded">취소</button>
+                <button id="ok" class="px-3 py-2 border rounded bg-black text-white">업그레이드</button>
+              </div>
+            </div>`
+          document.body.appendChild(modal)
+          modal.querySelector('#cnl')?.addEventListener('click', () => modal.remove())
+          modal.querySelector('#ok')?.addEventListener('click', () => { modal.remove(); window.location.href = '/pricing' })
+        }
+        creditModal('업그레이드를 통해 보다 향상된 혜택을 누려보세요!')
+        return
+      }
     } else {
       // Show confirmation with 7-day opt-out
       const ok = await new Promise<boolean>((resolve) => {
@@ -1128,7 +1178,31 @@ function SearchTestPageContent() {
         document?.body?.appendChild(modal)
         const cleanup = () => { modal.remove() }
         modal.querySelector('#cnl')?.addEventListener('click', () => { cleanup(); resolve(false) })
-        modal.querySelector('#go')?.addEventListener('click', () => {
+        modal.querySelector('#go')?.addEventListener('click', async () => {
+          // 크레딧 부족 체크
+          if ((myCredits || 0) < nCredits) {
+            cleanup()
+            const creditModal = (message = '업그레이드를 통해 보다 향상된 혜택을 누려보세요!') => {
+              const modal = document.createElement('div')
+              modal.className = 'fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4'
+              modal.innerHTML = `
+                <div class="bg-white rounded shadow-lg w-full max-w-md p-5">
+                  <div class="text-base font-semibold mb-3">크레딧이 부족해요</div>
+                  <div class="text-sm text-neutral-700">${message}</div>
+                  <div class="flex items-center justify-end gap-3 mt-4">
+                    <button id="cnl" class="px-3 py-2 border rounded">취소</button>
+                    <button id="ok" class="px-3 py-2 border rounded bg-black text-white">업그레이드</button>
+                  </div>
+                </div>`
+              document.body.appendChild(modal)
+              modal.querySelector('#cnl')?.addEventListener('click', () => modal.remove())
+              modal.querySelector('#ok')?.addEventListener('click', () => { modal.remove(); window.location.href = '/pricing' })
+            }
+            creditModal('업그레이드를 통해 보다 향상된 혜택을 누려보세요!')
+            resolve(false)
+            return
+          }
+
           const chk = (modal.querySelector('#opt7') as HTMLInputElement | null)?.checked
           if (chk) {
             const sevenDays = 7 * 24 * 60 * 60 * 1000
@@ -1306,7 +1380,7 @@ function SearchTestPageContent() {
           modal.innerHTML = `
             <div class="bg-white rounded shadow-lg w-full max-w-md p-5">
               <div class="text-base font-semibold mb-3">크레딧이 부족해요</div>
-              <div class="text-sm text-neutral-700">크레딧을 충전하시겠어요?</div>
+              <div class="text-sm text-neutral-700">보다 향상된 플랜으로 더욱욱 많은 혜택을 누려보세요!</div>
               <div class="flex items-center justify-end gap-3 mt-4">
                 <button id="cnl" class="px-3 py-2 border rounded">취소</button>
                 <a id="go" class="px-3 py-2 border rounded bg-black text-white" href="/pricing">구매</a>
@@ -1633,7 +1707,7 @@ function SearchTestPageContent() {
       ])
       
       // Process user data with safe JSON parsing
-      if (userRes.ok) {
+        if (userRes.ok) {
         try {
           const j = await userRes.json().catch(() => ({}))
           setMyCredits(typeof j?.credits === 'number' ? j.credits : null)
@@ -1651,7 +1725,7 @@ function SearchTestPageContent() {
       }
       
       // Process stats data with safe JSON parsing
-      if (statsRes.ok) {
+        if (statsRes.ok) {
         try {
           const stats = await statsRes.json().catch(() => ({}))
           const todaySearches = Number(stats.today_searches || 0)
@@ -1699,8 +1773,8 @@ function SearchTestPageContent() {
       } else {
         console.error('❌ 최근 키워드 새로고침 실패:', keywordsRes.status, keywordsRes.statusText)
         setRecentKeywords([])
-      }
-    } catch (error) {
+        }
+      } catch (error) {
       console.error('❌ 데이터 새로고침 실패:', error)
     }
   }
@@ -1766,7 +1840,7 @@ function SearchTestPageContent() {
             {/* Navigation */}
             <div className="flex items-center gap-3">
               {user ? (
-                <Button asChild variant="outline" className="text-sm font-medium border-2 hover:border-gray-300 hover:bg-gray-50 hover:shadow-md transition-all duration-200 hover:-translate-y-0.5" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>
+                <Button asChild variant="outline" className="text-sm font-medium border-2 hover:border-gray-300 hover:bg-gray-50 hover:shadow-md transition-all duration-200 hover:-translate-y-0.5">
                   <Link href="/dashboard">
                     <div className="flex items-center gap-3">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1777,7 +1851,7 @@ function SearchTestPageContent() {
                   </Link>
                 </Button>
               ) : (
-                <Button asChild className="text-sm font-medium bg-black text-white hover:bg-gray-800 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>
+                <Button asChild className="text-sm font-medium bg-black text-white hover:bg-gray-800 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg">
                   <Link href="/sign-in">무료로 시작하기</Link>
                 </Button>
               )}
@@ -1873,7 +1947,7 @@ function SearchTestPageContent() {
       {/* Main Content - Two Column Layout */}
       <div className="flex gap-10">
         {/* Left Column: Search Controls */}
-        <div className="w-[420px] space-y-7" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>
+        <div className="w-[420px] space-y-7">
           {/* 검색 입력 */}
           <div>
             {/* 검색 방식 선택 버튼 (TikTok과 YouTube용) */}
@@ -2018,15 +2092,14 @@ function SearchTestPageContent() {
                 )}
               </div>
             ) : (
-              <div className="text-base font-semibold text-gray-700 mb-3" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>
+              <div className="text-sm font-medium text-gray-700 mb-3">
                 키워드
               </div>
             )}
             {(((platform === 'youtube' || platform === 'tiktok') && (searchType === 'url' || searchType === 'profile')) || (platform === 'instagram' && searchType === 'profile')) ? (
               <div>
-                <input 
-                  className="w-full h-12 border border-gray-300 rounded-lg px-4 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-all" 
-                  style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}
+                <Input
+                  size="large"
                   placeholder={
                     platform === 'instagram' && searchType === 'profile'
                       ? '예: https://www.instagram.com/abc 또는 abc'
@@ -2037,7 +2110,8 @@ function SearchTestPageContent() {
                           : '예: https://www.tiktok.com/@username/video/...'
                   }
                   value={keywords[0]} 
-                  onChange={(e)=>setKeywords([e.target.value])} 
+                  onChange={(value) => setKeywords([value])}
+                  error={showValidationErrors && validationErrors.keywords}
                 />
                 
                 {/* Instagram 프로필 검색 시 업로드 기간 필터 */}
@@ -2072,10 +2146,9 @@ function SearchTestPageContent() {
                     
                     {instagramPeriod === 'custom' && (
                       <div className="flex items-center gap-2">
-                        <input 
+                        <ShadcnInput 
                           type="number"
-                          className="flex-1 h-10 border border-gray-300 rounded-lg px-3 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-all" 
-                          style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}
+                          className="flex-1"
                           placeholder="숫자만 입력"
                           min="1"
                           value={instagramCustomPeriod > 0 ? instagramCustomPeriod : ''}
@@ -2114,10 +2187,8 @@ function SearchTestPageContent() {
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       최소 좋아요 수 (선택사항)
         </label>
-                    <input 
+                    <ShadcnInput 
                       type="number"
-                      className="w-full h-10 border border-gray-300 rounded-lg px-3 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-all" 
-                      style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}
                       placeholder="예: 500 (해당 계정에서 500 좋아요 이상인 영상만 검색)"
                       min="0"
                       value={minLikes > 0 ? minLikes : ''}
@@ -2132,17 +2203,19 @@ function SearchTestPageContent() {
             ) : (
               <>
             <div className="flex items-center gap-3">
-                  <input 
-                    className="flex-1 h-12 border border-gray-300 rounded-lg px-4 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-all" 
-                    style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}
+                  <div className="flex-1">
+                    <Input
+                      size="large"
                     placeholder={`예: ${platform === 'youtube' ? '요리, 게임, 뷰티...' : platform === 'tiktok' ? '재테크, 음식, 패션...' : '맛집, 여행, 패션...'}`}
                     value={keywords[0]} 
-                    onChange={(e)=>setKeywords([e.target.value, ...keywords.slice(1)])} 
+                      onChange={(value) => setKeywords([value, ...keywords.slice(1)])}
+                      error={showValidationErrors && validationErrors.keywords}
                   />
+                  </div>
                   {keywords.length < 3 && platform !== 'youtube' && platform !== 'tiktok' && (
                     <button 
-                      className="h-12 px-4 border border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 text-gray-700 text-sm font-medium transition-all" 
-                      style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}
+                      className="h-10 px-4 border border-gray-300 rounded-md bg-gray-50 hover:bg-gray-100 text-gray-700 text-sm font-medium transition-all shadow-sm hover:shadow-md" 
+
                       onClick={(e)=>{e.preventDefault(); if (plan==='free'){ showUpgradeModal('여러 키워드 검색은 스타터 플랜부터 이용이 가능해요'); return } setKeywords(prev=>[...prev,''])}}
                     >
                       + 키워드 추가
@@ -2238,16 +2311,17 @@ function SearchTestPageContent() {
             )}
                 {platform !== 'youtube' && platform !== 'tiktok' && keywords.slice(1).map((kw, idx)=> (
                   <div key={idx} className="flex items-center gap-3 mt-2">
-                    <input 
-                      className="flex-1 h-12 border border-gray-300 rounded-lg px-4 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-all" 
-                      style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}
+                    <div className="flex-1">
+                      <Input
+                        size="large"
                       placeholder={`키워드 ${idx + 2}`}
                       value={kw} 
-                      onChange={(e)=>setKeywords(prev=>prev.map((v,i)=>i===idx+1?e.target.value:v))} 
+                        onChange={(value) => setKeywords(prev=>prev.map((v,i)=>i===idx+1?value:v))}
                     />
+                    </div>
                     <button 
-                      className="h-12 px-4 border border-gray-300 rounded-lg bg-gray-50 hover:bg-gray-100 text-gray-700 text-sm font-medium transition-all" 
-                      style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}
+                      className="h-10 px-4 border border-gray-300 rounded-md bg-gray-50 hover:bg-gray-100 text-gray-700 text-sm font-medium transition-all shadow-sm hover:shadow-md" 
+
                       onClick={(e)=>{e.preventDefault(); setKeywords(prev=>prev.filter((_,i)=>i!==idx+1))}}
                     >
                       삭제
@@ -2263,7 +2337,7 @@ function SearchTestPageContent() {
           {/* YouTube 전용 고급 필터 */}
           {platform === 'youtube' && (
             <div className="space-y-4">
-              <div className="text-base font-semibold text-gray-700" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>고급 필터</div>
+              <div className="text-sm font-medium text-gray-700">고급 필터</div>
               
               {/* 그리드 레이아웃으로 필터들 배치 */}
               <div className="grid grid-cols-2 gap-4">
@@ -2327,12 +2401,11 @@ function SearchTestPageContent() {
 
           {/* 결과 개수와 검색 버튼 */}
           <div>
-            <div className="text-base font-semibold text-gray-700 mb-3" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>결과 개수</div>
+            <div className="text-sm font-medium text-gray-700 mb-3">결과 개수</div>
             <div className="flex items-end gap-3">
               <div className="flex-1 max-w-[200px]">
                 <select 
-                  className="w-full h-12 border border-gray-300 rounded-lg px-4 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-all bg-white" 
-                  style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}
+                  className="w-full h-10 border border-gray-300 rounded-md px-3 text-sm font-medium shadow-sm transition-all duration-150 bg-white hover:border-gray-400 hover:shadow-md focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:shadow-md"
                   value={limit} 
                   onChange={(e)=>{
                     const v = e.target.value as any
@@ -2406,12 +2479,12 @@ function SearchTestPageContent() {
                 <button 
                   onClick={(e)=>{e.preventDefault(); checkVerificationAndRun()}} 
                   disabled={loading} 
-                  className={`h-12 px-6 rounded-lg text-sm font-medium text-white transition-all duration-200 ${
+                  className={`h-10 px-6 rounded-md text-sm font-medium text-white transition-all duration-200 shadow-sm ${
                     loading 
-                      ? 'bg-gray-400 cursor-not-allowed' 
-                      : 'bg-black hover:bg-gray-800 hover:-translate-y-0.5'
+                      ? 'bg-gray-400 cursor-not-allowed shadow-none' 
+                      : 'bg-black hover:bg-gray-800 hover:shadow-md'
                   }`}
-                  style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}
+
                 >
                   {loading ? '진행 중…' : '검색 시작'}
                 </button>
@@ -2419,8 +2492,8 @@ function SearchTestPageContent() {
             </div>
             {loading && (
               <button 
-                className="h-12 px-4 border border-gray-300 rounded-lg bg-white hover:bg-gray-50 text-gray-700 text-sm font-medium transition-all mt-3" 
-                style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}
+                className="h-10 px-4 border border-gray-300 rounded-md bg-white hover:bg-gray-50 text-gray-700 text-sm font-medium transition-all shadow-sm hover:shadow-md mt-3" 
+               
                 onClick={(e)=>{e.preventDefault(); cancel()}}
               >
                 취소
@@ -2430,12 +2503,12 @@ function SearchTestPageContent() {
         </div>
 
         {/* Right Column: Statistics and Info - 더욱 넓은 레이아웃 */}
-        <div className="w-[600px] space-y-5" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>
+        <div className="w-[600px] space-y-5">
           <div className="flex gap-6">
             {/* 좌측: 검색 통계 + 크레딧 사용량 (하나의 박스에 구분선으로 분리) */}
             <div className="flex-1 p-6 border border-gray-200 rounded-lg bg-gray-50 flex flex-col">
               {/* 검색 통계 */}
-              <div className="text-base font-semibold text-gray-700 mb-5">검색 통계</div>
+              <div className="text-sm font-medium text-gray-700 mb-5">검색 통계</div>
               <div className="space-y-4 text-sm mb-6">
                 <div className="flex items-center justify-between text-gray-600">
                   <span>오늘 검색</span>
@@ -2451,7 +2524,7 @@ function SearchTestPageContent() {
               <div className="border-t border-gray-300 my-5"></div>
               
               {/* 크레딧 사용량 */}
-              <div className="text-base font-semibold text-gray-700 mb-5">크레딧 사용량</div>
+              <div className="text-sm font-medium text-gray-700 mb-5">크레딧 사용량</div>
               <div className="space-y-4 text-sm">
                 <div className="flex items-center justify-between text-gray-600">
                   <span>이번 달</span>
@@ -2468,7 +2541,7 @@ function SearchTestPageContent() {
             <div className="flex-1 p-6 border border-gray-200 rounded-lg bg-gray-50 flex flex-col justify-between">
               {/* 상단 콘텐츠 (제목 + 키워드)를 하나로 묶음 */}
               <div>
-                <div className="text-base font-semibold text-gray-700 mb-4">나의 최근 키워드</div>
+                <div className="text-sm font-medium text-gray-700 mb-4">나의 최근 키워드</div>
                 <div className="flex flex-wrap gap-3 content-start">
                   {recentKeywords.length > 0 ? (() => {
                     const itemsPerPage = 11 // 페이지당 키워드 개수
@@ -2480,24 +2553,24 @@ function SearchTestPageContent() {
                     return currentPageKeywords.map(k => {
                       const displayText = k.length > 7 ? k.substring(0, 7) + '...' : k
                       return (
-                        <Badge
-                          key={k}
-                          variant="outline"
-                          className="cursor-pointer hover:bg-gray-100 transition-colors text-sm px-3 py-1 border-gray-200 hover:border-gray-300"
-                          onClick={() => setKeywords([k])}
+                  <Badge 
+                    key={k} 
+                    variant="outline"
+                    className="cursor-pointer hover:bg-gray-100 transition-colors text-sm px-3 py-1 border-gray-200 hover:border-gray-300"
+                    onClick={() => setKeywords([k])}
                           title={k}
-                        >
+                  >
                           {displayText}
-                        </Badge>
+                  </Badge>
                       )
                     })
                   })() : (
                     <div className="text-sm text-gray-500">
                       키워드 검색 후 입력된 키워드가 표시돼요.
-                    </div>
-                  )}
-                </div>
               </div>
+                  )}
+            </div>
+          </div>
 
               {/* 페이지네이션 버튼 */}
               {(() => {
@@ -2719,16 +2792,16 @@ function SearchTestPageContent() {
                           if (isNaN(date.getTime())) return r.takenDate
                           return (
                             <div className="text-center">
-                              <div className="text-sm leading-tight" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>{date.toISOString().split('T')[0]}</div>
-                              <div className="text-sm text-gray-600 leading-tight" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>{date.toTimeString().substring(0, 5)}</div>
+                              <div className="text-sm leading-tight font-medium">{date.toISOString().split('T')[0]}</div>
+                              <div className="text-sm text-gray-600 leading-tight font-medium">{date.toTimeString().substring(0, 5)}</div>
                             </div>
                           )
                         })() : '-'}
                       </td>
-                      <td className="p-3 text-center align-middle border-r border-gray-100 font-semibold text-gray-900 tabular-nums" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>{formatNumber(r.views)}</td>
-                      <td className="p-3 text-center align-middle border-r border-gray-100 text-gray-800 font-semibold" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>{r.durationDisplay || formatDuration(r.duration)}</td>
-                      <td className="p-3 text-center align-middle border-r border-gray-100 font-semibold text-gray-900 tabular-nums" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>{r.likes === 'private' || r.likes === 0 ? '-' : formatNumber(r.likes as number)}</td>
-                      <td className="p-3 text-center align-middle border-r border-gray-100 font-semibold text-gray-900 tabular-nums" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>{formatNumber(r.comments)}</td>
+                      <td className="p-3 text-center align-middle border-r border-gray-100 font-semibold text-gray-900 tabular-nums">{formatNumber(r.views)}</td>
+                      <td className="p-3 text-center align-middle border-r border-gray-100 text-gray-800 font-semibold">{r.durationDisplay || formatDuration(r.duration)}</td>
+                      <td className="p-3 text-center align-middle border-r border-gray-100 font-semibold text-gray-900 tabular-nums">{r.likes === 'private' || r.likes === 0 ? '-' : formatNumber(r.likes as number)}</td>
+                      <td className="p-3 text-center align-middle border-r border-gray-100 font-semibold text-gray-900 tabular-nums">{formatNumber(r.comments)}</td>
                       {platform === 'youtube' && (
                         <td className="p-3 text-center align-middle border-r border-gray-100">
                           <div 
@@ -2756,7 +2829,7 @@ function SearchTestPageContent() {
                         <div className="flex flex-col items-center">
                           <a 
                             className="text-gray-900 hover:text-gray-700 font-semibold text-center" 
-                            style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }} 
+       
                             href={
                               platform === 'youtube' 
                                 ? (r.channelUrl || (r.channelId ? `https://www.youtube.com/channel/${r.channelId}` : `https://www.youtube.com/channel/${r.channelId || r.username}`))
@@ -2771,7 +2844,7 @@ function SearchTestPageContent() {
                           </a>
                           {/* 인스타그램 프로필 검색에서는 팔로워 수 숨기기 */}
                           {!(platform === 'instagram' && searchType === 'profile') && (
-                            <div className="text-xs text-gray-600 text-center font-semibold" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>
+                            <div className="text-xs text-gray-600 text-center font-semibold">
                               {typeof r.followers === 'number' ? new Intl.NumberFormat('en-US').format(r.followers) : '-'} {platform === 'youtube' ? '구독자' : '팔로워'}
                             </div>
                           )}
@@ -2782,7 +2855,8 @@ function SearchTestPageContent() {
                         <td className="p-3 text-center align-middle">
                           <div className="flex flex-col gap-3 items-center">
                             <CaptionDialog caption={r.caption || ''} platform={platform} />
-                            <SubtitleDialog url={r.url} />
+                            {/* YouTube 자막 추출 제거 - Instagram/TikTok만 표시 */}
+                            <SubtitleDialog url={r.url} platform={platform} />
                           </div>
                         </td>
                       )}
@@ -2825,10 +2899,7 @@ function SearchTestPageContent() {
                               >
                                 영상 바로가기
                               </button>
-                              {/* YouTube일 때만 자막 추출 버튼 표시 */}
-                              {platform === 'youtube' && (
-                                <SubtitleDialog url={r.url} platform={platform} />
-                              )}
+                              {/* YouTube 자막 추출 기능 완전 제거 */}
                               <button 
                                 className="px-3 py-1.5 text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors"
                                 onClick={() => setExpandedTitleRow(null)}
@@ -2903,21 +2974,21 @@ function SearchTestPageContent() {
                   value={newApiKeyName}
                   onChange={(e) => setNewApiKeyName(e.target.value)}
                 />
-                <div className="flex gap-3">
-                  <input 
-                    type="text"
-                    className="flex-1 h-8 border border-gray-300 rounded px-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
-                    placeholder="새 API 키를 입력하세요..."
-                    value={newApiKey}
-                    onChange={(e) => setNewApiKey(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && addNewApiKey()}
-                  />
-                  <button 
-                    className="px-3 py-1 text-sm bg-black text-white rounded hover:bg-gray-800"
-                    onClick={addNewApiKey}
-                  >
-                    추가
-                  </button>
+              <div className="flex gap-3">
+                <input 
+                  type="text"
+                  className="flex-1 h-8 border border-gray-300 rounded px-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
+                  placeholder="새 API 키를 입력하세요..."
+                  value={newApiKey}
+                  onChange={(e) => setNewApiKey(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && addNewApiKey()}
+                />
+                <button 
+                  className="px-3 py-1 text-sm bg-black text-white rounded hover:bg-gray-800"
+                  onClick={addNewApiKey}
+                >
+                  추가
+                </button>
                 </div>
               </div>
             </div>
@@ -2936,7 +3007,7 @@ function SearchTestPageContent() {
                       <div className="text-sm font-medium text-gray-900">
                         {keyData.key_name || '이름 없음'}
                         {keyData.is_active && <span className="ml-2 text-xs text-green-600 font-medium">(현재 사용중)</span>}
-                      </div>
+                    </div>
                       <div className="text-xs font-mono text-gray-500">
                         {keyData.api_key.length > 30 ? `${keyData.api_key.substring(0, 30)}...` : keyData.api_key}
                       </div>
@@ -2946,19 +3017,19 @@ function SearchTestPageContent() {
                     </div>
                     <div className="flex gap-2">
                       {!keyData.is_active && (
-                        <button 
-                          className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
+                    <button 
+                      className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
                           onClick={() => useApiKey(keyData)}
-                        >
-                          사용
-                        </button>
+                    >
+                      사용
+                    </button>
                       )}
-                      <button 
-                        className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+                    <button 
+                      className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
                         onClick={() => deleteApiKey(keyData.id)}
-                      >
-                        삭제
-                      </button>
+                    >
+                      삭제
+                    </button>
                     </div>
                   </div>
                 ))
@@ -3576,6 +3647,15 @@ function SubtitleDialog({ url, platform }: { url: string; platform?: string }) {
         console.warn(`❌ 크레딧 부족: 사용가능=${availableCredits}, 필요=${requiredCredits}`)
         showCreditModal(`${platformName} 자막 추출에는 ${requiredCredits} 크레딧이 필요해요. 업그레이드 또는 충전 후 다시 시도해 주세요.`); 
         return false 
+      }
+      
+      // 자막 추출 후 잔여 크레딧이 20 미만일 때 부족 안내
+      if (availableCredits - requiredCredits < 20) {
+        console.warn(`⚠️ 자막 추출 후 크레딧 부족 예상: 현재=${availableCredits}, 사용=${requiredCredits}, 잔여예상=${availableCredits - requiredCredits}`)
+        // 자막 추출은 진행하되, 추출 후 부족 안내 표시
+        setTimeout(() => {
+          showCreditModal('업그레이드를 통해 보다 향상된 혜택을 누려보세요!')
+        }, 3000) // 자막 추출 완료 후 3초 뒤 표시
       }
       console.log(`✅ 크레딧 충분: 사용가능=${availableCredits}, 필요=${requiredCredits}`)
       return true

@@ -3,6 +3,10 @@
     {
       "path": "/api/toss/billing",
       "schedule": "0 0 1 * *"
+    },
+    {
+      "path": "/api/cron/monthly-credit-reset", 
+      "schedule": "0 1 1 * *"
     }
   ]
 }

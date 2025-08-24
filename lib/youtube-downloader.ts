@@ -353,6 +353,16 @@ export class YouTubeDownloader {
   }
 
   static async extractSubtitles(url: string): Promise<SubtitleResult> {
+    // YouTube 자막 추출 기능 비활성화
+    return {
+      success: false,
+      error: 'YouTube 자막 추출 기능은 현재 사용할 수 없습니다. Instagram이나 TikTok 자막 추출을 이용해주세요.',
+      subtitles: undefined,
+      title: undefined
+    }
+    
+    /*
+    // 기존 자막 추출 코드 주석 처리
     if (!this.isYouTubeUrl(url)) {
       return { success: false, error: 'Invalid YouTube URL' }
     }
@@ -560,6 +570,7 @@ export class YouTubeDownloader {
         })
       })
     })
+    */
   }
 
   static async cleanup(filePath: string): Promise<void> {

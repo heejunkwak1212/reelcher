@@ -21,14 +21,17 @@ export async function POST(req: Request) {
 
     let balance = row.balance || 0
     let reserved = row.reserved || 0
-    // Monthly grant: if month changed since lastGrantAt, top up to monthlyGrant
+    // Monthly grant: if month changed since lastGrantAt, reset to monthlyGrant (전체 초기화)
     const monthlyGrant = row.monthlyGrant || 0
     if (monthlyGrant > 0) {
       const now = new Date()
       const last = row.lastGrantAt ? new Date(row.lastGrantAt as any) : null
       const changed = !last || (last.getUTCFullYear() !== now.getUTCFullYear() || last.getUTCMonth() !== now.getUTCMonth())
       if (changed) {
-        balance += monthlyGrant
+        // 기존: balance += monthlyGrant (추가)
+        // 변경: balance = monthlyGrant (초기화)
+        balance = monthlyGrant
+        console.log(`🔄 월별 크레딧 초기화: 사용자 ${data.userId} → ${monthlyGrant} 크레딧`)
       }
     }
 

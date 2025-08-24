@@ -1,6 +1,6 @@
 "use client";
 
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
@@ -9,8 +9,7 @@ import { Star } from "lucide-react";
 import Link from "next/link";
 import { useState, useRef, useEffect } from "react";
 import { CheckIcon } from "@radix-ui/react-icons";
-import { VerificationModal } from '@/components/auth/VerificationModal';
-import { useAuthStore } from '@/store/auth';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { supabaseBrowser } from '@/lib/supabase/client';
 
 interface PricingPlan {
@@ -36,23 +35,24 @@ export function RelcherPricing({
 }: RelcherPricingProps) {
   const [isMonthly, setIsMonthly] = useState(true);
   
-  // 본인인증 관련 상태
-  const { isVerified } = useAuthStore();
-  const [showVerificationModal, setShowVerificationModal] = useState(false);
+  // 로그인 상태 관리
+  const [showLoginModal, setShowLoginModal] = useState(false);
   const [pendingPlan, setPendingPlan] = useState<'starter' | 'pro' | 'business' | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
 
-  // Admin 상태 확인
+  // 로그인 및 Admin 상태 확인
   useEffect(() => {
-    checkAdminStatus();
+    checkAuthStatus();
   }, []);
 
-  const checkAdminStatus = async () => {
+  const checkAuthStatus = async () => {
     try {
       const supabase = supabaseBrowser();
       const { data: { user } } = await supabase.auth.getUser();
       
       if (user) {
+        setIsLoggedIn(true);
         const { data: profile } = await supabase
           .from('profiles')
           .select('role')
@@ -60,43 +60,40 @@ export function RelcherPricing({
           .single();
         
         setIsAdmin(profile?.role === 'admin');
+      } else {
+        setIsLoggedIn(false);
+        setIsAdmin(false);
       }
     } catch (error) {
-      console.error('Error checking admin status:', error);
+      console.error('Error checking auth status:', error);
+      setIsLoggedIn(false);
       setIsAdmin(false);
     }
   };
 
-  // 본인인증 확인 후 토스페이 호출 함수 (Admin은 우회)
-  const checkVerificationAndOpenToss = (plan: 'starter' | 'pro' | 'business') => {
-    // Admin 계정은 본인인증 우회하고 바로 결제창 호출
-    if (isAdmin) {
-      openToss(plan);
+  // 로그인 확인 후 토스페이 호출 함수
+  const checkLoginAndOpenToss = (plan: 'starter' | 'pro' | 'business') => {
+    // 로그인되지 않은 경우 로그인 필요 안내 모달 표시
+    if (!isLoggedIn) {
+      setPendingPlan(plan);
+      setShowLoginModal(true);
       return;
     }
 
-    // 일반 사용자는 본인인증 확인
-    if (!isVerified) {
-      setPendingPlan(plan);
-      setShowVerificationModal(true);
-      return;
-    }
+    // 로그인된 경우 바로 결제창 호출
     openToss(plan);
   };
 
-  // 본인인증 성공 시 실행될 함수
-  const handleVerificationSuccess = () => {
-    setShowVerificationModal(false);
-    if (pendingPlan) {
-      openToss(pendingPlan);
-      setPendingPlan(null);
-    }
+  // 로그인 모달 닫기 함수
+  const handleLoginModalClose = () => {
+    setShowLoginModal(false);
+    setPendingPlan(null);
   };
 
-  // 본인인증 모달 닫기 함수
-  const handleVerificationClose = () => {
-    setShowVerificationModal(false);
-    setPendingPlan(null);
+  // 로그인 페이지로 이동
+  const handleLoginRedirect = () => {
+    setShowLoginModal(false);
+    window.location.href = '/sign-in';
   };
 
   // 토스페이 호출 함수 - 본인정보 입력을 포함한 빌링키 발급
@@ -358,7 +355,7 @@ export function RelcherPricing({
                   </Link>
                 ) : (
                   <button
-                    onClick={() => checkVerificationAndOpenToss(plan.name.toLowerCase() as 'starter' | 'pro' | 'business')}
+                    onClick={() => checkLoginAndOpenToss(plan.name.toLowerCase() as 'starter' | 'pro' | 'business')}
                     className={cn(
                       buttonVariants({ variant: "outline" }),
                       "w-full group-hover:scale-105 transition-transform duration-200",
@@ -381,12 +378,34 @@ export function RelcherPricing({
         ))}
       </div>
       
-      {/* 본인인증 모달 */}
-      <VerificationModal
-        isOpen={showVerificationModal}
-        onClose={handleVerificationClose}
-        onSuccess={handleVerificationSuccess}
-      />
+      {/* 로그인 필요 안내 모달 */}
+      <Dialog open={showLoginModal} onOpenChange={handleLoginModalClose}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-center">로그인이 필요한 서비스예요</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <p className="text-center text-gray-600">
+              플랜을 구독하려면 먼저 로그인해주세요.
+            </p>
+            <div className="flex gap-3">
+              <Button 
+                variant="outline" 
+                onClick={handleLoginModalClose}
+                className="flex-1"
+              >
+                취소
+              </Button>
+              <Button 
+                onClick={handleLoginRedirect}
+                className="flex-1"
+              >
+                로그인
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

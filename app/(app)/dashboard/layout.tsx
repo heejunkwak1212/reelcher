@@ -2,6 +2,7 @@
 
 import { supabaseServer } from '@/lib/supabase/server'
 import { DashboardSidebar } from '@/components/ui/dashboard-sidebar'
+import { DashboardHeader } from '@/components/layout/DashboardHeader'
 import { useEffect, useState } from 'react'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -40,19 +41,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   };
 
   return (
-    <div className="min-h-screen flex">
-      <DashboardSidebar 
-        user={user} 
-        plan={plan} 
-        balance={balance} 
-        onSidebarChange={handleSidebarChange}
-        isAdmin={isAdmin}
-      />
-      <main className={`flex-1 transition-all duration-200 p-4 md:p-6 ${
-        isSidebarCollapsed ? 'ml-12' : 'ml-60'
-      }`}>
-        {children}
-      </main>
+    <div className="min-h-screen">
+      {/* 상단바가 전체 화면 위에 위치 */}
+      <DashboardHeader />
+      
+      <div className="flex">
+        <DashboardSidebar 
+          user={user} 
+          plan={plan} 
+          balance={balance} 
+          onSidebarChange={handleSidebarChange}
+          isAdmin={isAdmin}
+        />
+        <main className={`flex-1 transition-all duration-200 p-4 md:p-6 ${
+          isSidebarCollapsed ? 'ml-12' : 'ml-60'
+        }`} style={{ paddingTop: '73px' }}>
+          {children}
+        </main>
+      </div>
     </div>
   )
 }

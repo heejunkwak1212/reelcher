@@ -39,7 +39,10 @@ export async function GET(req: Request) {
         
         const now = new Date()
         const today_date = now.toISOString().split('T')[0] // YYYY-MM-DD
-        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+        
+        // 이번달 1일 00:00:00부터 말일 23:59:59까지
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0)
+        const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
         
         let today = 0
         let month = 0
@@ -55,8 +58,8 @@ export async function GET(req: Request) {
             today++
           }
           
-          // 이번 달 검색 수 및 크레딧 사용량
-          if (recordDate >= monthStart) {
+          // 이번 달 검색 수 및 크레딧 사용량 (1일 00:00 ~ 말일 23:59)
+          if (recordDate >= monthStart && recordDate <= monthEnd) {
             month++
             monthCredits += Number(record.credits_used || 0)
           }

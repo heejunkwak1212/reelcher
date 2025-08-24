@@ -34,7 +34,7 @@ export function Logo({ className = '', size = 'md', showText = true }: LogoProps
   // Fallback text logo if image fails
   if (hasError) {
     return (
-      <div className={`flex items-center gap-2 ${className}`}>
+      <div className={`flex items-center gap-0.5 ${className}`}>
         <div className={`${sizeClasses[size]} bg-black text-white rounded flex items-center justify-center font-bold text-sm flex-shrink-0`}>
           R
         </div>
@@ -48,7 +48,7 @@ export function Logo({ className = '', size = 'md', showText = true }: LogoProps
   }
 
   return (
-    <div className={`flex items-center gap-2 ${className}`}>
+    <div className={`flex items-center gap-0.5 ${className}`}>
       <div className={`${sizeClasses[size]} flex-shrink-0 relative`}>
         <Image
           src={logoSvg}

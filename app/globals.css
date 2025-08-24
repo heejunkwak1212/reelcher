@@ -138,5 +138,70 @@ textarea { outline: none; }
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
   }
+  .theme {
+    --color-context-card-border: var(----context-card-border);
+    --color-gray-100: var(--ds-gray-100);
+    --color-gray-700: var(--ds-gray-700);
+    --color-gray-900: var(--ds-gray-900);
+    --color-gray-alpha-400: var(--ds-gray-alpha-400);
+    --color-gray-alpha-500: var(--ds-gray-alpha-500);
+    --color-background-100: var(--ds-background-100);
+    --color-background-200: var(--ds-background-200);
+    --color-geist-foreground: var(--geist-foreground);
+    --shadow-focus-input: var(--ds-input-ring);
+    --shadow-error-input: var(--ds-input-error-ring);
+    --shadow-error-input-hover: var(--ds-input-error-hover-ring);
+    --color-ds-background-100: var(----ds-background-100);
+    --color-ds-gray-1000: var(----ds-gray-1000);
+  }
+  :root {
+    --context-card-border: hsla(0, 0%, 92%, 1);
+    --ds-red-300: oklch(94.33% 0.0369 15.011509923860523);
+    --ds-red-500: oklch(84.47% 0.1018 17.71);
+    --ds-red-900: oklch(54.99% 0.232 25.29);
+    --ds-gray-100: hsla(0, 0%, 95%, 1);
+    --ds-gray-700: hsla(0, 0%, 56%, 1);
+    --ds-gray-900: hsla(0, 0%, 40%, 1);
+    --ds-gray-alpha-400: hsla(0, 0%, 0%, 0.08);
+    --ds-gray-alpha-500: hsla(0, 0%, 0%, 0.21);
+    --ds-gray-alpha-600: hsla(0, 0%, 0%, 0.34);
+    --ds-background-100: hsla(0, 0%, 100%, 1);
+    --ds-background-200: hsla(0, 0%, 98%, 1);
+    --geist-foreground: #000;
+    --ds-input-ring: 0 0 0 1px var(--ds-gray-alpha-600), 0 0 0 4px rgba(0, 0, 0, .16);
+    --ds-input-error-ring: 0 0 0 1px var(--ds-red-900), 0 0 0 4px var(--ds-red-300);
+    --ds-input-error-hover-ring: 0 0 0 1px var(--ds-red-900), 0 0 0 4px var(--ds-red-500);
+    --ds-gray-1000: hsla(0, 0%, 9%, 1);
+    --color-red-900: oklch(54.99% 0.232 25.29);
+  }
+  .dark {
+    --context-card-border: hsla(0, 0%, 18%, 1);
+    --ds-red-300: oklch(31.47% 0.1105 20.96);
+    --ds-red-500: oklch(40.68% 0.1479 23.16);
+    --ds-red-900: oklch(69.96% 0.2136 22.03);
+    --ds-gray-100: hsla(0, 0%, 10%, 1);
+    --ds-gray-700: hsla(0, 0%, 56%, 1);
+    --ds-gray-900: hsla(0, 0%, 63%, 1);
+    --ds-gray-alpha-400: hsla(0, 0%, 100%, 0.14);
+    --ds-gray-alpha-500: hsla(0, 0%, 100%, 0.24);
+    --ds-gray-alpha-600: hsla(0, 0%, 100%, 0.51);
+    --ds-background-100: hsla(0,0%,4%, 1);
+    --ds-background-200: hsla(0, 0%, 0%, 1);
+    --geist-foreground: #fff;
+    --ds-input-ring: 0 0 0 1px var(--ds-gray-alpha-600), 0 0 0 4px rgba(255, 255, 255, .24);
+    --ds-gray-1000: hsla(0, 0%, 93%, 1);
+    --color-red-900: oklch(69.96% 0.2136 22.03);
+  }
+}
+
+
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
 }
 

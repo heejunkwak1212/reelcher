@@ -50,7 +50,7 @@ export default function SiteHeader() {
           ) : !user ? (
             <Link href="/sign-in" prefetch={true} className="text-sm" style={{ color: '#3A3B3F' }}>로그인</Link>
           ) : (
-            <Link href="/dashboard" prefetch={true} className="text-sm" style={{ color: '#3A3B3F' }}>대시보드</Link>
+            <Link href="/dashboard" prefetch={true} className="text-sm font-medium" style={{ color: '#3A3B3F' }}>대시보드</Link>
           )}
           <Link href={user ? '/search' : '/sign-in'} prefetch={true}>
             <Button className="h-9 px-4 rounded-full bg-black text-white hover:bg-black/90 transition-all duration-200 hover:-translate-y-1 hover:shadow-lg">

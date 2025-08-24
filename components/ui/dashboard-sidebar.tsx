@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge"
+import { Progress } from "@/components/ui/progress"
 import {
   History,
   CreditCard,
@@ -86,6 +87,25 @@ export function DashboardSidebar({ user, plan = 'free', balance = 0, onSidebarCh
   const pathname = usePathname();
   const router = useRouter();
   
+  // 플랜별 크레딧 정보
+  const planLimits = {
+    free: 250,
+    starter: 2000,
+    pro: 7000,
+    business: 20000
+  }
+  
+  const totalCredits = planLimits[plan as keyof typeof planLimits] || 250
+  const usedCredits = totalCredits - balance
+  const usagePercentage = Math.min((usedCredits / totalCredits) * 100, 100)
+  
+  const planDisplayNames = {
+    free: 'Free 플랜 적용중',
+    starter: 'Starter 플랜 적용중',
+    pro: 'Pro 플랜 적용중',
+    business: 'Business 플랜 적용중'
+  }
+  
   const handleExpand = () => {
     setIsCollapsed(false);
     onSidebarChange?.(false);
@@ -116,7 +136,7 @@ export function DashboardSidebar({ user, plan = 'free', balance = 0, onSidebarCh
   return (
     <motion.div
       className={cn(
-        "sidebar fixed left-0 z-40 h-full shrink-0 border-r"
+        "sidebar fixed left-0 top-14 z-40 h-[calc(100vh-3.5rem)] shrink-0 border-r"
       )}
       initial={isCollapsed ? "closed" : "open"}
       animate={isCollapsed ? "closed" : "open"}
@@ -150,6 +170,8 @@ export function DashboardSidebar({ user, plan = 'free', balance = 0, onSidebarCh
                 </div>
               </div>
             </div>
+
+
 
             {/* 네비게이션 메뉴 */}
             <div className="flex h-full w-full flex-col">
@@ -221,6 +243,35 @@ export function DashboardSidebar({ user, plan = 'free', balance = 0, onSidebarCh
                         )}
                       </motion.li>
                     </Link>
+
+                    {/* 플랜 정보 카드 */}
+                    <motion.div variants={variants}>
+                      {!isCollapsed && (
+                        <div className="mx-2 mt-3 mb-4">
+                          <div className="rounded-lg bg-gray-50 border p-3 space-y-3">
+                            <div className="text-sm font-semibold text-gray-900">
+                              {planDisplayNames[plan as keyof typeof planDisplayNames] || 'Free 플랜 적용중'}
+                            </div>
+                            
+                            <div className="space-y-2">
+                              <Progress 
+                                value={usagePercentage} 
+                                className="h-2"
+                              />
+                              <div className="text-xs text-gray-600 text-right">
+                                {usedCredits.toLocaleString()}/{totalCredits.toLocaleString()}
+                              </div>
+                            </div>
+                            
+                            <Link href="/pricing" className="block">
+                              <button className="w-full py-2 px-3 text-xs bg-black text-white rounded-md hover:bg-gray-800 transition-colors">
+                                업그레이드
+                              </button>
+                            </Link>
+                          </div>
+                        </div>
+                      )}
+                    </motion.div>
 
                     {/* 관리자 페이지 링크 (관리자만 보임) */}
                     {isAdmin && (

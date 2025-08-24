@@ -11,6 +11,13 @@ const subtitleSchema = z.object({
 })
 
 export async function POST(req: NextRequest) {
+  // YouTube 자막 추출 기능 비활성화
+  return NextResponse.json({ 
+    error: 'YouTube 자막 추출 기능은 현재 사용할 수 없습니다. Instagram이나 TikTok 자막 추출을 이용해주세요.' 
+  }, { status: 503 })
+  
+  /*
+  // 기존 코드 주석 처리
   try {
     // 인증 확인
     const supabase = await supabaseServer()
@@ -270,5 +277,6 @@ export async function POST(req: NextRequest) {
       error: '서버 오류가 발생했습니다' 
     }, { status: 500 })
   }
+  */
 }
 

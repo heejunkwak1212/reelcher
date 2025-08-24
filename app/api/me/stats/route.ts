@@ -33,7 +33,10 @@ export async function GET(request: NextRequest) {
     
     const now = new Date()
     const today = now.toISOString().split('T')[0] // YYYY-MM-DD
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+    
+    // 이번달 1일 00:00:00부터 말일 23:59:59까지
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0)
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
     
     // 이번주 시작일 계산 (일요일 기준)
     const weekStart = new Date(now)
@@ -55,8 +58,8 @@ export async function GET(request: NextRequest) {
         todaySearches++
       }
       
-      // 이번달 검색수 및 크레딧
-      if (recordDate >= monthStart) {
+      // 이번달 검색수 및 크레딧 (1일 00:00 ~ 말일 23:59)
+      if (recordDate >= monthStart && recordDate <= monthEnd) {
         monthSearches++
         monthCreditsUsed += record.credits_used || 0
       }
@@ -73,7 +76,7 @@ export async function GET(request: NextRequest) {
       month_searches: monthSearches,
       month_credits: monthCreditsUsed,
       week_credits: weekCreditsUsed,
-      total_searches: totalSearches
+      total_searches: monthSearches // 이번달 검색량으로 변경
     }
     
     console.log('📊 /api/me/stats 응답:', result)
