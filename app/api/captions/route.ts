@@ -91,7 +91,7 @@ export async function POST(req: Request) {
     // Sanitize: strip query/hash to avoid actor mis-detection
     const urlObj = new URL(input.url)
     const cleanUrl = `${urlObj.origin}${urlObj.pathname}`
-         const taskId = 'distracting_wholemeal/tiktok-instagram-facebook-transcriber-task'
+         const taskId = 'interesting_dingo/tiktok-instagram-facebook-transcriber-task'
     // This actor expects 'start_urls' not 'directUrls'. If the param is wrong, it falls back to example URL.
     const started = await startTaskRun({ taskId, token, input: { start_urls: cleanUrl } })
     const out = await waitForRunItems<any[]>({ token, runId: started.runId })

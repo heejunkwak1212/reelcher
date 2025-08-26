@@ -15,7 +15,7 @@ const tiktokSearchSchema = z.object({
   filters: z.object({
     period: z.enum(['day', 'week', 'month', 'month2', 'month3', 'month6', 'year', 'all']).optional(),
     minViews: z.number().min(0).optional(),
-    minLikes: z.number().min(0).optional(), // 최소 좋아요 수 필터 (프로필 검색 전용)
+
     sortBy: z.enum(['trending', 'recent', 'most_liked']).optional()
   }).optional().default({})
 })
@@ -113,6 +113,42 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // settle 함수 준비 (Instagram과 동일한 방식)
+    let settle: null | ((finalCount: number) => Promise<number>) = null
+    settle = async (finalCount: number) => {
+      if (isAdmin) return 0
+      
+      // 실제 사용할 크레딧 계산 (proration)
+      const toCharge = Math.floor((finalCount / 30) * 100)
+      console.log(`💰 TikTok settle 함수 - 결과수: ${finalCount}, 차감: ${toCharge}`)
+      
+      // 실제 크레딧 차감
+      if (toCharge > 0) {
+        try {
+          const { data: currentCredits } = await supabase
+            .from('credits')
+            .select('balance')
+            .eq('user_id', user.id)
+            .single()
+          
+          if (currentCredits) {
+            const newBalance = Math.max(0, currentCredits.balance - toCharge)
+            
+            await supabase
+              .from('credits')
+              .update({ balance: newBalance })
+              .eq('user_id', user.id)
+            
+            console.log(`✅ TikTok 크레딧 차감 성공: ${toCharge} (${currentCredits.balance} → ${newBalance})`)
+          }
+        } catch (error) {
+          console.error('❌ TikTok 크레딧 차감 오류:', error)
+        }
+      }
+      
+      return toCharge // 실제 차감된 크레딧 반환
+    }
+
     try {
       // 새로운 TikTok Scraper Task 실행 (향상된 기능 포함)
       console.log(`TikTok 검색 시작 - ${searchRequest.resultsLimit}개 요청 (새 Task: mlyTt5q6sAjY7z9ZV)`)
@@ -121,20 +157,19 @@ export async function POST(request: NextRequest) {
       const isUrlSearch = searchRequest.searchType === 'url' && searchRequest.query.includes('tiktok.com')
       const isProfileSearch = searchRequest.searchType === 'profile'
       
-      const taskInput = {
-        resultsPerPage: searchRequest.resultsLimit,
-        resultsLimit: searchRequest.resultsLimit, // 결과 개수 정확히 제한
+      // 성공 사례 기반 기본 taskInput 구조
+      const taskInput: any = {
         excludePinnedPosts: false,
-        profileSorting: "popular", // 인기순 정렬
         proxyCountryCode: "None",
-        scrapeRelatedVideos: true, // 항상 연관 영상 스크래핑 활성화
-        shouldDownloadAvatars: isProfileSearch, // 프로필 검색 시에만 아바타 다운로드
+        resultsPerPage: searchRequest.resultsLimit,
+        scrapeRelatedVideos: false, // 성공 사례에서는 false
+        shouldDownloadAvatars: false, // 성공 사례에서는 false
         shouldDownloadCovers: true,
         shouldDownloadMusicCovers: false,
-        shouldDownloadSlideshowImages: true,
+        shouldDownloadSlideshowImages: false, // 성공 사례에서는 false
         shouldDownloadSubtitles: true,
         shouldDownloadVideos: true,
-        maxItems: searchRequest.resultsLimit // 최대 아이템 수 제한
+        maxProfilesPerQuery: 10
       }
       
       // 검색 타입별 입력 설정
@@ -155,29 +190,87 @@ export async function POST(request: NextRequest) {
           profileName = profileName.substring(1)
         }
         
-        (taskInput as any).profiles = [profileName]
-        ;(taskInput as any).searchSection = "/video"
-        ;(taskInput as any).profileScrapeSections = ["videos"]
-        ;(taskInput as any).maxProfilesPerQuery = 10
+        // 성공 사례와 정확히 동일한 설정
+        taskInput.profiles = [profileName]
+        taskInput.searchSection = "/video"
+        taskInput.profileScrapeSections = ["videos"]
+        taskInput.profileSorting = "latest" // 성공 사례에서는 latest
         
-        // 최소 좋아요 수 필터 적용 (프로필 검색 전용)
-        if (searchRequest.filters.minLikes && searchRequest.filters.minLikes > 0) {
-          ;(taskInput as any).leastDiggs = searchRequest.filters.minLikes
+        // 업로드 기간 설정 (period 기반)
+        const period = searchRequest.filters.period
+        console.log(`🔍 TikTok 프로필 검색 기간 필터 - period: ${period}`)
+        
+        if (period && period !== 'all') {
+          // period 값을 oldestPostDateUnified 형식으로 변환
+          const periodMap: Record<string, string> = {
+            'day': '1 day',
+            'week': '1 week', 
+            'month': '1 month',
+            'month2': '2 months',
+            'month3': '3 months',
+            'month6': '6 months',
+            'year': '1 year'
+          }
+          taskInput.oldestPostDateUnified = periodMap[period] || "2 months"
+          console.log(`✅ TikTok 프로필 검색 (기간 필터): ${profileName}, period: ${period} → ${taskInput.oldestPostDateUnified}`)
+        } else {
+          // 기간이 설정되지 않았거나 'all'인 경우 기본값
+          taskInput.oldestPostDateUnified = "2 months" 
+          console.log(`TikTok 프로필 검색 (기본 기간): ${profileName}, 기간: 2개월`)
         }
-        
-        console.log(`TikTok 프로필 검색: ${profileName}, 최소 좋아요: ${searchRequest.filters.minLikes || 0}`)
       } else if (isUrlSearch) {
         // URL 검색: postURLs 필드 사용
         (taskInput as any).postURLs = [searchRequest.query]
         console.log(`TikTok URL 기반 연관 영상 검색: ${searchRequest.query}`)
       } else {
-        // 키워드/해시태그 검색: hashtags 필드 사용
-        (taskInput as any).hashtags = [searchRequest.query]
-        console.log(`TikTok 해시태그 검색: ${searchRequest.query}`)
+        // 키워드 검색: 새로운 키워드 전용 액터 사용하여 성공 사례와 동일한 구조
+        const keywords = Array.isArray((searchRequest as any).keywords) 
+          ? (searchRequest as any).keywords 
+          : [searchRequest.query]
+        
+        taskInput.hashtags = keywords.map((kw: string) => 
+          kw.replace(/^#/, '').trim()
+        ).filter(Boolean)
+        
+        // 키워드 검색 전용 설정 (성공 사례 기반)
+        taskInput.profileScrapeSections = ["videos"]
+        taskInput.profileSorting = "latest"
+        taskInput.searchSection = "/video"
+        taskInput.shouldDownloadSubtitles = false // 키워드 검색에서는 false
+        
+        // 업로드 기간 설정 (키워드 검색도 period 기반)
+        const period = searchRequest.filters.period
+        console.log(`🔍 TikTok 키워드 검색 기간 필터 - period: ${period}`)
+        
+        if (period && period !== 'all') {
+          const periodMap: Record<string, string> = {
+            'day': '1 day',
+            'week': '1 week', 
+            'month': '1 month',
+            'month2': '2 months',
+            'month3': '3 months',
+            'month6': '6 months',
+            'year': '1 year'
+          }
+          taskInput.oldestPostDateUnified = periodMap[period] || "3 months"
+          console.log(`✅ TikTok 키워드 검색 (기간 필터): ${taskInput.hashtags}, period: ${period} → ${taskInput.oldestPostDateUnified}`)
+        } else {
+          // 기간이 설정되지 않았거나 'all'인 경우 기본값
+          taskInput.oldestPostDateUnified = "3 months"
+          console.log(`TikTok 키워드 검색 (기본 기간): ${taskInput.hashtags}, 기간: 3개월`)
+        }
       }
       
+      // 실제 전송되는 taskInput 로깅 (디버깅용)
+      console.log('📋 TikTok API로 전송되는 최종 taskInput:', JSON.stringify(taskInput, null, 2))
+      
+      // 검색 타입에 따라 다른 액터 사용
+      const taskId = isProfileSearch 
+        ? 'interesting_dingo/tiktok-scraper-task' // 프로필 검색용 기존 액터
+        : 'interesting_dingo/tiktok-scraper-task-2' // 키워드 검색용 새 액터
+      
       const started = await startTaskRun({ 
-        taskId: 'distracting_wholemeal/tiktok-scraper-task', // 새로운 스크래퍼 ID
+        taskId, 
         token: process.env.APIFY_TOKEN!, 
         input: taskInput
       })
@@ -424,52 +517,14 @@ export async function POST(request: NextRequest) {
       })
 
       // ==========================================
-      // 🔄 단순화된 후처리 로직 (TikTok)
+      // 🔄 크레딧 정산 및 기록 저장 (TikTok)
       // ==========================================
       
-      // 1. 동적 크레딧 계산
-      const actualCreditsUsed = isAdmin ? 0 : Math.floor((response.items?.length || 0) / 30) * 100 // TikTok은 100크레딧
+      // 크레딧 정산 (settle 함수 사용)
+      const actualCreditsUsed = settle ? await settle(response.items?.length || 0) : 0
       console.log(`💰 TikTok 실제 크레딧 사용량: ${actualCreditsUsed} (결과 수: ${response.items?.length || 0})`)
       
-      // 2. A. 사용자 크레딧 차감 (credits 테이블 직접 UPDATE)
-      if (!isAdmin && actualCreditsUsed > 0) {
-        try {
-          // 현재 크레딧 조회 후 차감
-          const { data: currentCredits } = await supabase
-            .from('credits')
-            .select('balance')
-            .eq('user_id', user.id)
-            .single()
-          
-          if (currentCredits) {
-            const newBalance = Math.max(0, currentCredits.balance - actualCreditsUsed)
-            
-            console.log(`💰 TikTok 크레딧 차감 세부사항:`, {
-              사용자ID: user.id,
-              현재잔액: currentCredits.balance,
-              실제사용: actualCreditsUsed,
-              새잔액: newBalance
-            })
-            
-            const { error: creditError } = await supabase
-              .from('credits')
-              .update({ 
-                balance: newBalance
-              })
-              .eq('user_id', user.id)
-            
-            if (creditError) {
-              console.error('❌ TikTok 크레딧 차감 실패:', creditError)
-            } else {
-              console.log(`✅ TikTok 크레딧 차감 성공: ${actualCreditsUsed}`)
-            }
-          }
-        } catch (error) {
-          console.error('❌ TikTok 크레딧 차감 오류:', error)
-        }
-      }
-      
-      // 2. B. 검색 기록 저장 (search_history 테이블 직접 INSERT)
+      // 검색 기록 저장 (search_history 테이블에 실제 사용 크레딧으로 저장)
       try {
         const { error: logError } = await supabase
           .from('search_history')

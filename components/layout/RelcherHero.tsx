@@ -186,7 +186,7 @@ export default function RelcherHero({ user }: RelcherHeroProps) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.9 }}
           >
-            <p className="mt-6 text-base sm:text-lg md:text-xl text-gray-600 mb-8 leading-relaxed font-medium tracking-normal max-w-2xl mx-auto px-4" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>
+            <p className="mt-6 text-sm font-medium text-gray-600 mb-8 leading-relaxed tracking-tight max-w-2xl mx-auto px-4" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>
               키워드만 입력하세요. 이제는 릴처가 찾아줄게요.
             </p>
           </motion.div>
@@ -201,14 +201,14 @@ export default function RelcherHero({ user }: RelcherHeroProps) {
               <>
                 <motion.div whileHover={{ y: -4 }} transition={{ duration: 0.2 }}>
                   <Link href="/sign-in" prefetch={false}>
-                    <Button className="h-10 px-6 rounded-full bg-black text-white hover:bg-gray-800 text-base font-medium shadow-lg hover:shadow-xl transition-all duration-300">
+                    <Button className="h-10 px-6 rounded-full bg-black text-white hover:bg-gray-800 text-sm font-medium shadow-lg hover:shadow-xl transition-all duration-300">
                       무료로 시작하기
                     </Button>
                   </Link>
                 </motion.div>
                 <motion.div whileHover={{ y: -4 }} transition={{ duration: 0.2 }}>
                   <Link href="/search" prefetch={false}>
-                    <Button variant="outline" className="h-10 px-6 rounded-full border-2 border-gray-300 hover:border-gray-400 text-base font-medium shadow-lg hover:shadow-xl transition-all duration-300">
+                    <Button variant="outline" className="h-10 px-6 rounded-full border-2 border-gray-300 hover:border-gray-400 text-sm font-medium shadow-lg hover:shadow-xl transition-all duration-300">
                       데모 보기
                     </Button>
                   </Link>
@@ -218,14 +218,14 @@ export default function RelcherHero({ user }: RelcherHeroProps) {
               <>
                 <motion.div whileHover={{ y: -4 }} transition={{ duration: 0.2 }}>
                   <Link href="/dashboard" prefetch={false}>
-                    <Button variant="outline" className="h-10 px-6 rounded-full border-2 border-gray-300 hover:border-gray-400 text-base font-medium shadow-lg hover:shadow-xl transition-all duration-300">
+                    <Button variant="outline" className="h-10 px-6 rounded-full border-2 border-gray-300 hover:border-gray-400 text-sm font-medium shadow-lg hover:shadow-xl transition-all duration-300">
                       대시보드
                     </Button>
                   </Link>
                 </motion.div>
                 <motion.div whileHover={{ y: -4 }} transition={{ duration: 0.2 }}>
                   <Link href="/search" prefetch={false}>
-                    <Button className="h-10 px-6 rounded-full bg-black text-white hover:bg-gray-800 text-base font-medium shadow-lg hover:shadow-xl transition-all duration-300">
+                    <Button className="h-10 px-6 rounded-full bg-black text-white hover:bg-gray-800 text-sm font-medium shadow-lg hover:shadow-xl transition-all duration-300">
                       검색 바로가기
                     </Button>
                   </Link>

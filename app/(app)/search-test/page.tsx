@@ -7,6 +7,7 @@ import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ResponsiveLogo } from '@/components/ui/logo'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { VerificationModal } from '@/components/auth/VerificationModal'
 import { useAuthStore } from '@/store/auth'
 import { Input } from '@/components/input'
@@ -338,11 +339,42 @@ type SearchRow = {
 function SearchTestPageContent() {
   const [platform, setPlatform] = useState<'instagram' | 'youtube' | 'tiktok'>('instagram')
   const [searchType, setSearchType] = useState<'keyword' | 'url' | 'profile'>('keyword')
+  
+  // 틱톡에서 URL 검색이 선택되면 키워드로 변경 (유사 영상 검색 제거)
+  useEffect(() => {
+    if (platform === 'tiktok' && searchType === 'url') {
+      setSearchType('keyword')
+    }
+  }, [platform, searchType])
   const [expandedTitleRow, setExpandedTitleRow] = useState<string | null>(null) // 확장된 제목 행 관리
   
   // Validation states
   const [validationErrors, setValidationErrors] = useState<{[key: string]: string}>({})
   const [showValidationErrors, setShowValidationErrors] = useState(false)
+  
+  // Keyword popup state
+  const [keywordPopup, setKeywordPopup] = useState<{
+    visible: boolean
+    keyword: string
+    platform: string
+    searchCount: number
+    firstSearchedAt: string
+    lastSearchedAt: string
+    position: { x: number, y: number }
+  }>({
+    visible: false,
+    keyword: '',
+    platform: '',
+    searchCount: 0,
+    firstSearchedAt: '',
+    lastSearchedAt: '',
+    position: { x: 0, y: 0 }
+  })
+
+  // keywordPopup 상태 변경 추적
+  useEffect(() => {
+    console.log('🎯 keywordPopup 상태 변경:', keywordPopup)
+  }, [keywordPopup])
 
   // Validation function
   const validateInputs = () => {
@@ -523,7 +555,7 @@ function SearchTestPageContent() {
   const [maxSubscribers, setMaxSubscribers] = useState<number>(0)
   const [videoDuration, setVideoDuration] = useState<'any' | 'short' | 'long'>('any')
   const [minViews, setMinViews] = useState<number>(0)
-  const [period, setPeriod] = useState<'day' | 'week' | 'month' | 'month2' | 'month3' | 'month6' | 'year' | 'all'>('month2')
+  const [period, setPeriod] = useState<'day' | 'week' | 'month' | 'month2' | 'month3' | 'month6' | 'year' | 'all'>('month')
   
   // YouTube API 키 관리 (Supabase 기반)
   const [youtubeApiKey, setYoutubeApiKey] = useState<string>('')
@@ -620,13 +652,13 @@ function SearchTestPageContent() {
     if (platform === 'youtube') {
       if (searchType === 'keyword') {
         // 키워드 검색으로 변경 시 기본값 30으로 설정
-        if (limit === '15' || limit === '50') {
+        if (limit === '50') {
           setLimit('30')
         }
       } else {
-        // URL 검색으로 변경 시 기본값 15로 설정
+        // URL 검색으로 변경 시 기본값 30으로 설정
         if (limit === '60' || limit === '90' || limit === '120') {
-          setLimit('15')
+          setLimit('30')
         }
       }
     }
@@ -825,7 +857,7 @@ function SearchTestPageContent() {
           setTodayCount(userData.today || 0)  // todaySearches → today 수정
           setMonthCount(userData.month || 0)  // monthSearches → month 수정
           setMonthCredits(userData.monthCredits || 0)
-          setRecentKeywords(userData.recent || [])  // recentKeywords → recent 수정
+          // recent 키워드는 별도 API에서 로드
           setIsAdmin(userData.role === 'admin')
           setPlan(userData.plan || 'free')
         } else if (!session?.user) {
@@ -840,7 +872,7 @@ function SearchTestPageContent() {
   const [myCredits, setMyCredits] = useState<number | null>(null)
   const [todayCount, setTodayCount] = useState<number>(0)
   const [monthCount, setMonthCount] = useState<number>(0)
-  const [recentKeywords, setRecentKeywords] = useState<string[]>([])
+  const [recentKeywords, setRecentKeywords] = useState<any[]>([])
   const [monthCredits, setMonthCredits] = useState<number>(0)
   const [keywordPage, setKeywordPage] = useState(0) // 최근 키워드 페이지네이션
   const [isAdmin, setIsAdmin] = useState<boolean>(false)
@@ -924,10 +956,25 @@ function SearchTestPageContent() {
       // Process keywords
       if (keywordsRes.ok) {
         const keywords = await keywordsRes.json()
-        if (Array.isArray(keywords.recent)) {
-          const keywordStrings = keywords.recent.map((k: any) => k.keyword).filter(Boolean)
-          setRecentKeywords(keywordStrings)
-          console.log('✅ 최근 키워드 로드 완료:', keywordStrings.length)
+        console.log('🔑 키워드 API 응답:', {
+          hasData: !!keywords.sampleData,
+          count: keywords.sampleData?.length || 0
+        })
+        
+        // sampleData만 사용 (정확한 집계 데이터)
+        if (Array.isArray(keywords.sampleData)) {
+          console.log('✅ sampleData 사용 (정확한 시간 정보):', keywords.sampleData)
+          // URL 제외 필터링 (http로 시작하는 것들과 URL 검색 타입 제외)
+          const filteredKeywords = keywords.sampleData.filter((k: any) => {
+            const keyword = typeof k === 'object' && k ? k.keyword : k
+            return keyword && !keyword.startsWith('http') && 
+                   !(k.search_type && k.search_type === 'url')
+          })
+          setRecentKeywords(filteredKeywords)
+          console.log('✅ 최근 키워드 로드 완료 (sampleData, URL 제외):', filteredKeywords.length, '개')
+        } else {
+          console.log('⚠️ sampleData 없음 - 빈 배열로 설정')
+          setRecentKeywords([])
         }
       } else {
         console.warn('⚠️ loadStats에서 키워드 로드 실패')
@@ -1021,59 +1068,9 @@ function SearchTestPageContent() {
     if (!validateInputs()) {
       return
     }
-    // 검색 전 알림 팝업 표시
-    const showSearchConfirmation = () => {
-      return new Promise<boolean>((resolve) => {
-        const modal = document.createElement('div')
-        modal.className = 'fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4'
-        
-        const creditCosts = {
-          instagram: { 30: 100, 60: 200, 90: 300, 120: 400 },
-          youtube: { 30: 50, 60: 100, 90: 150, 120: 200 },
-          tiktok: { 30: 100, 60: 200, 90: 300, 120: 400 }
-        }
-        
-        const platformCosts = creditCosts[platform as keyof typeof creditCosts] || {}
-        const currentCost = (platformCosts as any)[Number(limit)] || 0
-        const platformName = platform === 'youtube' ? 'YouTube' : platform === 'tiktok' ? 'TikTok' : 'Instagram'
-        
-        modal.innerHTML = `
-          <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-            <div class="text-lg font-semibold text-gray-800 mb-3">${platformName} 검색</div>
-            <div class="text-sm text-gray-600 mb-4">
-              ${limit}개 결과를 검색합니다.<br/>
-              <span class="font-medium text-blue-600">${currentCost} 크레딧</span>이 차감됩니다.
-            </div>
-            <div class="flex items-center justify-end gap-3">
-              <button id="cancel-btn" class="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">취소</button>
-              <button id="confirm-btn" class="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">검색 시작</button>
-            </div>
-          </div>
-        `
-        
-        const cancelBtn = modal.querySelector('#cancel-btn')
-        const confirmBtn = modal.querySelector('#confirm-btn')
-        
-        cancelBtn?.addEventListener('click', () => {
-          document.body.removeChild(modal)
-          resolve(false)
-        })
-        
-        confirmBtn?.addEventListener('click', () => {
-          document.body.removeChild(modal)
-          resolve(true)
-        })
-        
-        document.body.appendChild(modal)
-      })
-    }
     
-    // 검색 확인 후 실행
-    showSearchConfirmation().then((confirmed) => {
-      if (confirmed) {
-        run()
-      }
-    })
+    // 첫 번째 팝업 제거하고 바로 실행
+    run()
   }
 
   // 본인인증 성공 시 실행될 함수 (비활성화됨)
@@ -1279,8 +1276,8 @@ function SearchTestPageContent() {
           resultsLimit: Number(limit),
           filters: {
             sortBy: 'trending',
-            // 프로필 검색 시에만 minLikes 필터 적용
-            ...(searchType === 'profile' && minLikes > 0 ? { minLikes } : {})
+            // 키워드 및 프로필 검색 시 업로드 기간 필터 적용
+            ...(period ? { period } : {})
           }
         }
         apiEndpoint = '/api/search/tiktok'
@@ -1293,42 +1290,24 @@ function SearchTestPageContent() {
             throw new Error('프로필 URL 또는 사용자명을 입력해주세요.')
           }
           
-          // 기간 필터 계산 (Apify 형식으로)
-          let onlyPostsNewerThan: string | undefined = undefined
-          if (instagramPeriod !== '30') { // 기본값이 아닌 경우
-            if (instagramPeriod === 'custom') {
-              // 사용자 정의 기간
-              if (instagramCustomUnit === 'days') {
-                onlyPostsNewerThan = `${instagramCustomPeriod} days`
-              } else {
-                onlyPostsNewerThan = `${instagramCustomPeriod} months`
-              }
-            } else {
-              // 미리 정의된 기간
-              const periodDays = Number(instagramPeriod)
-              if (periodDays === 7) {
-                onlyPostsNewerThan = '7 days'
-              } else if (periodDays === 15) {
-                onlyPostsNewerThan = '15 days'
-              } else if (periodDays === 30) {
-                onlyPostsNewerThan = '1 month'
-              } else if (periodDays === 90) {
-                onlyPostsNewerThan = '3 months'
-              } else if (periodDays === 180) {
-                onlyPostsNewerThan = '6 months'
-              } else if (periodDays === 365) {
-                onlyPostsNewerThan = '12 months'
-              }
-            }
-          }
+          // 디버깅: period 상태 확인
+          console.log('🔍 Instagram 프로필 검색 - 프론트엔드 period 상태:', period)
+          console.log('🔍 Instagram 프로필 검색 - period truthy 체크:', !!period)
+          console.log('🔍 Instagram 프로필 검색 - 전달할 filters:', period ? { period } : {})
+          
+          // filters 객체를 명시적으로 생성
+          const filters = period ? { period } : {}
+          console.log('🔍 Instagram 프로필 검색 - filters 객체:', filters)
           
           payload = { 
             searchType: 'profile',
             profileUrl,
             limit, 
             debug: true,
-            onlyPostsNewerThan
+            filters
           }
+          
+          console.log('🔍 Instagram 프로필 검색 - 최종 payload:', JSON.stringify(payload, null, 2))
         } else {
           // 키워드 검색 (기존)
           const list = keywords.map(s=>s.trim()).filter(Boolean).slice(0,3)
@@ -1468,17 +1447,36 @@ function SearchTestPageContent() {
       
       // 검색 성공 시 최근 키워드를 서버에 저장 (모든 플랫폼, 키워드 검색만, URL 검색 제외)
       console.log(`키워드 저장 조건 체크: arr.length=${arr.length}, searchType=${searchType}, platform=${platform}`)
-      if (arr.length > 0 && searchType === 'keyword') {
-        const keyword = (platform === 'youtube' || platform === 'tiktok') 
-          ? keywords[0]?.trim() 
-          : keywords[0]?.trim()
+      if (arr.length > 0 && (searchType === 'keyword' || searchType === 'profile')) {
+        let keyword = keywords[0]?.trim() || ''
         
-        console.log(`키워드 저장 준비: keyword="${keyword}", keywords=`, keywords)
+        // 프로필 검색인 경우 @ 접두사 추가
+        if (searchType === 'profile') {
+          // URL에서 사용자명 추출
+          if (keyword.includes('instagram.com/') || keyword.includes('tiktok.com/@') || keyword.includes('youtube.com/')) {
+            // URL에서 사용자명 추출
+            if (keyword.includes('instagram.com/')) {
+              const match = keyword.match(/instagram\.com\/([^/?]+)/)
+              keyword = match ? match[1] : keyword
+            } else if (keyword.includes('tiktok.com/@')) {
+              const match = keyword.match(/tiktok\.com\/@([^/?]+)/)
+              keyword = match ? match[1] : keyword
+            } else if (keyword.includes('youtube.com/')) {
+              const match = keyword.match(/youtube\.com\/[@c]?([^/?]+)/)
+              keyword = match ? match[1] : keyword
+            }
+          }
+          
+          // @ 접두사 추가 (이미 있다면 제거 후 추가)
+          keyword = keyword.startsWith('@') ? keyword : `@${keyword}`
+        }
         
-        // 키워드 검색인 경우만 저장 (URL, 프로필 검색 제외)
-        const isKeywordSearch = searchType === 'keyword' && keyword && keyword.length > 0 && !keyword.includes('http') && !keyword.includes('@')
-        console.log(`키워드 저장 가능 여부: isKeywordSearch=${isKeywordSearch}`)
-        if (isKeywordSearch) {
+        console.log(`키워드 저장 준비: keyword="${keyword}", searchType=${searchType}`)
+        
+        // 키워드나 프로필 검색인 경우 저장 (URL 검색 제외, http 포함 제외)
+        const isValidForSaving = keyword && keyword.length > 0 && !keyword.includes('http')
+        console.log(`키워드 저장 가능 여부: isValidForSaving=${isValidForSaving}`)
+        if (isValidForSaving) {
           try {
             console.log(`Saving recent keyword for ${platform}:`, keyword)
             // 서버에 키워드 저장
@@ -1712,9 +1710,15 @@ function SearchTestPageContent() {
           const j = await userRes.json().catch(() => ({}))
           setMyCredits(typeof j?.credits === 'number' ? j.credits : null)
           setIsAdmin(j?.role === 'admin')
-          setUser(j?.user || null)
+          setUser(j || null)
           if (j?.plan) setPlan(j.plan)
-          console.log('✅ 사용자 데이터 새로고침 완료:', { credits: j?.credits, role: j?.role, plan: j?.plan })
+          console.log('✅ 사용자 데이터 새로고침 완료:', { 
+            credits: j?.credits, 
+            role: j?.role, 
+            plan: j?.plan,
+            user: j || null,
+            hasUserData: !!(j || null)
+          })
         } catch (parseError) {
           console.error('❌ 사용자 데이터 JSON 파싱 실패:', parseError)
           setMyCredits(null)
@@ -1758,12 +1762,24 @@ function SearchTestPageContent() {
       if (keywordsRes.ok) {
         try {
           const keywords = await keywordsRes.json().catch(() => ({ recent: [] }))
-          if (Array.isArray(keywords.recent)) {
-            const keywordStrings = keywords.recent.map((k: any) => k.keyword || k).filter(Boolean)
-            setRecentKeywords(keywordStrings)
-            console.log('✅ 최근 키워드 새로고침 완료:', keywordStrings.length, '개')
+          console.log('🔑 키워드 새로고침 응답:', {
+            hasData: !!keywords.sampleData,
+            count: keywords.sampleData?.length || 0
+          })
+          
+          // sampleData만 사용 (정확한 집계 데이터)
+          if (Array.isArray(keywords.sampleData)) {
+            console.log('✅ 새로고침 - sampleData 사용 (정확한 시간 정보):', keywords.sampleData)
+            // URL 제외 필터링 (http로 시작하는 것들과 URL 검색 타입 제외)
+            const filteredKeywords = keywords.sampleData.filter((k: any) => {
+              const keyword = typeof k === 'object' && k ? k.keyword : k
+              return keyword && !keyword.startsWith('http') && 
+                     !(k.search_type && k.search_type === 'url')
+            })
+            setRecentKeywords(filteredKeywords)
+            console.log('✅ 최근 키워드 새로고침 완료 (sampleData, URL 제외):', filteredKeywords.length, '개')
           } else {
-            console.warn('⚠️ keywords.recent이 배열이 아님:', keywords)
+            console.log('⚠️ 새로고침 - sampleData 없음, 빈 배열로 설정')
             setRecentKeywords([])
           }
         } catch (parseError) {
@@ -1839,6 +1855,10 @@ function SearchTestPageContent() {
             
             {/* Navigation */}
             <div className="flex items-center gap-3">
+              {(() => {
+                console.log('🔍 헤더 렌더링 - user 상태:', user, 'user 존재:', !!user)
+                return null
+              })()}
               {user ? (
                 <Button asChild variant="outline" className="text-sm font-medium border-2 hover:border-gray-300 hover:bg-gray-50 hover:shadow-md transition-all duration-200 hover:-translate-y-0.5">
                   <Link href="/dashboard">
@@ -1978,8 +1998,8 @@ function SearchTestPageContent() {
                     </button>
                   </div>
                 ) : platform === 'tiktok' ? (
-                  // TikTok: 3개 버튼 (키워드, URL, 프로필)
-                  <div className="grid grid-cols-3 bg-gray-100 rounded-lg p-1 gap-1">
+                  // TikTok: 2개 버튼 (키워드, 프로필) - 유사 영상 검색 제거
+                  <div className="grid grid-cols-2 bg-gray-100 rounded-lg p-1 gap-1">
                     <button
                       className={`py-2 px-3 text-sm font-medium rounded-md transition-all ${
                         searchType === 'keyword'
@@ -1989,16 +2009,6 @@ function SearchTestPageContent() {
                       onClick={() => setSearchType('keyword')}
                     >
                       키워드 검색
-                    </button>
-                    <button
-                      className={`py-2 px-3 text-sm font-medium rounded-md transition-all ${
-                        searchType === 'url'
-                          ? 'bg-white text-gray-900 shadow-sm'
-                          : 'text-gray-600 hover:text-gray-900'
-                      }`}
-                      onClick={() => setSearchType('url')}
-                    >
-                      유사 영상 검색
                     </button>
                     <button
                       className={`py-2 px-3 text-sm font-medium rounded-md transition-all ${
@@ -2114,88 +2124,57 @@ function SearchTestPageContent() {
                   error={showValidationErrors && validationErrors.keywords}
                 />
                 
-                {/* Instagram 프로필 검색 시 업로드 기간 필터 */}
+                {/* Instagram 프로필 검색 시 업로드 기간 필터 (틱톡과 동일한 형태) */}
                 {platform === 'instagram' && searchType === 'profile' && (
                   <div className="mt-3">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      업로드 기간 설정
+                      업로드 기간
                     </label>
-                    <div className="flex flex-wrap gap-2 mb-3">
-                      {(['7', '15', '30', '90', '180', '365', 'custom'] as const).map((period) => (
-                        <button
-                          key={period}
-                          className={`px-3 py-1 text-xs rounded-md border transition-all ${
-                            instagramPeriod === period
-                              ? 'bg-gray-900 text-white border-gray-900'
-                              : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                          }`}
-                          onClick={() => setInstagramPeriod(period)}
-                        >
-                          {period === 'custom' 
-                            ? '직접 입력' 
-                            : period === '7' ? '7일'
-                            : period === '15' ? '15일'
-                            : period === '30' ? '1개월'
-                            : period === '90' ? '3개월'
-                            : period === '180' ? '6개월'
-                            : '1년'
-                          }
-                        </button>
-                      ))}
-                    </div>
-                    
-                    {instagramPeriod === 'custom' && (
-                      <div className="flex items-center gap-2">
-                        <ShadcnInput 
-                          type="number"
-                          className="flex-1"
-                          placeholder="숫자만 입력"
-                          min="1"
-                          value={instagramCustomPeriod > 0 ? instagramCustomPeriod : ''}
-                          onChange={(e) => setInstagramCustomPeriod(Number(e.target.value) || 1)}
-                        />
-                        <div className="flex bg-gray-100 rounded-lg p-1">
-                          <button
-                            className={`px-3 py-1 text-xs rounded-md transition-all ${
-                              instagramCustomUnit === 'days'
-                                ? 'bg-white text-gray-900 shadow-sm'
-                                : 'text-gray-600 hover:text-gray-900'
-                            }`}
-                            onClick={() => setInstagramCustomUnit('days')}
-                          >
-                            일
-                          </button>
-                          <button
-                            className={`px-3 py-1 text-xs rounded-md transition-all ${
-                              instagramCustomUnit === 'months'
-                                ? 'bg-white text-gray-900 shadow-sm'
-                                : 'text-gray-600 hover:text-gray-900'
-                            }`}
-                            onClick={() => setInstagramCustomUnit('months')}
-                          >
-                            개월
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                    <Select value={period} onValueChange={(value) => setPeriod(value as any)}>
+                      <SelectTrigger className="w-full h-10">
+                        <SelectValue placeholder="기간 선택" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="day">최근 하루</SelectItem>
+                        <SelectItem value="week">최근 일주일</SelectItem>
+                        <SelectItem value="month">최근 한 달</SelectItem>
+                        <SelectItem value="month2">최근 2개월</SelectItem>
+                        <SelectItem value="month3">최근 3개월</SelectItem>
+                        <SelectItem value="month6">최근 6개월</SelectItem>
+                        <SelectItem value="year">최근 1년</SelectItem>
+                        <SelectItem value="all">전체</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-gray-500 mt-1">
+                      선택한 기간 내에 업로드된 영상만 검색합니다
+                    </p>
                   </div>
                 )}
                 
-                {/* TikTok 프로필 검색 시 최소 좋아요 필터 */}
+                
+                {/* TikTok 프로필 검색 시 업로드 기간 필터 */}
                 {platform === 'tiktok' && searchType === 'profile' && (
                   <div className="mt-3">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      최소 좋아요 수 (선택사항)
+                      업로드 기간
         </label>
-                    <ShadcnInput 
-                      type="number"
-                      placeholder="예: 500 (해당 계정에서 500 좋아요 이상인 영상만 검색)"
-                      min="0"
-                      value={minLikes > 0 ? minLikes : ''}
-                      onChange={(e) => setMinLikes(Number(e.target.value) || 0)}
-                    />
+                    <Select value={period} onValueChange={(value) => setPeriod(value as any)}>
+                      <SelectTrigger className="w-full h-10">
+                        <SelectValue placeholder="기간 선택" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="day">최근 하루</SelectItem>
+                        <SelectItem value="week">최근 일주일</SelectItem>
+                        <SelectItem value="month">최근 한 달</SelectItem>
+                        <SelectItem value="month2">최근 2개월</SelectItem>
+                        <SelectItem value="month3">최근 3개월</SelectItem>
+                        <SelectItem value="month6">최근 6개월</SelectItem>
+                        <SelectItem value="year">최근 1년</SelectItem>
+                        <SelectItem value="all">전체</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <p className="text-xs text-gray-500 mt-1">
-                      설정하지 않으면 모든 영상을 검색합니다
+                      선택한 기간 내에 업로드된 영상만 검색합니다
                     </p>
                   </div>
                 )}
@@ -2222,6 +2201,33 @@ function SearchTestPageContent() {
                     </button>
                   )}
             </div>
+            
+            {/* TikTok 키워드 검색 시 업로드 기간 필터 */}
+            {platform === 'tiktok' && searchType === 'keyword' && (
+              <div className="mt-3">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  업로드 기간
+                </label>
+                <Select value={period} onValueChange={(value) => setPeriod(value as any)}>
+                  <SelectTrigger className="w-full h-10">
+                    <SelectValue placeholder="기간 선택" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="day">최근 하루</SelectItem>
+                    <SelectItem value="week">최근 일주일</SelectItem>
+                    <SelectItem value="month">최근 한 달</SelectItem>
+                    <SelectItem value="month2">최근 2개월</SelectItem>
+                    <SelectItem value="month3">최근 3개월</SelectItem>
+                    <SelectItem value="month6">최근 6개월</SelectItem>
+                    <SelectItem value="year">최근 1년</SelectItem>
+                    <SelectItem value="all">전체</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-500 mt-1">
+                  선택한 기간 내에 업로드된 영상만 검색합니다
+                </p>
+              </div>
+            )}
             
             {/* 키워드 검색 시 추천 키워드 (모든 플랫폼) */}
             {(
@@ -2344,34 +2350,36 @@ function SearchTestPageContent() {
                 {/* 업로드 기간 */}
                 <div>
                   <div className="text-sm font-medium text-gray-700 mb-2">업로드 기간</div>
-                  <select 
-                    className="w-full h-10 border border-gray-300 rounded-lg px-3 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-all bg-white" 
-                    value={period} 
-                    onChange={(e)=>setPeriod(e.target.value as any)}
-                  >
-                    <option value="day">최근 하루</option>
-                    <option value="week">최근 일주일</option>
-                    <option value="month">최근 한 달</option>
-                    <option value="month2">최근 2개월</option>
-                    <option value="month3">최근 3개월</option>
-                    <option value="month6">최근 6개월</option>
-                    <option value="year">최근 1년</option>
-                    <option value="all">전체</option>
-          </select>
+                  <Select value={period} onValueChange={(value) => setPeriod(value as any)}>
+                    <SelectTrigger className="w-full h-10">
+                      <SelectValue placeholder="기간 선택" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="day">최근 하루</SelectItem>
+                      <SelectItem value="week">최근 일주일</SelectItem>
+                      <SelectItem value="month">최근 한 달</SelectItem>
+                      <SelectItem value="month2">최근 2개월</SelectItem>
+                      <SelectItem value="month3">최근 3개월</SelectItem>
+                      <SelectItem value="month6">최근 6개월</SelectItem>
+                      <SelectItem value="year">최근 1년</SelectItem>
+                      <SelectItem value="all">전체</SelectItem>
+                    </SelectContent>
+                  </Select>
       </div>
 
                 {/* 영상 길이 */}
                 <div>
                   <div className="text-sm font-medium text-gray-700 mb-2">영상 길이</div>
-                  <select 
-                    className="w-full h-10 border border-gray-300 rounded-lg px-3 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-all bg-white" 
-                    value={videoDuration} 
-                    onChange={(e)=>setVideoDuration(e.target.value as any)}
-                  >
-                    <option value="any">모든 길이</option>
-                    <option value="short">쇼츠</option>
-                    <option value="long">롱폼</option>
-                  </select>
+                  <Select value={videoDuration} onValueChange={(value) => setVideoDuration(value as any)}>
+                    <SelectTrigger className="w-full h-10">
+                      <SelectValue placeholder="길이 선택" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="any">모든 길이</SelectItem>
+                      <SelectItem value="short">쇼츠</SelectItem>
+                      <SelectItem value="long">롱폼</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {/* 최소 조회수 - 입력 필드 */}
@@ -2401,50 +2409,52 @@ function SearchTestPageContent() {
 
           {/* 결과 개수와 검색 버튼 */}
           <div>
-            <div className="text-sm font-medium text-gray-700 mb-3">결과 개수</div>
+            <div className="text-sm font-medium text-gray-700 mb-3">최대 결과 개수</div>
             <div className="flex items-end gap-3">
               <div className="flex-1 max-w-[200px]">
-                <select 
-                  className="w-full h-10 border border-gray-300 rounded-md px-3 text-sm font-medium shadow-sm transition-all duration-150 bg-white hover:border-gray-400 hover:shadow-md focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 focus:shadow-md"
+                <Select 
                   value={limit} 
-                  onChange={(e)=>{
-                    const v = e.target.value as any
+                  onValueChange={(v) => {
                     // Plan-based locking (플랫폼별 제한)
                     if (platform === 'youtube') {
                       if (searchType === 'keyword') {
                         // YouTube 키워드: 30/60/90/120
-                        if (plan==='free' && (v==='60'||v==='90'||v==='120')) { e.preventDefault(); (e.target as HTMLSelectElement).value = prevLimitRef.current as any; showUpgradeModal('FREE 플랜은 30개만 가능합니다'); return }
-                        if (plan==='starter' && (v==='90'||v==='120')) { e.preventDefault(); (e.target as HTMLSelectElement).value = prevLimitRef.current as any; showUpgradeModal('STARTER 플랜은 60개까지만 가능합니다'); return }
-                        if (plan==='pro' && v==='120') { e.preventDefault(); (e.target as HTMLSelectElement).value = prevLimitRef.current as any; showUpgradeModal('PRO 플랜은 90개까지만 가능합니다'); return }
+                        if (plan==='free' && (v==='60'||v==='90'||v==='120')) { showUpgradeModal('FREE 플랜은 30개만 가능합니다'); return }
+                        if (plan==='starter' && (v==='90'||v==='120')) { showUpgradeModal('STARTER 플랜은 60개까지만 가능합니다'); return }
+                        if (plan==='pro' && v==='120') { showUpgradeModal('PRO 플랜은 90개까지만 가능합니다'); return }
                       } else {
                         // YouTube URL: 15/30/50
-                        if (plan==='free' && (v==='30'||v==='50')) { e.preventDefault(); (e.target as HTMLSelectElement).value = prevLimitRef.current as any; showUpgradeModal('FREE 플랜은 15개만 가능합니다'); return }
-                        if (plan==='starter' && v==='50') { e.preventDefault(); (e.target as HTMLSelectElement).value = prevLimitRef.current as any; showUpgradeModal('STARTER 플랜은 30개까지만 가능합니다'); return }
+                        if (plan==='free' && (v==='30'||v==='50')) { showUpgradeModal('FREE 플랜은 15개만 가능합니다'); return }
+                        if (plan==='starter' && v==='50') { showUpgradeModal('STARTER 플랜은 30개까지만 가능합니다'); return }
                       }
                     } else if (platform === 'instagram' && searchType === 'keyword') {
                       // Instagram 키워드 검색: 베타 단계에서 30개만 허용
-                      if (v !== '30') { e.preventDefault(); (e.target as HTMLSelectElement).value = '30'; showUpgradeModal('베타 단계에서는 인스타그램 키워드 검색은 30개만 가능합니다'); return }
+                      if (v !== '30') { showUpgradeModal('베타 단계에서는 인스타그램 키워드 검색은 30개만 가능합니다'); return }
                     } else {
                       // Instagram 프로필 검색/TikTok: 30/60/90/120
-                      if (plan==='free' && (v==='60'||v==='90'||v==='120')) { e.preventDefault(); (e.target as HTMLSelectElement).value = prevLimitRef.current as any; showUpgradeModal('FREE 플랜은 30개만 가능합니다'); return }
-                      if (plan==='starter' && (v==='90'||v==='120')) { e.preventDefault(); (e.target as HTMLSelectElement).value = prevLimitRef.current as any; showUpgradeModal('STARTER 플랜은 60개까지만 가능합니다'); return }
-                      if (plan==='pro' && v==='120') { e.preventDefault(); (e.target as HTMLSelectElement).value = prevLimitRef.current as any; showUpgradeModal('PRO 플랜은 90개까지만 가능합니다'); return }
+                      if (plan==='free' && (v==='60'||v==='90'||v==='120')) { showUpgradeModal('FREE 플랜은 30개만 가능합니다'); return }
+                      if (plan==='starter' && (v==='90'||v==='120')) { showUpgradeModal('STARTER 플랜은 60개까지만 가능합니다'); return }
+                      if (plan==='pro' && v==='120') { showUpgradeModal('PRO 플랜은 90개까지만 가능합니다'); return }
                     }
-                    prevLimitRef.current = v; setLimit(v)
+                    prevLimitRef.current = limit; setLimit(v as any)
                   }}
                 >
-                  {isAdmin && <option value="5">5 (개발용)</option>}
+                  <SelectTrigger className="w-full h-10">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {isAdmin && <SelectItem value="5">5 (개발용)</SelectItem>}
                   {platform === 'instagram' ? (
                     <>
                       {/* 인스타그램은 베타 단계에서 키워드 검색만 30개로 제한 (프로필 검색은 제한 없음) */}
                       {searchType === 'keyword' ? (
-                        <option value="30">30개 (100크레딧)</option>
+                          <SelectItem value="30">30개 (100크레딧)</SelectItem>
                       ) : (
                         <>
-                          <option value="30">30개 (100크레딧)</option>
-                          <option value="60">60개 (200크레딧){plan==='free'?' 🔒':''}</option>
-                          <option value="90">90개 (300크레딧){(plan==='free'||plan==='starter')?' 🔒':''}</option>
-                          <option value="120">120개 (400크레딧){(plan==='free'||plan==='starter'||plan==='pro')?' 🔒':''}</option>
+                            <SelectItem value="30">30개 (100크레딧)</SelectItem>
+                            <SelectItem value="60" disabled={plan==='free'}>60개 (200크레딧){plan==='free'?' 🔒':''}</SelectItem>
+                            <SelectItem value="90" disabled={plan==='free'||plan==='starter'}>90개 (300크레딧){(plan==='free'||plan==='starter')?' 🔒':''}</SelectItem>
+                            <SelectItem value="120" disabled={plan==='free'||plan==='starter'||plan==='pro'}>120개 (400크레딧){(plan==='free'||plan==='starter'||plan==='pro')?' 🔒':''}</SelectItem>
                         </>
                       )}
                     </>
@@ -2452,28 +2462,28 @@ function SearchTestPageContent() {
                     <>
                       {searchType === 'keyword' ? (
                         <>
-                          <option value="30">30개 (50크레딧)</option>
-                          <option value="60">60개 (100크레딧){plan==='free'?' 🔒':''}</option>
-                          <option value="90">90개 (150크레딧){(plan==='free'||plan==='starter')?' 🔒':''}</option>
-                          <option value="120">120개 (200크레딧){(plan==='free'||plan==='starter'||plan==='pro')?' 🔒':''}</option>
+                            <SelectItem value="30">30개 (50크레딧)</SelectItem>
+                            <SelectItem value="60" disabled={plan==='free'}>60개 (100크레딧){plan==='free'?' 🔒':''}</SelectItem>
+                            <SelectItem value="90" disabled={plan==='free'||plan==='starter'}>90개 (150크레딧){(plan==='free'||plan==='starter')?' 🔒':''}</SelectItem>
+                            <SelectItem value="120" disabled={plan==='free'||plan==='starter'||plan==='pro'}>120개 (200크레딧){(plan==='free'||plan==='starter'||plan==='pro')?' 🔒':''}</SelectItem>
                         </>
                       ) : (
                         <>
-                          <option value="15">15개 (25크레딧)</option>
-                          <option value="30">30개 (50크레딧){plan==='free'?' 🔒':''}</option>
-                          <option value="50">50개 (70크레딧){(plan==='free'||plan==='starter')?' 🔒':''}</option>
+                            <SelectItem value="30">30개 (50크레딧)</SelectItem>
+                            <SelectItem value="50" disabled={plan==='free'}>50개 (70크레딧){plan==='free'?' 🔒':''}</SelectItem>
                         </>
                       )}
                     </>
                   ) : (
                     <>
-                      <option value="30">30개 (50크레딧)</option>
-                      <option value="60">60개 (100크레딧){plan==='free'?' 🔒':''}</option>
-                      <option value="90">90개 (150크레딧){(plan==='free'||plan==='starter')?' 🔒':''}</option>
-                      <option value="120">120개 (200크레딧){(plan==='free'||plan==='starter'||plan==='pro')?' 🔒':''}</option>
+                        <SelectItem value="30">30개 (50크레딧)</SelectItem>
+                        <SelectItem value="60" disabled={plan==='free'}>60개 (100크레딧){plan==='free'?' 🔒':''}</SelectItem>
+                        <SelectItem value="90" disabled={plan==='free'||plan==='starter'}>90개 (150크레딧){(plan==='free'||plan==='starter')?' 🔒':''}</SelectItem>
+                        <SelectItem value="120" disabled={plan==='free'||plan==='starter'||plan==='pro'}>120개 (200크레딧){(plan==='free'||plan==='starter'||plan==='pro')?' 🔒':''}</SelectItem>
                     </>
                   )}
-                </select>
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <button 
@@ -2549,16 +2559,95 @@ function SearchTestPageContent() {
                       keywordPage * itemsPerPage,
                       (keywordPage + 1) * itemsPerPage
                     )
+                    
+                    console.log('📋 현재 페이지 키워드들:', currentPageKeywords)
+                    console.log('📋 전체 recentKeywords 배열:', recentKeywords)
 
-                    return currentPageKeywords.map(k => {
-                      const displayText = k.length > 7 ? k.substring(0, 7) + '...' : k
+                    return currentPageKeywords.map((keywordData: any, index: number) => {
+                      console.log(`🔍 키워드 ${index} 처리:`, keywordData, typeof keywordData)
+                      
+                      // 문자열인 경우 객체로 강제 변환 (이 경우는 이제 발생하지 않아야 함)
+                      let processedKeywordData = keywordData
+                      if (typeof keywordData === 'string') {
+                        console.log('⚠️ 예상치 못한 문자열 데이터 - 기본 객체로 변환:', keywordData)
+                        processedKeywordData = {
+                          keyword: keywordData,
+                          platform: 'instagram',
+                          search_count: 1,
+                          first_searched_at: new Date().toISOString(),
+                          last_searched_at: new Date().toISOString()
+                        }
+                        console.log('✅ 변환된 객체:', processedKeywordData)
+                      } else {
+                        console.log('✅ 정상적인 객체 데이터 사용:', processedKeywordData)
+                      }
+                      
+                      const keyword = typeof processedKeywordData === 'string' ? processedKeywordData : processedKeywordData.keyword
+                      const displayText = keyword.length > 7 ? keyword.substring(0, 7) + '...' : keyword
+                      
+                      const handleKeywordClick = (e: React.MouseEvent) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        
+                        console.log('🚀🚀🚀 키워드 클릭 이벤트 발생! 🚀🚀🚀')
+                        console.log('📊 클릭된 키워드 원본 데이터:', keywordData)
+                        console.log('📊 처리된 키워드 데이터:', processedKeywordData)
+                        console.log('📊 키워드 데이터 타입:', typeof processedKeywordData)
+                        console.log('📊 키워드 문자열:', keyword)
+                        console.log('📊 processedKeywordData.keyword 존재:', !!processedKeywordData?.keyword)
+                        console.log('📊 processedKeywordData.search_count:', processedKeywordData?.search_count)
+                        console.log('📊 키워드 검색 횟수:', processedKeywordData?.search_count)
+                        console.log('📊 processedKeywordData 전체 구조:', JSON.stringify(processedKeywordData, null, 2))
+                        
+                        const rect = (e.target as HTMLElement).getBoundingClientRect()
+                        const scrollTop = window.pageYOffset || document.documentElement.scrollTop
+                        const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft
+                        
+                        console.log('📍 클릭 위치:', { x: rect.left, y: rect.bottom })
+                        console.log('📍 스크롤 위치:', { scrollTop, scrollLeft })
+                        
+                        // processedKeywordData는 항상 객체이므로 팝업 표시
+                        if (typeof processedKeywordData === 'object' && processedKeywordData && processedKeywordData.keyword) {
+                          console.log('✅ 객체 조건 만족 - 팝업 표시 시도')
+                          // 팝업 표시 - 스크롤을 고려한 절대 위치
+                          const popupData = {
+                            visible: true,
+                            keyword: processedKeywordData.keyword || 'Unknown',
+                            platform: processedKeywordData.platform || 'unknown',
+                            searchCount: processedKeywordData.search_count || 1,
+                            firstSearchedAt: processedKeywordData.first_searched_at || new Date().toISOString(),
+                            lastSearchedAt: processedKeywordData.last_searched_at || new Date().toISOString(),
+                            position: { 
+                              x: rect.left + scrollLeft + rect.width / 2, 
+                              y: rect.bottom + scrollTop + 5 
+                            }
+                          }
+                          
+                          console.log('🎯 팝업 데이터 설정 전 원본:', {
+                            keyword: processedKeywordData.keyword,
+                            platform: processedKeywordData.platform,
+                            search_count: processedKeywordData.search_count,
+                            first_searched_at: processedKeywordData.first_searched_at,
+                            last_searched_at: processedKeywordData.last_searched_at
+                          })
+                          console.log('🎯 팝업 데이터 설정:', popupData)
+                          setKeywordPopup(popupData)
+                          console.log('🎯 setKeywordPopup 호출 완료')
+                        } else {
+                          console.log('❌ 예상치 못한 상황 - 객체가 아님')
+                          console.log('❌ processedKeywordData:', processedKeywordData)
+                          console.log('❌ typeof:', typeof processedKeywordData)
+                          // 입력 필드 설정 로직 제거 - 더 이상 사용하지 않음
+                        }
+                      }
+                      
                       return (
                   <Badge 
-                    key={k} 
+                    key={keyword} 
                     variant="outline"
                     className="cursor-pointer hover:bg-gray-100 transition-colors text-sm px-3 py-1 border-gray-200 hover:border-gray-300"
-                    onClick={() => setKeywords([k])}
-                          title={k}
+                    onClick={handleKeywordClick}
+                          title={keyword}
                   >
                           {displayText}
                   </Badge>
@@ -3052,6 +3141,116 @@ function SearchTestPageContent() {
         onClose={handleVerificationClose}
         onSuccess={handleVerificationSuccess}
       /> */}
+      
+      {/* 키워드 정보 팝업 */}
+      {keywordPopup.visible && (
+        <>
+          {console.log('🎉 팝업 렌더링 중!', keywordPopup)}
+          {/* 배경 클릭으로 닫기 */}
+          <div 
+            className="fixed inset-0 z-40" 
+            onClick={() => {
+              console.log('🔲 팝업 배경 클릭 - 팝업 닫기')
+              setKeywordPopup(prev => ({ ...prev, visible: false }))
+            }}
+          />
+          
+          {/* 팝업 */}
+          <div 
+            className="absolute z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-4 min-w-[200px]"
+            style={{
+              left: keywordPopup.position.x - 100, // 중앙 정렬
+              top: keywordPopup.position.y,
+            }}
+            onClick={(e) => {
+              console.log('🎯 팝업 내부 클릭')
+              e.stopPropagation()
+            }}
+          >
+            <div className="space-y-2">
+              <div className="text-sm font-medium text-gray-900 border-b border-gray-100 pb-2 flex items-center justify-between">
+                <span>"{keywordPopup.keyword}"</span>
+                <span className="text-xs bg-gray-100 px-2 py-1 rounded uppercase font-medium">
+                  {(() => {
+                    console.log('🏷️ 플랫폼 표시 디버그:', {
+                      platform: keywordPopup.platform,
+                      type: typeof keywordPopup.platform,
+                      keyword: keywordPopup.keyword
+                    })
+                    
+                    if (keywordPopup.platform === 'youtube') return 'YOUTUBE'
+                    if (keywordPopup.platform === 'instagram') return 'INSTAGRAM'
+                    if (keywordPopup.platform === 'tiktok') return 'TIKTOK'
+                    
+                    console.log('❌ 알 수 없는 플랫폼:', keywordPopup.platform)
+                    return keywordPopup.platform?.toUpperCase() || 'UNKNOWN'
+                  })()}
+                </span>
+              </div>
+              
+              <div className="space-y-1 text-xs font-medium text-gray-600">
+                <div className="text-xs font-bold text-gray-500 mb-1">최초 검색 날짜</div>
+                <div>
+                  {(() => {
+                    // 2번 이상 검색한 경우 첫 검색 날짜, 1회면 마지막 검색 날짜 사용
+                    const targetDate = keywordPopup.searchCount > 1 
+                      ? keywordPopup.firstSearchedAt 
+                      : keywordPopup.lastSearchedAt
+                    
+                    console.log('🕐 팝업 시간 디버그:', {
+                      keyword: keywordPopup.keyword,
+                      searchCount: keywordPopup.searchCount,
+                      firstSearchedAt: keywordPopup.firstSearchedAt,
+                      lastSearchedAt: keywordPopup.lastSearchedAt,
+                      targetDate,
+                      type: typeof targetDate
+                    })
+                    
+                    if (!targetDate) {
+                      console.log('❌ 날짜 정보가 없음!')
+                      return '날짜 정보 없음'
+                    }
+                    
+                    const date = new Date(targetDate)
+                    if (isNaN(date.getTime())) {
+                      console.log('❌ 잘못된 날짜 형식:', targetDate)
+                      return '잘못된 날짜'
+                    }
+                    
+                    // 한국 시간대로 정확히 변환 (날짜만)
+                    const koreanTime = date.toLocaleString('ko-KR', {
+                      timeZone: 'Asia/Seoul',
+                      year: '2-digit',
+                      month: '2-digit',
+                      day: '2-digit'
+                    })
+                    // 형식: YY.MM.DD (시간 제거)
+                    const formatted = koreanTime.replace(/\. /g, '.')
+                    console.log('📅 변환된 날짜:', formatted)
+                    return formatted
+                  })()}
+                </div>
+                <div>
+                  총 {keywordPopup.searchCount}회 검색
+                </div>
+              </div>
+              
+              <div className="pt-2 border-t border-gray-100">
+                <button
+                  className="w-full text-xs font-medium text-blue-600 hover:text-blue-700 py-1"
+                  onClick={() => {
+                    console.log('🔍 "이 키워드로 검색하기" 버튼 클릭:', keywordPopup.keyword)
+                    setKeywords([keywordPopup.keyword])
+                    setKeywordPopup(prev => ({ ...prev, visible: false }))
+                  }}
+                >
+                  이 키워드로 검색하기
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }

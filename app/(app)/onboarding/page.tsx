@@ -57,11 +57,24 @@ export default function OnboardingPage() {
       })
       router.replace('/dashboard')
     } catch (e) {
-      toast({
-        title: '오류',
-        description: (e as Error).message,
-        variant: 'destructive',
-      })
+      const errorMessage = (e as Error).message
+      
+      // 특정 에러에 대한 처리
+      if (errorMessage.includes('409')) {
+        // 이미 온보딩 완료된 경우 등
+        toast({
+          title: '온보딩 완료',
+          description: '이미 온보딩이 완료되었습니다. 대시보드로 이동합니다.',
+        })
+        router.replace('/dashboard')
+        return
+      } else {
+        toast({
+          title: '오류',
+          description: errorMessage || '온보딩 처리 중 오류가 발생했습니다.',
+          variant: 'destructive',
+        })
+      }
     } finally { 
       setSubmitting(false) 
     }

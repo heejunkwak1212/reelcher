@@ -64,11 +64,22 @@ export async function GET(req: Request) {
             monthCredits += Number(record.credits_used || 0)
           }
           
-          // 최근 키워드 수집 (2일 이내, 자막 추출 제외)
+          // 최근 키워드 수집 (2일 이내, 자막 추출/URL 검색 제외)
           const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000)
-          if (recordDate >= twoDaysAgo && record.keyword && (record as any).search_type !== 'subtitle_extraction') {
+          if (recordDate >= twoDaysAgo && record.keyword && 
+              (record as any).search_type !== 'subtitle_extraction' &&
+              (record as any).search_type !== 'url' &&
+              !record.keyword.startsWith('http')) {
+            
+            let keyword = record.keyword
+            
+            // 프로필 검색인 경우 @ 접두사 추가
+            if ((record as any).search_type === 'profile' && !keyword.startsWith('@')) {
+              keyword = `@${keyword}`
+            }
+            
             recentKeywordEntries.push({
-              keyword: record.keyword,
+              keyword: keyword,
               created_at: record.created_at
             })
           }
@@ -95,7 +106,6 @@ export async function GET(req: Request) {
         return Response.json({ 
           today, 
           month, 
-          recent: recentKeywords, // 48시간 이내 모든 키워드 (클라이언트에서 페이지네이션)
           monthCredits,
           credits: (cr?.balance || 0) as number
         })
@@ -104,7 +114,6 @@ export async function GET(req: Request) {
         return Response.json({ 
           today: 0, 
           month: 0, 
-          recent: [], 
           monthCredits: 0,
           credits: (cr?.balance || 0) as number  // 오류 시에도 크레딧 정보 포함
         })

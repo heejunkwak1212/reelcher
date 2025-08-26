@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import {
   DropdownMenu,
@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
 import { CaretSortIcon } from "@radix-ui/react-icons";
+import { performCompleteLogout } from "@/lib/auth-utils";
 
 const sidebarVariants = {
   open: {
@@ -78,6 +79,16 @@ interface AdminSidebarProps {
 export function AdminSidebar({ user, onSidebarChange }: AdminSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(true);
   const pathname = usePathname();
+  const router = useRouter();
+  
+  const handleLogout = async () => {
+    try {
+      await performCompleteLogout()
+      router.push('/sign-in')
+    } catch (error) {
+      console.error('로그아웃 실패:', error)
+    }
+  };
   
   const handleExpand = () => {
     setIsCollapsed(false);
@@ -299,7 +310,10 @@ export function AdminSidebar({ user, onSidebarChange }: AdminSidebarProps) {
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem className="flex items-center gap-2 text-red-600">
+                    <DropdownMenuItem 
+                      className="flex items-center gap-2 text-red-600 cursor-pointer"
+                      onClick={handleLogout}
+                    >
                       <LogOut className="h-4 w-4" /> 로그아웃
                     </DropdownMenuItem>
                   </DropdownMenuContent>

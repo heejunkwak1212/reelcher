@@ -3,8 +3,26 @@ import { runTaskAndGetItems, runTaskAndGetItemsWithMeta, startTaskRun, waitForRu
 import type { IHashtagItem, IReelDetail, IProfileSummary, ISearchRow } from '@/types'
 import { searchLimiter } from '@/lib/ratelimit'
 import { supabaseServer } from '@/lib/supabase/server'
+import { z } from 'zod'
 
 export const runtime = 'nodejs'
+
+// Instagram 검색 요청 스키마
+const instagramSearchSchema = z.object({
+  searchType: z.enum(['keyword', 'profile']),
+  keyword: z.string().optional(),
+  profileUrl: z.string().optional(),
+  limit: z.union([
+    z.literal(5), z.literal(30), z.literal(60), z.literal(90), z.literal(120),
+    z.literal('5'), z.literal('30'), z.literal('60'), z.literal('90'), z.literal('120')
+  ]),
+  filters: z.object({
+    period: z.enum(['day', 'week', 'month', 'month2', 'month3', 'month6', 'year', 'all']).optional(),
+    minViews: z.number().min(0).optional(),
+  }).optional().default({}),
+  debug: z.boolean().optional(),
+  turnstileToken: z.string().optional()
+})
 
 export async function GET() {
   return Response.json(
@@ -22,6 +40,9 @@ export async function POST(req: Request) {
     // Read body once and reuse to avoid stream re-consumption errors
     const body = await req.json().catch(() => ({} as any))
     console.log('Instagram API 요청 본문:', JSON.stringify(body, null, 2))
+    
+    // 요청 본문을 먼저 저장만 하고 검증은 나중에
+    console.log('Instagram API 요청 본문 저장 완료')
     
     // Optional Turnstile token verification (env-gated)
     const turnstileSecret = process.env.TURNSTILE_SECRET_KEY
@@ -86,16 +107,17 @@ export async function POST(req: Request) {
     let input: any
     try {
       // 관리자인 경우 5개 검색 허용을 위해 특별 처리
-      if (isAdmin && body.limit === '5') {
+      if (isAdmin && (body.limit === '5' || body.limit === 5)) {
         console.log('관리자 5개 검색 특별 허용')
         // 임시로 30으로 변경해서 validation 통과시킨 후 다시 5로 복원
         const tempBody = { ...body, limit: '30' }
-        input = searchSchema.parse(tempBody)
+        input = instagramSearchSchema.parse(tempBody)
         input.limit = '5' // 다시 5로 복원
       } else {
-        input = searchSchema.parse(body)
+        input = instagramSearchSchema.parse(body)
       }
       console.log('Instagram API validation 성공:', input)
+      console.log('Instagram API filters 확인:', JSON.stringify(input.filters, null, 2))
     } catch (validationError: any) {
       console.error('Instagram API validation 실패:', {
         error: validationError,
@@ -151,10 +173,10 @@ export async function POST(req: Request) {
     }
 
     const reserveAmount = (isDev || isAdmin) ? 0 : (
-      input.limit === '30' ? 100 :
-      input.limit === '60' ? 200 :
-      input.limit === '90' ? 300 :
-      input.limit === '120' ? 400 : 0)
+      (input.limit === '30' || input.limit === 30) ? 100 :
+      (input.limit === '60' || input.limit === 60) ? 200 :
+      (input.limit === '90' || input.limit === 90) ? 300 :
+      (input.limit === '120' || input.limit === 120) ? 400 : 0)
     const creditsEndpoint = new URL('/api/credits/consume', req.url).toString()
     let didReserve = false
     if (reserveAmount > 0) {
@@ -166,13 +188,15 @@ export async function POST(req: Request) {
       didReserve = true
     }
 
-    let settle: null | ((finalCount: number) => Promise<void>) = null
+    let settle: null | ((finalCount: number) => Promise<number>) = null
     settle = async (finalCount: number) => {
-      if (!didReserve || reserveAmount <= 0) return
+      if (!didReserve || reserveAmount <= 0) return 0
       const toCharge = Math.floor((finalCount / 30) * 100)
       const rollback = Math.max(0, reserveAmount - toCharge)
       const commit = Math.max(0, Math.min(reserveAmount, toCharge))
+      console.log(`💰 Instagram settle 함수 - 예약: ${reserveAmount}, 커밋: ${commit}, 롤백: ${rollback}`)
       await fetch(creditsEndpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ userId: user.id, commit, rollback }) }).catch(() => {})
+      return commit // 실제 차감된 크레딧 반환
     }
 
     const resultsLimit = Number(input.limit) as 5 | 30 | 60 | 90 | 120
@@ -235,7 +259,7 @@ export async function POST(req: Request) {
       return x?.url || x?.postUrl || x?.link || (sc ? `https://www.instagram.com/p/${sc}/` : undefined)
     }
     // Use Task configured for reels; override hashtags/limit only
-    const taskId = 'distracting_wholemeal/instagram-hashtag-scraper-task'
+    const taskId = 'interesting_dingo/instagram-hashtag-scraper-task'
     let hashtagItems: IHashtagItem[] = []
     const hashtagErrors: string[] = []
     // Date filter disabled in stage-1 (MVP). Keep helper stub for future use.
@@ -330,7 +354,7 @@ export async function POST(req: Request) {
     let cursorRounds = 0
     if (reelUrls.length > 0) {
       const batchSize = 30
-      const detailsTaskId = 'distracting_wholemeal/instagram-scraper-task'
+      const detailsTaskId = 'interesting_dingo/instagram-scraper-task'
       const maxIdx = Math.min(reelUrls.length, target)
       const batches: string[][] = []
       for (let i = 0; i < maxIdx; i += batchSize) {
@@ -363,7 +387,7 @@ export async function POST(req: Request) {
       const chunkSize = 30
       for (let i = 0; i < usernames.length; i += chunkSize) {
         const slice = usernames.slice(i, i + chunkSize)
-        const started = await startTaskRun({ taskId: 'distracting_wholemeal/instagram-profile-scraper-task', token, input: { usernames: slice, ...proxyOpt } })
+        const started = await startTaskRun({ taskId: 'interesting_dingo/instagram-profile-scraper-task', token, input: { usernames: slice, ...proxyOpt } })
         apifyRunIds.add(started.runId)
         const res = await waitForRunItems<IProfileSummary>({ token, runId: started.runId })
         profiles.push(...res.items)
@@ -473,7 +497,7 @@ export async function POST(req: Request) {
         .map(r => r.username as string)
       const uniqueMissing = Array.from(new Set(missingUsernames)).filter(u => !profiles.some(p => p.username === u))
       if (uniqueMissing.length === 0) break
-      const started = await startTaskRun({ taskId: 'distracting_wholemeal/instagram-profile-scraper-task', token, input: { usernames: uniqueMissing.slice(0, 20), ...proxyOpt } })
+      const started = await startTaskRun({ taskId: 'interesting_dingo/instagram-profile-scraper-task', token, input: { usernames: uniqueMissing.slice(0, 20), ...proxyOpt } })
       apifyRunIds.add(started.runId)
       const more = await waitForRunItems<IProfileSummary>({ token, runId: started.runId })
       const moreProfiles = more.items
@@ -550,11 +574,15 @@ export async function POST(req: Request) {
     
     // 통합된 처리 로직 (디버그/일반 모드 구분 제거)
     console.log('🔄 Instagram 최종 처리 시작')
+    let actualCreditsUsed = 0 // 스코프를 넓혀서 아래에서 사용 가능하게 함
     {
       const sorted = [...finalRows].sort((a, b) => ((b.views ?? 0) - (a.views ?? 0)))
       const finalCount = sorted.length
       const toCharge = Math.floor((finalCount / 30) * 100)
-      if (settle) await settle(finalCount)
+      if (settle) {
+        actualCreditsUsed = await settle(finalCount)
+        console.log(`💰 Instagram 키워드 settle 함수 실행: ${actualCreditsUsed} 크레딧 차감`)
+      }
       // Log search + update counters + cleanup old logs (3 days retention)
       try {
         await supabase.from('searches').insert({
@@ -611,7 +639,7 @@ export async function POST(req: Request) {
         search_type: 'keyword',
         keyword: searchKeyword,
         results_count: sorted.length,
-        credits_used: toCharge
+        credits_used: actualCreditsUsed
       })
       
       try {
@@ -624,7 +652,7 @@ export async function POST(req: Request) {
             keyword: searchKeyword, // 원본 키워드 저장 (유튜브와 동일)
             filters: input.filters || {},
             results_count: sorted.length,
-            credits_used: toCharge
+            credits_used: actualCreditsUsed
           })
         
         if (logError) {
@@ -634,7 +662,7 @@ export async function POST(req: Request) {
           console.log('✅ Instagram 검색 기록 저장 성공!', {
             search_type: 'keyword',
             keyword: searchKeyword,
-            credits_used: toCharge,
+            credits_used: actualCreditsUsed,
             results_count: sorted.length
           })
         }
@@ -643,55 +671,19 @@ export async function POST(req: Request) {
         console.error('❌ 오류 스택:', (error as Error)?.stack)
       }
       
-      // 크레딧 차감 (credits 테이블)
-      console.log(`💰 크레딧 차감 시도: ${toCharge} 크레딧`)
-      if (toCharge > 0) {
-        try {
-          const { data: currentCredits } = await supabase
-            .from('credits')
-            .select('balance, reserved')
-            .eq('user_id', user.id)
-            .single()
-          
-          if (currentCredits) {
-            const newBalance = Math.max(0, currentCredits.balance - toCharge)
-            
-            console.log(`💰 Instagram 크레딧 차감 세부사항:`, {
-              사용자ID: user.id,
-              현재잔액: currentCredits.balance,
-              사용량: toCharge,
-              새잔액: newBalance,
-              키워드: searchKeyword
-            })
-            
-            const { error: creditError } = await supabase
-              .from('credits')
-              .update({ balance: newBalance })
-              .eq('user_id', user.id)
-            
-            if (creditError) {
-              console.error('❌ Instagram 크레딧 차감 실패:', creditError)
-            } else {
-              console.log(`✅ Instagram 크레딧 차감 성공: ${toCharge} 크레딧`)
-            }
-          } else {
-            console.error('❌ 사용자 크레딧 정보 조회 실패')
-          }
-        } catch (error) {
-          console.error('❌ Instagram 크레딧 차감 오류:', error)
-        }
-      } else {
-        console.log('💰 차감할 크레딧 없음 (0 크레딧)')
-      }
+      // 크레딧 차감은 settle 함수에서 처리됨 (중복 방지)
+      console.log(`💰 Instagram 키워드 검색 실제 크레딧 사용량: ${actualCreditsUsed}`)
+      console.log(`✅ 크레딧 정산은 settle 함수에서 처리됨 (중복 차감 방지)`)
       } catch (mainError) {
         console.error('❌ Instagram 메인 처리 블록 오류:', mainError)
         console.error('❌ 메인 처리 스택:', (mainError as Error)?.stack)
       }
       
+      // actualCreditsUsed는 settle 함수에서 반환됨
       console.log('🎯 Instagram 검색 완료:', {
         키워드: input.keyword || '',
-        결과수: sorted.length,
-        크레딧: toCharge
+        결과수: finalRows.length,
+        크레딧: actualCreditsUsed
       })
       
       // 디버그 모드일 때는 추가 정보 포함
@@ -758,7 +750,7 @@ async function handleProfileSearch(
   req: Request,
   input: any,
   resultsLimit: number,
-  settle: ((finalCount: number) => Promise<void>) | null,
+  settle: ((finalCount: number) => Promise<number>) | null,
   token: string,
   userId: string
 ) {
@@ -785,13 +777,42 @@ async function handleProfileSearch(
     
     console.log('추출된 사용자명:', username)
     
-    // 기간 필터 처리
-    let onlyPostsNewerThan = input.onlyPostsNewerThan
-    if (!onlyPostsNewerThan) {
-      onlyPostsNewerThan = undefined
+    // 기간 필터 처리 (성공 사례와 동일한 형식으로 변환)
+    console.log('🔍 Instagram 기간 필터 디버깅:')
+    console.log('  - input 전체:', JSON.stringify(input, null, 2))
+    console.log('  - input.onlyPostsNewerThan:', input.onlyPostsNewerThan)
+    console.log('  - input.filters:', JSON.stringify(input.filters, null, 2))
+    console.log('  - input.filters?.period:', input.filters?.period)
+    console.log('  - input.filters 타입:', typeof input.filters)
+    console.log('  - input.filters 존재 여부:', !!input.filters)
+    
+    let onlyPostsNewerThan: string
+    
+    // period 필터가 있으면 우선적으로 사용 (기존 onlyPostsNewerThan 무시)
+    if (input.filters?.period && input.filters.period !== '') {
+      // period 값을 onlyPostsNewerThan 형식으로 변환
+      const periodMap: Record<string, string> = {
+        'day': '1 day',
+        'week': '1 week',
+        'month': '1 month',
+        'month2': '2 months',
+        'month3': '3 months',
+        'month6': '6 months',
+        'year': '1 year'
+      }
+      onlyPostsNewerThan = periodMap[input.filters.period] || "3 months"
+      console.log(`  - ✅ period 변환 성공: ${input.filters.period} → ${onlyPostsNewerThan}`)
+    } else if (input.onlyPostsNewerThan) {
+      // 기존 방식으로 전달된 경우
+      onlyPostsNewerThan = input.onlyPostsNewerThan
+      console.log('  - 기존값 사용:', onlyPostsNewerThan)
+    } else {
+      // 아무것도 없으면 기본값
+      onlyPostsNewerThan = "3 months"
+      console.log('  - 기본값 사용: 3 months')
     }
     
-    console.log('기간 필터:', onlyPostsNewerThan)
+    console.log('✅ 기간 필터 최종 결과:', onlyPostsNewerThan)
     
     // Apify 실행 추적
     const apifyRunIds = new Set<string>()
@@ -801,24 +822,26 @@ async function handleProfileSearch(
     }
     try { req.signal.addEventListener('abort', onAbort, { once: true }) } catch {}
     
-    // Instagram Scraper 태스크 실행 (2단계 스크래퍼 직접 사용)
-         const taskId = 'distracting_wholemeal/instagram-scraper-task'
-    const profileUrl_full = `https://www.instagram.com/${username}/`
+    // Instagram Scraper 태스크 실행 (프로필 검색 전용 새 액터 사용)
+    const taskId = 'interesting_dingo/instagram-scraper-task-2'
+    const profileUrl_full = `https://www.instagram.com/${username}`
     
-    console.log('Instagram 스크래퍼 태스크 시작:', taskId)
+    console.log('Instagram 프로필 스크래퍼 태스크 시작:', taskId)
     console.log('프로필 URL:', profileUrl_full)
     console.log('결과 개수:', resultsLimit)
+    console.log('업로드 기간 필터:', onlyPostsNewerThan)
     
+    // 성공 사례와 정확히 동일한 taskInput 구조
     const taskInput = {
       addParentData: false,
       directUrls: [profileUrl_full],
       enhanceUserSearchWithFacebookPage: false,
       isUserReelFeedURL: false,
       isUserTaggedFeedURL: false,
-      onlyPostsNewerThan: onlyPostsNewerThan,
+      onlyPostsNewerThan: onlyPostsNewerThan || "3 months", // 기본값 3개월
       resultsLimit: resultsLimit,
-      resultsType: 'stories', // 프로필 릴스 검색으로 변경
-      searchLimit: 1,
+      resultsType: 'stories',
+      searchType: 'hashtag' // 성공 사례에 포함된 필드
     }
     
     console.log('Apify 태스크 입력:', JSON.stringify(taskInput, null, 2))
@@ -885,64 +908,18 @@ async function handleProfileSearch(
     
     console.log('최종 검색 결과 개수:', searchRows.length)
     
-    // 크레딧 정산
+    // 크레딧 정산 (settle 함수가 프로레이션 처리를 담당)
+    let actualCreditsUsed = 0
     if (settle) {
-      await settle(searchRows.length)
+      actualCreditsUsed = await settle(searchRows.length)
     }
     
     // ==========================================
     // 🔄 단순화된 후처리 로직 (Instagram 프로필)
     // ==========================================
     
-    // 1. 동적 크레딧 계산
-    const actualCreditsUsed = Math.floor(searchRows.length / 30) * 100 // Instagram은 100크레딧
     console.log(`💰 Instagram 프로필 실제 크레딧 사용량: ${actualCreditsUsed} (결과 수: ${searchRows.length})`)
-    
-    // 2. A. 사용자 크레딧 차감 (credits 테이블 직접 UPDATE)
-    if (actualCreditsUsed > 0) {
-      try {
-        const { createClient } = await import('@supabase/supabase-js')
-        const svc = createClient(
-          process.env.NEXT_PUBLIC_SUPABASE_URL!,
-          process.env.SUPABASE_SERVICE_ROLE_KEY!,
-          { auth: { persistSession: false } }
-        )
-        
-        // 현재 크레딧 조회 후 차감
-        const { data: currentCredits } = await svc
-          .from('credits')
-          .select('balance, reserved')
-          .eq('user_id', userId)
-          .single()
-        
-        if (currentCredits) {
-          const newBalance = Math.max(0, currentCredits.balance - actualCreditsUsed)
-          
-          console.log(`💰 Instagram 프로필 크레딧 차감 세부사항:`, {
-            사용자ID: userId,
-            현재잔액: currentCredits.balance,
-            현재예약: currentCredits.reserved,
-            실제사용: actualCreditsUsed,
-            새잔액: newBalance
-          })
-          
-          const { error: creditError } = await svc
-            .from('credits')
-            .update({ 
-              balance: newBalance
-            })
-            .eq('user_id', userId)
-          
-          if (creditError) {
-            console.error('❌ Instagram 크레딧 차감 실패:', creditError)
-          } else {
-            console.log(`✅ Instagram 크레딧 차감 성공: ${actualCreditsUsed}`)
-          }
-        }
-      } catch (error) {
-        console.error('❌ Instagram 크레딧 차감 오류:', error)
-      }
-    }
+    console.log(`✅ 크레딧 정산은 settle 함수에서 처리됨 (중복 차감 방지)`)
     
     // 2. B. 검색 기록 저장 (search_history 테이블 직접 INSERT)
     try {

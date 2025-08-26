@@ -47,15 +47,13 @@ export const Error = ({ error, label, size = "medium", children }: ErrorProps) =
   return (
     <div
       className={
-        `flex items-center gap-2 text-red-900 fill-red-900 font-sans
+        `flex items-center gap-1.5 text-red-600 fill-red-600 font-medium
       ${{
-          small: "text-[13px] leading-5",
-          medium: "text-sm",
-          large: "text-base"
+          small: "text-xs leading-4",
+          medium: "text-xs",
+          large: "text-sm"
         }[size]}`
       }
-      // @ts-ignore
-      style={{ "--geist-link-color": "var(--ds-red-900)" }}
     >
       <ErrorIcon />
       {error ? (

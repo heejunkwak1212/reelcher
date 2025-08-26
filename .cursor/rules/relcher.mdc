@@ -7,6 +7,8 @@ title: Relcher SSOT Rules
 
 Use this as the single operational rulebook for Cursor. Follow PRD.MD as the product spec. Default to this file and PRD when in doubt.
 
+Use fewer comments, Be concise in your response
+
 ## Architecture Principles
 - Framework: Next.js App Router. All backend via Route Handlers in `app/api/*`.
 - Language: TypeScript. Interfaces live in `types/index.ts` with `I*` prefix.

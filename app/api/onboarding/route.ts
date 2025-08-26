@@ -27,11 +27,7 @@ export async function POST(req: Request) {
       await db.insert(users).values({ id: uid, email })
     }
 
-    // Nickname duplication check
-    if (input.displayName) {
-      const exists = await db.select().from(profiles).where(eq(profiles.displayName, input.displayName)).limit(1)
-      if (exists.length) return Response.json({ error: 'NicknameExists' }, { status: 409 })
-    }
+    // 닉네임 중복 체크 제거 - 이메일만 고유하면 가입 가능
 
     // Upsert profile (role forced to 'user')
     const existingProfile = await db.select().from(profiles).where(eq(profiles.userId, uid as any))
@@ -56,11 +52,8 @@ export async function POST(req: Request) {
 }
 
 export async function GET(req: Request) {
-  const url = new URL(req.url)
-  const name = (url.searchParams.get('name') || '').trim()
-  if (!name) return Response.json({ ok: false })
-  const rows = await db.select().from(profiles).where(eq(profiles.displayName, name)).limit(1)
-  return Response.json({ ok: rows.length === 0 })
+  // 닉네임 중복 체크 비활성화 - 항상 사용 가능으로 반환
+  return Response.json({ ok: true })
 }
 
 

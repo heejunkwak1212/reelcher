@@ -162,8 +162,7 @@ export interface IUniversalSearchRequest {
     period?: string
     minViews?: number
     
-    // TikTok 전용 필터
-    minLikes?: number // TikTok 최소 좋아요 수 (프로필 검색 시 사용)
+    // TikTok 전용 필터 (프로필 검색 시 업로드 기간만 사용)
     
     // Instagram 프로필 검색 전용 필터
     onlyPostsNewerThan?: string // ISO 날짜 문자열
@@ -205,7 +204,6 @@ export interface ITikTokSearchRequest {
   filters: {
     period?: 'day' | 'week' | 'month' | 'month2' | 'month3' | 'month6' | 'year' | 'all'
     minViews?: number
-    minLikes?: number // 최소 좋아요 수 필터 (프로필 검색 전용)
     sortBy?: 'trending' | 'recent' | 'most_liked'
   }
 }
