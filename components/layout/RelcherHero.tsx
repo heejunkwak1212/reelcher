@@ -124,7 +124,7 @@ export default function RelcherHero({ user }: RelcherHeroProps) {
     <>
       <style>{pageStyles}</style>
     <div 
-      className="relative min-h-screen w-full flex items-center justify-center overflow-hidden bg-white"
+      className="relative min-h-[120vh] w-full flex items-center justify-center overflow-hidden bg-white"
       style={{
         paddingTop: '1rem',
         marginTop: '-6rem'
@@ -157,26 +157,33 @@ export default function RelcherHero({ user }: RelcherHeroProps) {
 
 
       <div className="relative z-10 container mx-auto px-4 md:px-6">
-        <div className="max-w-4xl mx-auto text-center">
+        <div className="max-w-6xl mx-auto text-center">
 
 
           {/* Main Title with GradualSpacing */}
-          <div className="space-y-4 md:space-y-6">
+          <div className="space-y-6 md:space-y-10">
             <div style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif', color: '#3A3B3F' }}>
               <GradualSpacing
                 text="Stop scrolling,"
                 duration={0.3}
                 delayMultiple={0.04}
-                className="text-3xl md:text-6xl font-bold tracking-tighter"
+                /* 크기 조절: text-3xl md:text-6xl lg:text-7xl (작게), text-4xl md:text-7xl lg:text-8xl (중간), text-5xl md:text-8xl lg:text-9xl (크게) */
+                className="text-3xl md:text-6xl lg:text-7xl font-bold tracking-tighter"
               />
             </div>
             
-            <div style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>
+            <div 
+              style={{ 
+                fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif',
+                fontWeight: 900,
+              }}
+            >
               <GradualSpacing
                 text="Reelcher is here."
                 duration={0.3}
                 delayMultiple={0.04}
-                className="text-5xl md:text-7xl font-black tracking-tighter text-black"
+                /* 크기 조절: text-5xl md:text-7xl lg:text-8xl (작게), text-6xl md:text-8xl lg:text-9xl (중간), text-7xl md:text-9xl lg:text-10xl (크게) */
+                className="text-5xl md:text-7xl lg:text-8xl font-black tracking-tighter text-black"
               />
             </div>
           </div>
@@ -186,8 +193,8 @@ export default function RelcherHero({ user }: RelcherHeroProps) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.9 }}
           >
-            <p className="mt-6 text-sm font-medium text-gray-600 mb-8 leading-relaxed tracking-tight max-w-2xl mx-auto px-4" style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif' }}>
-              키워드만 입력하세요. 이제는 릴처가 찾아줄게요.
+            <p className="mt-8 text-xl md:text-1xl font-medium text-gray-500 mb-10 leading-relaxed tracking-tight max-w-4xl mx-auto px-4">
+              키워드만 입력해주세요. 이제는 릴처가 찾아줄게요.
             </p>
           </motion.div>
 
@@ -201,14 +208,14 @@ export default function RelcherHero({ user }: RelcherHeroProps) {
               <>
                 <motion.div whileHover={{ y: -4 }} transition={{ duration: 0.2 }}>
                   <Link href="/sign-in" prefetch={false}>
-                    <Button className="h-10 px-6 rounded-full bg-black text-white hover:bg-gray-800 text-sm font-medium shadow-lg hover:shadow-xl transition-all duration-300">
+                    <Button className="h-12 px-8 rounded-full bg-black text-white hover:bg-gray-800 text-base font-medium shadow-lg hover:shadow-xl transition-all duration-300">
                       무료로 시작하기
                     </Button>
                   </Link>
                 </motion.div>
                 <motion.div whileHover={{ y: -4 }} transition={{ duration: 0.2 }}>
                   <Link href="/search" prefetch={false}>
-                    <Button variant="outline" className="h-10 px-6 rounded-full border-2 border-gray-300 hover:border-gray-400 text-sm font-medium shadow-lg hover:shadow-xl transition-all duration-300">
+                    <Button variant="outline" className="h-12 px-8 rounded-full border-2 border-gray-300 hover:border-gray-400 text-base font-medium shadow-lg hover:shadow-xl transition-all duration-300">
                       데모 보기
                     </Button>
                   </Link>
@@ -218,14 +225,14 @@ export default function RelcherHero({ user }: RelcherHeroProps) {
               <>
                 <motion.div whileHover={{ y: -4 }} transition={{ duration: 0.2 }}>
                   <Link href="/dashboard" prefetch={false}>
-                    <Button variant="outline" className="h-10 px-6 rounded-full border-2 border-gray-300 hover:border-gray-400 text-sm font-medium shadow-lg hover:shadow-xl transition-all duration-300">
+                    <Button variant="outline" className="h-12 px-8 rounded-full border-2 border-gray-300 hover:border-gray-400 text-base font-medium shadow-lg hover:shadow-xl transition-all duration-300">
                       대시보드
                     </Button>
                   </Link>
                 </motion.div>
                 <motion.div whileHover={{ y: -4 }} transition={{ duration: 0.2 }}>
                   <Link href="/search" prefetch={false}>
-                    <Button className="h-10 px-6 rounded-full bg-black text-white hover:bg-gray-800 text-sm font-medium shadow-lg hover:shadow-xl transition-all duration-300">
+                    <Button className="h-12 px-8 rounded-full bg-black text-white hover:bg-gray-800 text-base font-medium shadow-lg hover:shadow-xl transition-all duration-300">
                       검색 바로가기
                     </Button>
                   </Link>
