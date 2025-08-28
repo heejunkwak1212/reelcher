@@ -43,6 +43,7 @@ export default function SiteHeader() {
           <NavAnchor target="top">메인</NavAnchor>
           <NavAnchor target="features">기능</NavAnchor>
           <NavAnchor target="pricing">가격</NavAnchor>
+          <NavAnchor target="faq">FAQ</NavAnchor>
         </nav>
         <div className="flex items-center justify-end gap-3">
           {loading ? (
