@@ -56,6 +56,10 @@ export async function POST(req: Request) {
       viewsMap.set(item.url, { views: item.views, title: item.title })
     })
     
+    console.log('🔍 viewsMap 키들:', Array.from(viewsMap.keys()))
+    console.log('🔍 urls 배열:', urls)
+    console.log('🔍 urlsWithViews:', urlsWithViews.map(u => ({ url: u.url, views: u.views })))
+    
     if (urls.length === 1) {
       const url = urls[0]
       
@@ -114,11 +118,22 @@ export async function POST(req: Request) {
           const upstream = await fetch(url)
           if (!upstream.ok || !upstream.body) return new Response('TikTok video fetch error', { status: 502 })
           
+          // 조회수 정보 추가
+          const viewInfo = viewsMap.get(url)
+          const viewCount = viewInfo ? formatViewCount(viewInfo.views) : '0'
+          const now = new Date()
+          const dateStr = now.toISOString().slice(0, 10) // YYYY-MM-DD
+          const fileName = `tiktok_${dateStr}_${viewCount}.mp4`
+          
+          console.log('🎵 TikTok 직접 URL 단일 다운로드 - URL:', url)
+          console.log('🎵 TikTok 직접 URL 단일 다운로드 - viewInfo:', viewInfo)
+          console.log('🎵 TikTok 직접 URL 단일 다운로드 - fileName:', fileName)
+          
           return new Response(upstream.body, { 
             status: 200, 
             headers: { 
               'content-type': 'video/mp4', 
-              'content-disposition': 'attachment; filename="tiktok-video.mp4"', 
+              'content-disposition': `attachment; filename="${encodeURIComponent(fileName)}"`, 
               'cache-control': 'no-store' 
             } 
           })
@@ -142,9 +157,16 @@ export async function POST(req: Request) {
           // 파일 정리
           cleanupVideoFile(result.filePath).catch(() => {})
           
-          const fileName = result.title ? 
-            `${result.title.replace(/[^a-zA-Z0-9가-힣\s\-_]/g, '')}.mp4` : 
-            'tiktok-video.mp4'
+          // 조회수 정보 추가
+          const viewInfo = viewsMap.get(url)
+          const viewCount = viewInfo ? formatViewCount(viewInfo.views) : '0'
+          const now = new Date()
+          const dateStr = now.toISOString().slice(0, 10) // YYYY-MM-DD
+          const fileName = `tiktok_${dateStr}_${viewCount}.mp4`
+          
+          console.log('🎵 TikTok 웹 URL 단일 다운로드 - URL:', url)
+          console.log('🎵 TikTok 웹 URL 단일 다운로드 - viewInfo:', viewInfo)
+          console.log('🎵 TikTok 웹 URL 단일 다운로드 - fileName:', fileName)
           
           return new Response(new Uint8Array(fileBuffer), {
             status: 200,
@@ -159,14 +181,26 @@ export async function POST(req: Request) {
           return new Response(`TikTok 다운로드 실패: ${error instanceof Error ? error.message : 'Unknown error'}`, { status: 502 })
         }
       } else {
-        // 일반 URL 처리 (기존 로직)
+        // 일반 URL 처리 (Instagram 등)
         const upstream = await fetch(url)
         if (!upstream.ok || !upstream.body) return new Response('Upstream error', { status: 502 })
+        
+        // 조회수 정보 추가
+        const viewInfo = viewsMap.get(url)
+        const viewCount = viewInfo ? formatViewCount(viewInfo.views) : '0'
+        const now = new Date()
+        const dateStr = now.toISOString().slice(0, 10) // YYYY-MM-DD
+        const fileName = `instagram_${dateStr}_${viewCount}.mp4`
+        
+        console.log('📷 Instagram 단일 다운로드 - URL:', url)
+        console.log('📷 Instagram 단일 다운로드 - viewInfo:', viewInfo)
+        console.log('📷 Instagram 단일 다운로드 - fileName:', fileName)
+        
         return new Response(upstream.body, { 
           status: 200, 
           headers: { 
             'content-type': upstream.headers.get('content-type') || 'video/mp4', 
-            'content-disposition': 'attachment; filename="reel.mp4"', 
+            'content-disposition': `attachment; filename="${encodeURIComponent(fileName)}"`, 
             'cache-control': 'no-store' 
           } 
         })
@@ -174,8 +208,8 @@ export async function POST(req: Request) {
     }
     // Multiple → zip
     const zip = new JSZip()
-    // Parallel downloads with limited concurrency for speed
-    const concurrency = 3
+    // Parallel downloads with optimized concurrency for speed
+    const concurrency = 5 // 3에서 5로 증가
     let index = 0
     const files: { name: string; data: ArrayBuffer }[] = []
     
@@ -183,10 +217,10 @@ export async function POST(req: Request) {
       while (index < urls.length) {
         const current = index++
         const url = urls[current]
-        let retries = 2; // 2번 재시도
+        let retries = 1; // 재시도 횟수를 2에서 1로 감소 (속도 개선)
         let success = false;
         
-        while (retries > 0 && !success) {
+        while (retries >= 0 && !success) {
           try {
           if (isYouTubeUrl(url)) {
             console.log(`🎬 YouTube 다운로드 시작 (${current + 1}/${urls.length}):`, url);
@@ -287,9 +321,9 @@ export async function POST(req: Request) {
           success = true; // 성공시 루프 종료
           } catch (error) { 
             retries--;
-            console.error(`❌ URL 처리 실패 (${current + 1}/${urls.length}) - 재시도 ${2 - retries}/2:`, url, error);
-            if (retries > 0) {
-              await new Promise(resolve => setTimeout(resolve, 1000)); // 1초 대기 후 재시도
+            console.error(`❌ URL 처리 실패 (${current + 1}/${urls.length}) - 재시도 ${1 - retries}/1:`, url, error);
+            if (retries >= 0) {
+              await new Promise(resolve => setTimeout(resolve, 500)); // 대기 시간을 1초에서 0.5초로 단축
             }
           }
         }

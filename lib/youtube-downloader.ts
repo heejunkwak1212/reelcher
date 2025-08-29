@@ -154,7 +154,8 @@ export async function downloadYouTubeVideo(url: string, options: DownloadOptions
 
       const metaProcess = spawn(ytdlpBinary, metaArgs, {
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
+        timeout: 30000 // 30초 타임아웃 추가 (메타데이터는 더 빠름)
       });
 
       let metaStdout = '';
@@ -195,7 +196,8 @@ export async function downloadYouTubeVideo(url: string, options: DownloadOptions
 
         const downloadProcess = spawn(ytdlpBinary, downloadArgs, {
           stdio: ['pipe', 'pipe', 'pipe'],
-          env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
+          env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
+          timeout: 60000 // 60초 타임아웃 추가
         });
 
         let downloadStdout = '';

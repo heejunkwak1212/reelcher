@@ -970,7 +970,20 @@ function SearchTestPageContent() {
             return keyword && !keyword.startsWith('http') && 
                    !(k.search_type && k.search_type === 'url')
           })
-          setRecentKeywords(filteredKeywords)
+          
+          // 클라이언트에서 추가 중복 제거 (키워드-플랫폼 조합으로)
+          const uniqueKeywords = []
+          const seenKeys = new Set()
+          
+          for (const k of filteredKeywords) {
+            const uniqueKey = `${k.keyword}-${k.platform}`
+            if (!seenKeys.has(uniqueKey)) {
+              seenKeys.add(uniqueKey)
+              uniqueKeywords.push(k)
+            }
+          }
+          
+          setRecentKeywords(uniqueKeywords)
           console.log('✅ 최근 키워드 로드 완료 (sampleData, URL 제외):', filteredKeywords.length, '개')
         } else {
           console.log('⚠️ sampleData 없음 - 빈 배열로 설정')
@@ -1776,7 +1789,20 @@ function SearchTestPageContent() {
               return keyword && !keyword.startsWith('http') && 
                      !(k.search_type && k.search_type === 'url')
             })
-            setRecentKeywords(filteredKeywords)
+            
+            // 클라이언트에서 추가 중복 제거 (키워드-플랫폼 조합으로)
+            const uniqueKeywords = []
+            const seenKeys = new Set()
+            
+            for (const k of filteredKeywords) {
+              const uniqueKey = `${k.keyword}-${k.platform}`
+              if (!seenKeys.has(uniqueKey)) {
+                seenKeys.add(uniqueKey)
+                uniqueKeywords.push(k)
+              }
+            }
+            
+            setRecentKeywords(uniqueKeywords)
             console.log('✅ 최근 키워드 새로고침 완료 (sampleData, URL 제외):', filteredKeywords.length, '개')
           } else {
             console.log('⚠️ 새로고침 - sampleData 없음, 빈 배열로 설정')
@@ -2643,7 +2669,7 @@ function SearchTestPageContent() {
                       
                       return (
                   <Badge 
-                    key={keyword} 
+                    key={`${keyword}-${index}-${keywordPage}`} 
                     variant="outline"
                     className="cursor-pointer hover:bg-gray-100 transition-colors text-sm px-3 py-1 border-gray-200 hover:border-gray-300"
                     onClick={handleKeywordClick}
@@ -3532,20 +3558,33 @@ function ExportButtons({ items, platform, onProgress }: { items: SearchRow[]; pl
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-      
-      // 날짜와 플랫폼별 파일명 생성
+    
+    // 서버에서 설정한 파일명 사용 (Content-Disposition 헤더에서 추출)
+    let fileName = ''
+    const contentDisposition = res.headers.get('Content-Disposition')
+    if (contentDisposition) {
+      const match = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/)
+      if (match && match[1]) {
+        fileName = decodeURIComponent(match[1].replace(/['"]/g, ''))
+      }
+    }
+    
+    // 파일명이 없으면 기본값 사용
+    if (!fileName) {
       const now = new Date()
-      const dateStr = now.toISOString().slice(0, 10) // YYYY-MM-DD
+      const dateStr = now.toISOString().slice(0, 10)
       const platformNames = {
         youtube: 'YouTube',
         tiktok: 'TikTok',
         instagram: 'Instagram'
       }
       const platformName = platformNames[platform] || 'Reelcher'
-      
-      a.download = urls.length === 1 ? 
+      fileName = urls.length === 1 ? 
         `${platformName}_영상_${dateStr}.mp4` : 
         `${platformName}_영상모음_${dateStr}.zip`
+    }
+    
+    a.download = fileName
     a.click()
     URL.revokeObjectURL(url)
     } catch (error) {
