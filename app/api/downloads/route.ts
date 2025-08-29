@@ -33,7 +33,7 @@ const isTikTokDirectUrl = (u: string) => {
 }
 
 import JSZip from 'jszip'
-import { YouTubeDownloader } from '@/lib/youtube-downloader'
+import { downloadYouTubeVideo, cleanupVideoFile } from '@/lib/youtube-downloader'
 import { promises as fs } from 'fs'
 
 export async function POST(req: Request) {
@@ -48,22 +48,30 @@ export async function POST(req: Request) {
       // YouTube URL인 경우 yt-dlp 사용
       if (isYouTubeUrl(url)) {
         try {
-          const result = await YouTubeDownloader.downloadVideo(url, {
-            format: 'best[height<=1080]/bestvideo[height<=1080]+bestaudio/best'
+          console.log('YouTube 다운로드 시작:', url)
+          const result = await downloadYouTubeVideo(url, {
+
           })
           
+          console.log('YouTube 다운로드 결과:', result)
+          
           if (!result.success || !result.filePath) {
+            console.error('YouTube 다운로드 실패:', result.error)
             return new Response(result.error || 'Download failed', { status: 502 })
           }
           
+          console.log('파일 읽기 시작:', result.filePath)
           const fileBuffer = await fs.readFile(result.filePath)
+          console.log('파일 읽기 완료, 크기:', fileBuffer.length)
           
           // 파일 정리
-          YouTubeDownloader.cleanup(result.filePath).catch(() => {})
+          cleanupVideoFile(result.filePath).catch(() => {})
           
           const fileName = result.title ? 
             `${result.title.replace(/[^a-zA-Z0-9가-힣\s\-_]/g, '')}.mp4` : 
             'youtube-video.mp4'
+          
+          console.log('Response 생성 시작, 파일명:', fileName)
           
           return new Response(new Uint8Array(fileBuffer), {
             status: 200,
@@ -98,8 +106,8 @@ export async function POST(req: Request) {
       } else if (isTikTokUrl(url)) {
         // TikTok 웹 URL인 경우 yt-dlp 사용
         try {
-          const result = await YouTubeDownloader.downloadVideo(url, {
-            format: 'best[height<=1080]/bestvideo[height<=1080]+bestaudio/best'
+          const result = await downloadYouTubeVideo(url, {
+
           })
           
           if (!result.success || !result.filePath) {
@@ -109,7 +117,7 @@ export async function POST(req: Request) {
           const fileBuffer = await fs.readFile(result.filePath)
           
           // 파일 정리
-          YouTubeDownloader.cleanup(result.filePath).catch(() => {})
+          cleanupVideoFile(result.filePath).catch(() => {})
           
           const fileName = result.title ? 
             `${result.title.replace(/[^a-zA-Z0-9가-힣\s\-_]/g, '')}.mp4` : 
@@ -155,8 +163,8 @@ export async function POST(req: Request) {
         try {
           if (isYouTubeUrl(url)) {
             // YouTube URL 처리
-            const result = await YouTubeDownloader.downloadVideo(url, {
-              format: 'best[height<=1080]/bestvideo[height<=1080]+bestaudio/best'
+            const result = await downloadYouTubeVideo(url, {
+  
             })
             
             if (result.success && result.filePath) {
@@ -164,10 +172,10 @@ export async function POST(req: Request) {
               const fileName = result.title ? 
                 `${result.title.replace(/[^a-zA-Z0-9가-힣\s\-_]/g, '')}.mp4` : 
                 `youtube-video-${current + 1}.mp4`
-              files.push({ name: fileName, data: new Uint8Array(buf) })
+              files.push({ name: fileName, data: buf as unknown as ArrayBuffer })
               
               // 파일 정리
-              YouTubeDownloader.cleanup(result.filePath).catch(() => {})
+              cleanupVideoFile(result.filePath).catch(() => {})
             }
           } else if (isTikTokDirectUrl(url)) {
             // TikTok Apify 직접 URL 처리
@@ -178,8 +186,8 @@ export async function POST(req: Request) {
             }
           } else if (isTikTokUrl(url)) {
             // TikTok 웹 URL 처리 (yt-dlp 사용)
-            const result = await YouTubeDownloader.downloadVideo(url, {
-              format: 'best[height<=1080]/bestvideo[height<=1080]+bestaudio/best'
+            const result = await downloadYouTubeVideo(url, {
+  
             })
             
             if (result.success && result.filePath) {
@@ -187,10 +195,10 @@ export async function POST(req: Request) {
               const fileName = result.title ? 
                 `${result.title.replace(/[^a-zA-Z0-9가-힣\s\-_]/g, '')}.mp4` : 
                 `tiktok-video-${current + 1}.mp4`
-              files.push({ name: fileName, data: new Uint8Array(buf) })
+              files.push({ name: fileName, data: buf as unknown as ArrayBuffer })
               
               // 파일 정리
-              YouTubeDownloader.cleanup(result.filePath).catch(() => {})
+              cleanupVideoFile(result.filePath).catch(() => {})
             }
           } else {
             // 일반 URL 처리
