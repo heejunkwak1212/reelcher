@@ -29,12 +29,12 @@ function isYouTubeUrl(url: string): boolean {
   try {
     const urlObj = new URL(url);
     return urlObj.hostname.includes('youtube.com') || urlObj.hostname.includes('youtu.be');
-  } catch {
+    } catch {
     return false;
   }
 }
 
-async function handleSuccessfulDownload(outputDir: string, timestamp: number): Promise<DownloadResult> {
+async function handleSuccessfulDownload(outputDir: string, timestamp: number, videoTitle?: string, videoDuration?: number): Promise<DownloadResult> {
   // 현재 디렉토리에서 최근 다운로드된 파일 찾기
   const currentDir = process.cwd();
   const files = await fs.readdir(currentDir);
@@ -62,10 +62,35 @@ async function handleSuccessfulDownload(outputDir: string, timestamp: number): P
     throw new Error('다운로드된 파일을 찾을 수 없습니다.');
   }
 
-  // 가장 최근 파일 선택
-  const selectedFile = recentFiles.reduce((latest, current) => 
-    current.mtime > latest.mtime ? current : latest
+  // 병합된 파일 우선 선택 (f788+f251 -> 완전한 파일)
+  // 1. 병합된 파일이 있는지 확인 (확장자가 mp4이고 f로 시작하지 않는 파일)
+  const mergedFiles = recentFiles.filter(f => 
+    f.name.endsWith('.mp4') && !f.name.includes('.f')
   );
+  
+  // 2. 병합된 파일이 있으면 우선 선택
+  let selectedFile;
+  if (mergedFiles.length > 0) {
+    selectedFile = mergedFiles.reduce((latest, current) => 
+      current.mtime > latest.mtime ? current : latest
+    );
+  } else {
+    // 3. 병합된 파일이 없으면 비디오 파일 우선 선택 (f788.mp4 같은)
+    const videoFiles = recentFiles.filter(f => 
+      f.name.endsWith('.mp4') && f.name.includes('.f')
+    );
+    
+    if (videoFiles.length > 0) {
+      selectedFile = videoFiles.reduce((latest, current) => 
+        current.size > latest.size ? current : latest // 크기가 큰 파일 선택
+      );
+    } else {
+      // 4. 마지막으로 가장 최근 파일 선택
+      selectedFile = recentFiles.reduce((latest, current) => 
+        current.mtime > latest.mtime ? current : latest
+      );
+    }
+  }
 
   // 다운로드 폴더로 파일 이동
   const finalFilePath = path.join(outputDir, `video_${timestamp}.mp4`);
@@ -74,11 +99,11 @@ async function handleSuccessfulDownload(outputDir: string, timestamp: number): P
   
   const stats = await fs.stat(finalFilePath);
 
-  return {
+                  return {
     success: true,
     filePath: finalFilePath,
-    title: path.basename(selectedFile.name, path.extname(selectedFile.name)),
-    duration: 0,
+    title: videoTitle || path.basename(selectedFile.name, path.extname(selectedFile.name)),
+    duration: videoDuration || 0,
     fileSize: stats.size,
     format: path.extname(selectedFile.name)
   };
@@ -105,56 +130,109 @@ export async function downloadYouTubeVideo(url: string, options: DownloadOptions
     console.log('임시 폴더:', tempDir);
     console.log('최종 저장 폴더:', outputDir);
 
-    // yt-dlp 직접 실행 (인코딩 문제 해결)
-    const ytdlpBinary = path.join(process.cwd(), 'node_modules', 'yt-dlp-exec', 'bin', 'yt-dlp.exe');
-    
-    return new Promise((resolve) => {
-      const args = [
+    // yt-dlp 직접 실행 (크로스 플랫폼 호환)
+    const isWindows = process.platform === 'win32';
+    const ytdlpBinary = path.join(
+      process.cwd(), 
+      'node_modules', 
+      'yt-dlp-exec', 
+      'bin', 
+      isWindows ? 'yt-dlp.exe' : 'yt-dlp'
+    );
+
+        return new Promise((resolve) => {
+      // 1단계: 메타데이터 추출
+      const metaArgs = [
         url,
-        '--format', '18', // 360p MP4 (안정적, 비디오+오디오)
-        '--restrict-filenames',
+        '--print', 'title',
+        '--print', 'duration', 
         '--no-warnings',
-        '--encoding', 'utf-8' // 인코딩 명시적 지정
+        '--encoding', 'utf-8'
       ];
 
-      console.log('yt-dlp 실행:', ytdlpBinary, args.join(' '));
+      console.log('yt-dlp 메타데이터 추출:', ytdlpBinary, metaArgs.join(' '));
 
-      const childProcess = spawn(ytdlpBinary, args, {
+      const metaProcess = spawn(ytdlpBinary, metaArgs, {
         stdio: ['pipe', 'pipe', 'pipe'],
         env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
       });
 
-      let stdout = '';
-      let stderr = '';
+      let metaStdout = '';
+      let metaStderr = '';
 
-      childProcess.stdout?.on('data', (data: Buffer) => {
-        stdout += data.toString();
+      metaProcess.stdout?.on('data', (data: Buffer) => {
+        metaStdout += data.toString();
       });
 
-      childProcess.stderr?.on('data', (data: Buffer) => {
-        stderr += data.toString();
+      metaProcess.stderr?.on('data', (data: Buffer) => {
+        metaStderr += data.toString();
       });
 
-      childProcess.on('close', async (code: number | null) => {
-        console.log('yt-dlp 종료 코드:', code);
-        console.log('stdout:', stdout);
-        console.log('stderr:', stderr);
-
-        if (code === 0) {
-          try {
-            // 성공적으로 다운로드된 경우 파일 찾기
-            const downloadResult = await handleSuccessfulDownload(outputDir, timestamp);
-            resolve(downloadResult);
-          } catch (error) {
-            resolve({ success: false, error: `파일 처리 실패: ${error}` });
-          }
-        } else {
-          resolve({ success: false, error: `yt-dlp 실행 실패 (코드: ${code}): ${stderr}` });
+      metaProcess.on('close', async (metaCode: number | null) => {
+        console.log('메타데이터 추출 완료:', metaCode);
+        
+        let videoTitle = '';
+        let videoDuration = 0;
+        
+        if (metaCode === 0) {
+          const lines = metaStdout.trim().split('\n');
+          videoTitle = lines[0] || '';
+          videoDuration = parseFloat(lines[1]) || 0;
+          console.log('추출된 메타데이터:', { title: videoTitle, duration: videoDuration });
         }
+
+        // 2단계: 실제 다운로드
+        const downloadArgs = [
+          url,
+          '--format', 'best[ext=mp4][height<=2160][acodec!=none]/best[ext=mp4][height<=1080][acodec!=none]/22/18/best[acodec!=none]',
+          '--merge-output-format', 'mp4',
+          '--restrict-filenames',
+          '--no-warnings',
+          '--encoding', 'utf-8'
+        ];
+
+        console.log('yt-dlp 다운로드 시작:', ytdlpBinary, downloadArgs.join(' '));
+
+        const downloadProcess = spawn(ytdlpBinary, downloadArgs, {
+          stdio: ['pipe', 'pipe', 'pipe'],
+          env: { ...process.env, PYTHONIOENCODING: 'utf-8' }
+        });
+
+        let downloadStdout = '';
+        let downloadStderr = '';
+
+        downloadProcess.stdout?.on('data', (data: Buffer) => {
+          downloadStdout += data.toString();
+        });
+
+        downloadProcess.stderr?.on('data', (data: Buffer) => {
+          downloadStderr += data.toString();
+        });
+
+        downloadProcess.on('close', async (downloadCode: number | null) => {
+          console.log('yt-dlp 다운로드 종료 코드:', downloadCode);
+          console.log('다운로드 stdout:', downloadStdout);
+          console.log('다운로드 stderr:', downloadStderr);
+
+          if (downloadCode === 0) {
+            try {
+              const downloadResult = await handleSuccessfulDownload(outputDir, timestamp, videoTitle, videoDuration);
+              resolve(downloadResult);
+            } catch (error) {
+              resolve({ success: false, error: `파일 처리 실패: ${error}` });
+            }
+          } else {
+            resolve({ success: false, error: `yt-dlp 다운로드 실패 (코드: ${downloadCode}): ${downloadStderr}` });
+          }
+        });
+
+        downloadProcess.on('error', (error: Error) => {
+          resolve({ success: false, error: `다운로드 프로세스 실행 실패: ${error.message}` });
+        });
       });
 
-      childProcess.on('error', (error: Error) => {
-        resolve({ success: false, error: `프로세스 실행 실패: ${error.message}` });
+      metaProcess.on('error', (error: Error) => {
+        resolve({ success: false, error: `메타데이터 추출 실패: ${error.message}` });
       });
     });
 

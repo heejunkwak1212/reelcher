@@ -3510,7 +3510,18 @@ function ExportButtons({ items, platform, onProgress }: { items: SearchRow[]; pl
         return
       }
       
-    const res = await fetch('/api/downloads', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ urls }) })
+    // 조회수 정보도 함께 전달
+    const urlsWithViews = selectedItems.map(item => ({
+      url: platform === 'youtube' ? item.url : (item as any).videoUrl,
+      views: item.views || 0,
+      title: item.caption || ''
+    })).filter(item => typeof item.url === 'string' && item.url.startsWith('http'))
+    
+    const res = await fetch('/api/downloads', { 
+      method: 'POST', 
+      headers: { 'content-type': 'application/json' }, 
+      body: JSON.stringify({ urls, urlsWithViews }) 
+    })
       if (!res.ok) {
         const errorText = await res.text()
         alert(`영상 다운로드 실패: ${errorText}`)
@@ -3618,11 +3629,18 @@ function ExportButtons({ items, platform, onProgress }: { items: SearchRow[]; pl
           return
         }
         
-        const res = await fetch('/api/downloads/thumbnails', { 
-          method: 'POST', 
-          headers: { 'content-type': 'application/json' }, 
-          body: JSON.stringify({ urls: thumbnailUrls, platform }) 
-        })
+              // 썸네일도 조회수 정보와 함께 전달
+      const thumbnailsWithViews = selectedItems.map(item => ({
+        url: item.thumbnailUrl,
+        views: item.views || 0,
+        title: item.caption || ''
+      })).filter(item => item.url)
+
+      const res = await fetch('/api/downloads/thumbnails', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ urls: thumbnailUrls, platform, thumbnailsWithViews })
+      })
         
         if (!res.ok) {
           const errorText = await res.text()
