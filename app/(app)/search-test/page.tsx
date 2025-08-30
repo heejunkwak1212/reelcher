@@ -398,21 +398,52 @@ function SearchTestPageContent() {
   // 본인인증 관련 상태 (비활성화됨 - 하드코딩으로 대체)
   const isVerified = true // 본인인증 비활성화로 인해 항상 true로 설정
 
-  // 전역 오류 처리
+  // 통합된 전역 오류 처리
   useEffect(() => {
     const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
-      console.error('Unhandled promise rejection:', event.reason)
-      event.preventDefault() // 기본 오류 표시 방지
+      console.warn('🚨 Unhandled Promise Rejection 감지:', event.reason)
+      
+      // 빈 객체나 null rejection은 무시
+      if (!event.reason || 
+          (typeof event.reason === 'object' && 
+           Object.keys(event.reason).length === 0) ||
+          event.reason === null || 
+          event.reason === undefined) {
+        console.log('✅ 무의미한 rejection 무시됨')
+        event.preventDefault()
+        return
+      }
+      
+      // 실제 에러가 있는 경우만 로깅
+      if (event.reason instanceof Error) {
+        console.error('실제 에러:', event.reason.message)
+        // 스택 트레이스는 개발 모드에서만
+        if (process.env.NODE_ENV === 'development') {
+          console.error('Stack:', event.reason.stack)
+        }
+      } else {
+        console.error('기타 rejection:', event.reason)
+      }
+      
+      event.preventDefault() // 브라우저 기본 에러 표시 방지
     }
 
     const handleError = (event: ErrorEvent) => {
-      // null 에러는 무시 (의미없는 에러)
+      // null/undefined 에러는 무시
       if (event.error === null || event.error === undefined) {
         console.log('Global error: null/undefined - 무시됨')
         event.preventDefault()
         return
       }
-      console.error('Global error:', event.error)
+      
+      // Script error나 의미없는 에러 무시
+      if (typeof event.error === 'string' && event.error.includes('Script error')) {
+        console.log('Script error 무시됨')
+        event.preventDefault()
+        return
+      }
+      
+      console.error('Global error 감지:', event.error)
       event.preventDefault() // 기본 오류 표시 방지
     }
 
@@ -965,21 +996,34 @@ function SearchTestPageContent() {
       }
       
       const [statsRes, keywordsRes] = await Promise.all([
-        fetch('/api/me/stats', { cache: 'no-store', headers: cacheHeaders }),
-        fetch('/api/me/recent-keywords', { cache: 'no-store', headers: cacheHeaders })
+        fetch('/api/me/stats', { cache: 'no-store', headers: cacheHeaders }).catch(error => {
+          console.warn('⚠️ 통계 API 호출 실패:', error)
+          return new Response(JSON.stringify({ error: 'Failed to fetch stats' }), { status: 500 })
+        }),
+        fetch('/api/me/recent-keywords', { cache: 'no-store', headers: cacheHeaders }).catch(error => {
+          console.warn('⚠️ 키워드 API 호출 실패:', error)
+          return new Response(JSON.stringify({ error: 'Failed to fetch keywords' }), { status: 500 })
+        })
       ])
       
-      // Process stats
+      // Process stats with safe JSON parsing
       if (statsRes.ok) {
-        const stats = await statsRes.json()
-        setTodayCount(Number(stats.today_searches || 0))
-        setMonthCount(Number(stats.month_searches || 0)) // 이번달 검색수 추가
-        setMonthCredits(Number(stats.month_credits || 0)) // month_credits는 크레딧 사용량
-        console.log('✅ 통계 데이터 로드 완료:', {
-          today: stats.today_searches,
-          month: stats.month_searches,
-          monthCredits: stats.month_credits
-        })
+        try {
+          const stats = await statsRes.json()
+          setTodayCount(Number(stats.today_searches || 0))
+          setMonthCount(Number(stats.month_searches || 0)) // 최근 30일 검색수
+          setMonthCredits(Number(stats.month_credits || 0)) // month_credits는 크레딧 사용량
+          console.log('✅ 통계 데이터 로드 완료:', {
+            today: stats.today_searches,
+            month: stats.month_searches,
+            monthCredits: stats.month_credits
+          })
+        } catch (parseError) {
+          console.warn('⚠️ 통계 JSON 파싱 실패:', parseError)
+          setTodayCount(0)
+          setMonthCount(0)
+          setMonthCredits(0)
+        }
       } else {
         console.warn('⚠️ loadStats 실패, 기본값 설정')
         setTodayCount(0)
@@ -1040,33 +1084,28 @@ function SearchTestPageContent() {
           'Pragma': 'no-cache',
           'Expires': '0'
         }
+      }).catch(fetchError => {
+        console.warn('⚠️ 크레딧 API 호출 실패:', fetchError)
+        return new Response(JSON.stringify({ error: 'Failed to fetch credits' }), { status: 500 })
       })
+      
       if (res.ok) {
-        const j = await res.json()
-        setMyCredits(typeof j?.credits === 'number' ? j.credits : null)
-        setIsAdmin(j?.role === 'admin')
-        if (j?.plan) setPlan(j.plan)
-        console.log('크레딧 정보 업데이트 완료:', j.credits)
+        try {
+          const j = await res.json()
+          setMyCredits(typeof j?.credits === 'number' ? j.credits : null)
+          setIsAdmin(j?.role === 'admin')
+          if (j?.plan) setPlan(j.plan)
+          console.log('크레딧 정보 업데이트 완료:', j.credits)
+        } catch (parseError) {
+          console.warn('⚠️ 크레딧 JSON 파싱 실패:', parseError)
+        }
       }
     } catch (error) {
       console.error('Error loading credits:', error)
     }
   }
 
-  // 전역 Promise rejection 핸들러
-  useEffect(() => {
-    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
-      console.warn('🚨 Unhandled Promise Rejection:', event.reason)
-      // 브라우저 기본 동작 방지 (콘솔 에러 억제)
-      event.preventDefault()
-    }
 
-    window.addEventListener('unhandledrejection', handleUnhandledRejection)
-    
-    return () => {
-      window.removeEventListener('unhandledrejection', handleUnhandledRejection)
-    }
-  }, [])
 
   // 초기 데이터 로드 및 pending 검색 정리
   useEffect(() => {
@@ -2727,7 +2766,7 @@ function SearchTestPageContent() {
                   <span className="font-semibold text-gray-900">{todayCount}회</span>
                 </div>
                 <div className="flex items-center justify-between text-gray-600">
-                  <span>이번 달</span>
+                  <span>최근 30일</span>
                   <span className="font-semibold text-gray-900">{monthCount}회</span>
                 </div>
               </div>
@@ -2739,7 +2778,7 @@ function SearchTestPageContent() {
               <div className="text-sm font-medium text-gray-700 mb-5">크레딧 사용량</div>
               <div className="space-y-4 text-sm">
                 <div className="flex items-center justify-between text-gray-600">
-                  <span>이번 달</span>
+                  <span>최근 30일</span>
                   <span className="font-semibold text-gray-900">{new Intl.NumberFormat('en-US').format(monthCredits)} 크레딧</span>
                 </div>
                 <div className="flex items-center justify-between text-gray-600">

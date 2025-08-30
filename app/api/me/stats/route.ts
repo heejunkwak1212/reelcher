@@ -34,19 +34,19 @@ export async function GET(request: NextRequest) {
     const now = new Date()
     const today = now.toISOString().split('T')[0] // YYYY-MM-DD
     
-    // 이번달 1일 00:00:00부터 말일 23:59:59까지
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0)
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999)
+    // 최근 30일 (오늘 포함)
+    const thirtyDaysAgo = new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000)
+    thirtyDaysAgo.setHours(0, 0, 0, 0)
     
-    // 이번주 시작일 계산 (일요일 기준)
-    const weekStart = new Date(now)
-    weekStart.setDate(now.getDate() - now.getDay())
-    weekStart.setHours(0, 0, 0, 0)
+    // 최근 7일 (오늘 포함)
+    const sevenDaysAgo = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000)
+    sevenDaysAgo.setHours(0, 0, 0, 0)
     
     let todaySearches = 0
-    let monthSearches = 0
-    let monthCreditsUsed = 0
-    let weekCreditsUsed = 0
+    let thirtyDaySearches = 0
+    let sevenDaySearches = 0
+    let thirtyDayCreditsUsed = 0
+    let sevenDayCreditsUsed = 0
     let totalSearches = searchHistory?.length || 0
     
     for (const record of searchHistory || []) {
@@ -58,28 +58,30 @@ export async function GET(request: NextRequest) {
         todaySearches++
       }
       
-      // 이번달 검색수 및 크레딧 (1일 00:00 ~ 말일 23:59)
-      if (recordDate >= monthStart && recordDate <= monthEnd) {
-        monthSearches++
-        monthCreditsUsed += record.credits_used || 0
+      // 최근 30일 검색수 및 크레딧
+      if (recordDate >= thirtyDaysAgo) {
+        thirtyDaySearches++
+        thirtyDayCreditsUsed += record.credits_used || 0
       }
       
-      // 이번주 크레딧
-      if (recordDate >= weekStart) {
-        weekCreditsUsed += record.credits_used || 0
+      // 최근 7일 검색수 및 크레딧
+      if (recordDate >= sevenDaysAgo) {
+        sevenDaySearches++
+        sevenDayCreditsUsed += record.credits_used || 0
       }
     }
     
     const result = {
       success: true,
       today_searches: todaySearches,
-      month_searches: monthSearches,
-      month_credits: monthCreditsUsed,
-      week_credits: weekCreditsUsed,
-      total_searches: monthSearches // 이번달 검색량으로 변경
+      week_searches: sevenDaySearches,        // 최근 7일 검색수
+      month_searches: thirtyDaySearches,      // 최근 30일 검색수
+      week_credits: sevenDayCreditsUsed,      // 최근 7일 크레딧
+      month_credits: thirtyDayCreditsUsed,    // 최근 30일 크레딧
+      total_searches: totalSearches           // 전체 검색수
     }
     
-    console.log('📊 /api/me/stats 응답:', result)
+    console.log('📊 /api/me/stats 응답 (30일/7일 기준):', result)
     
     const response = NextResponse.json(result)
     response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate')

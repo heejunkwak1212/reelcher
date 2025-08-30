@@ -37,10 +37,22 @@ export async function POST(req: Request) {
       await db.update(profiles).set({ displayName: input.displayName, howFound: input.howFound, role: 'user', onboardingCompleted: true }).where(eq(profiles.userId, uid))
     }
 
-    // Ensure credits row exists
+    // Ensure credits row exists with 30-day cycle setup
     const existingCredits = await db.select().from(credits).where(eq(credits.userId, uid as any))
     if (!existingCredits.length) {
-      await db.insert(credits).values({ userId: uid, balance: 250, reserved: 0, monthlyGrant: 250, lastGrantAt: new Date() as any })
+      const today = new Date()
+      const cycleStartDate = today.toISOString().split('T')[0] // YYYY-MM-DD
+      const nextGrantDate = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+      
+      await db.insert(credits).values({ 
+        userId: uid, 
+        balance: 250, 
+        reserved: 0, 
+        monthlyGrant: 250, 
+        lastGrantAt: new Date() as any,
+        cycleStartDate: cycleStartDate,
+        nextGrantDate: nextGrantDate
+      })
     }
 
     return Response.json({ ok: true })

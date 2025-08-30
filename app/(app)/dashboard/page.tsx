@@ -9,7 +9,7 @@ export default function DashboardPage() {
   const [recent, setRecent] = useState<number | null>(null)
   const [searches, setSearches] = useState<any[]>([])
   const [todayUsage, setTodayUsage] = useState<number>(0)
-  const [monthlyUsage, setMonthlyUsage] = useState<number>(0)
+  const [thirtyDayUsage, setThirtyDayUsage] = useState<number>(0)
   
   useEffect(() => {
     const run = async () => {
@@ -82,17 +82,17 @@ export default function DashboardPage() {
         // 통계 데이터 설정
         if (statsRes) {
           setTodayUsage(statsRes.today_searches || 0) // 오늘 검색 수로 변경
-          setMonthlyUsage(statsRes.month_credits || 0) 
+          setThirtyDayUsage(statsRes.month_credits || 0) 
           setRecent(statsRes.total_searches || 0)
           console.log('✅ 대시보드 통계 로드 완료:', {
             todayUsage: statsRes.today_searches,
-            monthlyUsage: statsRes.month_credits,
+            thirtyDayUsage: statsRes.month_credits,
             totalSearches: statsRes.total_searches
           })
         } else {
           console.warn('⚠️ 대시보드 통계 로드 실패, 기본값 설정')
           setTodayUsage(0)
-          setMonthlyUsage(0)
+          setThirtyDayUsage(0)
           setRecent(0)
         }
       } catch (error) {
@@ -100,7 +100,7 @@ export default function DashboardPage() {
         // 에러 발생 시 기본값 설정
         setCredit(0)
         setTodayUsage(0)
-        setMonthlyUsage(0)
+        setThirtyDayUsage(0)
         setRecent(0)
         setSearches([])
       }
@@ -126,8 +126,8 @@ export default function DashboardPage() {
             <div className="text-xs text-gray-500">검색 수</div>
           </div>
           <div className="bg-white rounded-lg p-6 shadow-sm border border-gray-200">
-            <div className="text-sm text-gray-500 mb-1">이번 달</div>
-            <div className="text-3xl font-bold text-gray-900 mb-2">{monthlyUsage.toLocaleString()}</div>
+            <div className="text-sm text-gray-500 mb-1">최근 30일</div>
+            <div className="text-3xl font-bold text-gray-900 mb-2">{thirtyDayUsage.toLocaleString()}</div>
             <div className="text-xs text-gray-500">크레딧 사용량</div>
           </div>
         </div>
@@ -224,7 +224,7 @@ export default function DashboardPage() {
                   <div className="text-2xl font-bold text-gray-900">{credit?.toLocaleString() ?? '-'}</div>
                 </div>
                 <div>
-                  <div className="text-sm text-gray-500">이번달 검색량</div>
+                  <div className="text-sm text-gray-500">최근 30일 검색량</div>
                   <div className="text-lg font-semibold text-gray-900">{recent ?? '-'}</div>
                 </div>
               </div>

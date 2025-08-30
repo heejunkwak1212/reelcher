@@ -86,13 +86,13 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // 각 사용자의 이번 달 크레딧 사용량 계산
+    // 각 사용자의 최근 30일 크레딧 사용량 계산
     const now = new Date()
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+    const monthStart = new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000)
     const monthStartIso = monthStart.toISOString()
 
     const usersWithStats = await Promise.all(users.map(async (user) => {
-      // 이번 달 크레딧 사용량 계산 (search_history 테이블 사용)
+      // 최근 30일 크레딧 사용량 계산 (search_history 테이블 사용)
       const { data: monthCredits } = await svc
         .from('search_history')
         .select('credits_used')
@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
 
       const totalMonthCredits = (monthCredits || []).reduce((sum, r) => sum + (r.credits_used || 0), 0)
 
-      // 이번 달 검색 수 계산
+      // 최근 30일 검색 수 계산
       const { data: monthSearches } = await svc
         .from('search_history')
         .select('id')
@@ -214,6 +214,11 @@ export async function PUT(request: NextRequest) {
       // 크레딧 레코드가 없는 경우 새로 생성
       if (getCreditError.code === 'PGRST116') {
         console.log(`📝 새 크레딧 레코드 생성: ${targetUser.id}`)
+        // 30일 주기 설정으로 크레딧 레코드 생성
+        const today = new Date()
+        const cycleStartDate = today.toISOString().split('T')[0]
+        const nextGrantDate = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+        
         const { error: insertError } = await svc
           .from('credits')
           .insert({
@@ -221,7 +226,9 @@ export async function PUT(request: NextRequest) {
             balance: creditDelta,
             reserved: 0,
             monthly_grant: 250,
-            last_grant_at: new Date().toISOString()
+            last_grant_at: new Date().toISOString(),
+            cycle_start_date: cycleStartDate,
+            next_grant_date: nextGrantDate
           })
 
         if (insertError) {

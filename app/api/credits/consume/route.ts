@@ -21,19 +21,9 @@ export async function POST(req: Request) {
 
     let balance = row.balance || 0
     let reserved = row.reserved || 0
-    // Monthly grant: if month changed since lastGrantAt, reset to monthlyGrant (전체 초기화)
-    const monthlyGrant = row.monthlyGrant || 0
-    if (monthlyGrant > 0) {
-      const now = new Date()
-      const last = row.lastGrantAt ? new Date(row.lastGrantAt as any) : null
-      const changed = !last || (last.getUTCFullYear() !== now.getUTCFullYear() || last.getUTCMonth() !== now.getUTCMonth())
-      if (changed) {
-        // 기존: balance += monthlyGrant (추가)
-        // 변경: balance = monthlyGrant (초기화)
-        balance = monthlyGrant
-        console.log(`🔄 월별 크레딧 초기화: 사용자 ${data.userId} → ${monthlyGrant} 크레딧`)
-      }
-    }
+    
+    // 크레딧 초기화는 별도의 30일 주기 cron job(/api/cron/cycle-credit-reset)에서 처리
+    // 이 API는 크레딧 예약/커밋/롤백만 담당
 
     if (data.reserve) {
       if (balance < data.reserve) return Response.json({ error: 'Insufficient' }, { status: 402 })
@@ -50,7 +40,7 @@ export async function POST(req: Request) {
       balance += giveBack
     }
 
-    await db.update(credits).set({ balance, reserved, lastGrantAt: new Date() as any }).where(eq(credits.userId, data.userId))
+    await db.update(credits).set({ balance, reserved }).where(eq(credits.userId, data.userId))
     return Response.json({ balance, reserved })
   } catch (e) {
     return Response.json({ error: 'BadRequest' }, { status: 400 })

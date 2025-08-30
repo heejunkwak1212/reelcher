@@ -46,7 +46,7 @@ export default async function AdminPage() {
     .select('*', { count: 'exact', head: true })
     .gte('created_at', today)
 
-  // 이번 달 검색량
+  // 최근 30일 검색량
   const { count: monthlySearches } = await supabase
     .from('searches')
     .select('*', { count: 'exact', head: true })
@@ -70,7 +70,7 @@ export default async function AdminPage() {
       return sum + (search.cost_credits || 0) * 3.2 // 기본 크레딧당 3.2원
     }, 0) || 0
 
-  // 이번 달 비용 계산
+  // 최근 30일 비용 계산
   const monthlyCost = searchesWithCost?.reduce((sum, search) => {
     if (search.platform === 'instagram') {
       const results = search.results_count || 30
@@ -104,7 +104,7 @@ export default async function AdminPage() {
             <div className="text-xs text-gray-500">API 사용 비용</div>
           </div>
           <div className="bg-white rounded-lg p-6 shadow-sm border border-gray-200">
-            <div className="text-sm text-gray-500 mb-1">이번 달</div>
+            <div className="text-sm text-gray-500 mb-1">최근 30일</div>
             <div className="text-3xl font-bold text-gray-900 mb-2">₩{Math.round(monthlyCost).toLocaleString()}</div>
             <div className="text-xs text-gray-500">API 사용 비용</div>
           </div>
@@ -146,7 +146,7 @@ export default async function AdminPage() {
                 <div className="text-center">
                   <div className="text-2xl font-bold text-gray-900">{todaySearches || 0}</div>
                   <div className="text-xs text-gray-500">오늘 검색</div>
-                  <div className="text-xs text-gray-500 mt-1">{monthlySearches || 0} 이번달</div>
+                  <div className="text-xs text-gray-500 mt-1">{monthlySearches || 0} 최근 30일</div>
                 </div>
                 <div className="text-center">
                   <div className="text-2xl font-bold text-gray-900">

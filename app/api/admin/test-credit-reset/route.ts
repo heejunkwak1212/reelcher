@@ -24,17 +24,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '관리자 권한이 필요합니다' }, { status: 403 })
     }
 
-    console.log('🧪 테스트용 크레딧 초기화 시작 (관리자 실행):', user.id)
+    console.log('🧪 테스트용 30일 주기 크레딧 초기화 시작 (관리자 실행):', user.id)
 
-    // 월별 크레딧 초기화 API 호출
+    // 30일 주기 크레딧 초기화 API 호출
     const baseUrl = process.env.VERCEL_URL 
       ? `https://${process.env.VERCEL_URL}` 
       : process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
     
     const cronSecret = process.env.CRON_SECRET || 'development-secret'
     
-    const response = await fetch(`${baseUrl}/api/cron/monthly-credit-reset`, {
-      method: 'GET',
+    const response = await fetch(`${baseUrl}/api/cron/cycle-credit-reset`, {
+      method: 'POST',
       headers: {
         'Authorization': `Bearer ${cronSecret}`,
         'Content-Type': 'application/json'
@@ -47,10 +47,10 @@ export async function POST(request: NextRequest) {
       throw new Error(result.error || 'Failed to reset credits')
     }
 
-    console.log('✅ 테스트용 크레딧 초기화 완료:', result)
+    console.log('✅ 테스트용 30일 주기 크레딧 초기화 완료:', result)
     return NextResponse.json({
       success: true,
-      message: '테스트 크레딧 초기화가 완료되었습니다',
+      message: '테스트용 30일 주기 크레딧 초기화가 완료되었습니다',
       details: result
     })
 

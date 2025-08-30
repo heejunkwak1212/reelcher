@@ -15,6 +15,9 @@ export const profiles = pgTable('profiles', {
   onboardingCompleted: boolean('onboarding_completed').default(false),
   phoneNumber: text('phone_number').unique(),
   isVerified: boolean('is_verified').notNull().default(false),
+  createdAt: timestamp('created_at').defaultNow(),
+  subscriptionStartDate: timestamp('subscription_start_date'),
+  lastPaymentDate: timestamp('last_payment_date'),
 })
 
 export const credits = pgTable('credits', {
@@ -23,6 +26,8 @@ export const credits = pgTable('credits', {
   reserved: integer('reserved').default(0),
   monthlyGrant: integer('monthly_grant').default(0),
   lastGrantAt: timestamp('last_grant_at'),
+  cycleStartDate: text('cycle_start_date'), // YYYY-MM-DD 형식
+  nextGrantDate: text('next_grant_date'), // YYYY-MM-DD 형식
 })
 
 export const searches = pgTable('searches', {
