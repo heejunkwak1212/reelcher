@@ -50,11 +50,9 @@
     "tailwindcss-animate": "^1.0.7",
     "xlsx": "^0.18.5",
     "xlsx-js-style": "^1.2.0",
+    "ytdlp-nodejs": "^1.2.0",
     "zod": "^4.0.17",
     "zustand": "^5.0.7"
-  },
-  "optionalDependencies": {
-    "yt-dlp-exec": "^1.0.2"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
