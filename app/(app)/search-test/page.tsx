@@ -434,13 +434,13 @@ function SearchTestPageContent() {
       console.log('📡 크레딧 업데이트 이벤트 수신 (자막추출):', { balance, used })
       setMyCredits(balance)
       // 자막 추출은 크레딧만 업데이트하고 검색통계는 업데이트하지 않음
-      loadCredits().catch(console.warn)
+      loadCredits().catch(error => console.warn('⚠️ 크레딧 로드 실패:', error))
     }
     
     // 검색통계 업데이트 이벤트 (키워드 검색시에만 발생)
     const handleStatsUpdate = () => {
       console.log('📡 검색통계 업데이트 이벤트 수신')
-      loadStats().catch(console.warn)
+      loadStats().catch(error => console.warn('⚠️ 통계 로드 실패:', error))
     }
     
     document.body.addEventListener('relcher:creditsUpdate', handleCreditsUpdate as EventListener)
@@ -464,7 +464,7 @@ function SearchTestPageContent() {
       const timer = setTimeout(() => {
         console.log('🕛 자정 감지: 오늘 검색량 초기화')
         setTodayCount(0) // 즉시 UI 업데이트
-        loadStats().catch(console.warn) // 서버에서 최신 데이터 가져오기
+        loadStats().catch(error => console.warn('⚠️ 통계 로드 실패:', error)) // 서버에서 최신 데이터 가져오기
         
         // 다음 자정을 위해 재귀 호출
         checkMidnight()
@@ -1053,11 +1053,26 @@ function SearchTestPageContent() {
     }
   }
 
+  // 전역 Promise rejection 핸들러
+  useEffect(() => {
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      console.warn('🚨 Unhandled Promise Rejection:', event.reason)
+      // 브라우저 기본 동작 방지 (콘솔 에러 억제)
+      event.preventDefault()
+    }
+
+    window.addEventListener('unhandledrejection', handleUnhandledRejection)
+    
+    return () => {
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection)
+    }
+  }, [])
+
   // 초기 데이터 로드 및 pending 검색 정리
   useEffect(() => {
     // 1. 통계 및 크레딧 로드
-    loadStats().catch(console.warn)
-    loadCredits().catch(console.warn)
+          loadStats().catch(error => console.warn('⚠️ 통계 로드 실패:', error))
+      loadCredits().catch(error => console.warn('⚠️ 크레딧 로드 실패:', error))
     
     // 2. 기존 pending 검색들 정리 (페이지 로드 시)
     const cleanupPendingSearches = async () => {
@@ -1074,7 +1089,9 @@ function SearchTestPageContent() {
           // 정리 후 통계 재로드
           if (result.cleaned > 0) {
             setTimeout(() => {
-              Promise.all([loadStats(), loadCredits()]).catch(console.warn)
+              Promise.all([loadStats(), loadCredits()]).catch(error => {
+            console.warn('⚠️ 통계/크레딧 업데이트 실패:', error)
+          })
             }, 500)
           }
         }
@@ -1341,7 +1358,9 @@ function SearchTestPageContent() {
           console.log(`✅ 검색 기록 생성 성공: ${searchRecordId}`)
           
           // 즉시 통계 업데이트
-          Promise.all([loadStats(), loadCredits()]).catch(console.warn)
+          Promise.all([loadStats(), loadCredits()]).catch(error => {
+            console.warn('⚠️ 통계/크레딧 업데이트 실패:', error)
+          })
         } else {
           console.warn('⚠️ 검색 기록 생성 실패, 계속 진행')
         }
@@ -1685,7 +1704,9 @@ function SearchTestPageContent() {
             
             // 통계 재업데이트 (약간의 지연 후 실행)
             setTimeout(() => {
-              Promise.all([loadStats(), loadCredits()]).catch(console.warn)
+              Promise.all([loadStats(), loadCredits()]).catch(error => {
+            console.warn('⚠️ 통계/크레딧 업데이트 실패:', error)
+          })
             }, 1000)
             
             // 사용자에게 반환 안내 표시
