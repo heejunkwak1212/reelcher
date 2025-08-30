@@ -117,6 +117,17 @@ export async function downloadYouTubeVideo(url: string, options: DownloadOptions
     return { success: false, error: '유효하지 않은 YouTube URL입니다.' };
   }
 
+  // yt-dlp-exec 패키지 존재 여부 확인
+  try {
+    require.resolve('yt-dlp-exec');
+  } catch (error) {
+    console.warn('yt-dlp-exec 패키지를 찾을 수 없음:', error);
+    return { 
+      success: false, 
+      error: 'YouTube 다운로드 기능이 현재 환경에서 지원되지 않습니다. 개발 환경에서만 사용 가능합니다.' 
+    };
+  }
+
   // OS 공식 임시 폴더 사용 (가장 안정적이고 표준적)
   const tempDir = os.tmpdir();
   const outputDir = options.outputPath || path.join(os.homedir(), 'Downloads');
@@ -139,6 +150,17 @@ export async function downloadYouTubeVideo(url: string, options: DownloadOptions
       'bin', 
       isWindows ? 'yt-dlp.exe' : 'yt-dlp'
     );
+
+    // 바이너리 파일 존재 여부 확인
+    try {
+      await fs.access(ytdlpBinary);
+    } catch (accessError) {
+      console.warn('yt-dlp 바이너리를 찾을 수 없음:', ytdlpBinary);
+      return { 
+        success: false, 
+        error: 'YouTube 다운로드 바이너리가 설치되지 않았습니다. 개발 환경에서만 사용 가능합니다.' 
+      };
+    }
 
         return new Promise((resolve) => {
       // 1단계: 메타데이터 추출
@@ -272,6 +294,17 @@ export async function extractYouTubeSubtitles(url: string): Promise<SubtitleResu
     return { success: false, error: '유효하지 않은 YouTube URL입니다.' };
   }
 
+  // yt-dlp-exec 패키지 존재 여부 확인
+  try {
+    require.resolve('yt-dlp-exec');
+  } catch (error) {
+    console.warn('yt-dlp-exec 패키지를 찾을 수 없음:', error);
+    return { 
+      success: false, 
+      error: 'YouTube 자막 추출 기능이 현재 환경에서 지원되지 않습니다. 개발 환경에서만 사용 가능합니다.' 
+    };
+  }
+
   try {
     console.log('YouTube 자막 추출 시작:', url);
 
@@ -284,6 +317,17 @@ export async function extractYouTubeSubtitles(url: string): Promise<SubtitleResu
       'bin',
       isWindows ? 'yt-dlp.exe' : 'yt-dlp'
     );
+
+    // 바이너리 파일 존재 여부 확인
+    try {
+      await fs.access(ytdlpBinary);
+    } catch (accessError) {
+      console.warn('yt-dlp 바이너리를 찾을 수 없음:', ytdlpBinary);
+      return { 
+        success: false, 
+        error: 'YouTube 자막 추출 바이너리가 설치되지 않았습니다. 개발 환경에서만 사용 가능합니다.' 
+      };
+    }
 
     return new Promise((resolve) => {
       // 자막만 추출하는 명령어
