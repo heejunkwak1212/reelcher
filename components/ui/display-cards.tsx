@@ -30,7 +30,10 @@ function DisplayCard({
       )}
     >
       <div className="flex flex-col gap-3">
-        <p className={cn("text-xl font-bold", titleClassName)}>{title}</p>
+        <div className="flex items-center gap-2">
+          {icon && <div className={cn("flex-shrink-0", iconClassName)}>{icon}</div>}
+          <p className={cn("text-xl font-bold", titleClassName)}>{title}</p>
+        </div>
         <p className="text-base leading-relaxed text-gray-700 font-medium">{description}</p>
       </div>
       {date && <p className="text-gray-500 text-xs">{date}</p>}

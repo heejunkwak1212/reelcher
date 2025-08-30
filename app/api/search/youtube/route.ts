@@ -221,28 +221,8 @@ export async function POST(request: NextRequest) {
       }
     }
     
-    // 2. B. 검색 기록 저장 (search_history 테이블 직접 INSERT)
-    try {
-      const { error: logError } = await supabase
-        .from('search_history')
-        .insert({
-          user_id: user.id,
-          platform: 'youtube', // 플랫폼 명시
-          search_type: searchRequest.searchType || 'keyword',
-          keyword: searchRequest.query || '',
-          filters: searchRequest.filters || {},
-          results_count: actualResults || 0,
-          credits_used: actualCreditsUsed
-        })
-      
-      if (logError) {
-        console.error('❌ 검색 기록 저장 실패:', logError)
-      } else {
-        console.log('✅ 검색 기록 저장 성공 (search_history)')
-      }
-    } catch (error) {
-      console.error('❌ 검색 기록 저장 오류:', error)
-    }
+    // 검색 기록 저장은 클라이언트의 /api/me/search-record에서 처리 (중복 방지)
+    console.log(`📝 YouTube 검색 완료 - 결과: ${actualResults}개, 크레딧: ${actualCreditsUsed} (기록은 클라이언트에서 처리)`)
 
     // 검색 통계 업데이트 (모든 사용자)
     

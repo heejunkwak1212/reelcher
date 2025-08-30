@@ -256,9 +256,193 @@ export async function downloadYouTubeVideo(url: string, options: DownloadOptions
 
 export async function cleanupVideoFile(filePath: string): Promise<void> {
   try {
+    console.log('파일 정리 시작:', filePath);
     await fs.unlink(filePath);
-    console.log('임시 파일 정리 완료:', filePath);
-            } catch (error) {
+    console.log('파일 정리 완료:', filePath);
+  } catch (error) {
     console.warn('파일 정리 실패:', error);
   }
+}
+
+// ==================================================================================
+// YouTube 자막 추출 함수
+// ==================================================================================
+export async function extractYouTubeSubtitles(url: string): Promise<SubtitleResult> {
+  if (!isYouTubeUrl(url)) {
+    return { success: false, error: '유효하지 않은 YouTube URL입니다.' };
+  }
+
+  try {
+    console.log('YouTube 자막 추출 시작:', url);
+
+    // yt-dlp 직접 실행으로 자막 추출
+    const isWindows = process.platform === 'win32';
+    const ytdlpBinary = path.join(
+      process.cwd(),
+      'node_modules',
+      'yt-dlp-exec',
+      'bin',
+      isWindows ? 'yt-dlp.exe' : 'yt-dlp'
+    );
+
+    return new Promise((resolve) => {
+      // 자막만 추출하는 명령어
+      const subtitleArgs = [
+        url,
+        '--write-subs',            // 자막 다운로드
+        '--write-auto-subs',       // 자동 생성 자막도 포함
+        '--sub-langs', 'ko,en',    // 한국어, 영어 자막 우선
+        '--skip-download',         // 비디오는 다운로드하지 않음
+        '--print', 'title',        // 제목도 함께 추출
+        '--no-warnings',
+        '--encoding', 'utf-8'
+      ];
+
+      console.log('yt-dlp 자막 추출 명령:', ytdlpBinary, subtitleArgs.join(' '));
+
+      const subtitleProcess = spawn(ytdlpBinary, subtitleArgs, {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
+        timeout: 60000 // 60초 타임아웃
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      subtitleProcess.stdout?.on('data', (data: Buffer) => {
+        stdout += data.toString();
+      });
+
+      subtitleProcess.stderr?.on('data', (data: Buffer) => {
+        stderr += data.toString();
+      });
+
+      subtitleProcess.on('close', async (code: number | null) => {
+        console.log('yt-dlp 자막 추출 종료 코드:', code);
+        console.log('자막 추출 stdout:', stdout);
+        console.log('자막 추출 stderr:', stderr);
+
+        if (code === 0) {
+          try {
+            // 현재 디렉토리에서 다운로드된 자막 파일 찾기
+            const currentDir = process.cwd();
+            const files = await fs.readdir(currentDir);
+            
+            // .vtt 또는 .srt 파일 찾기
+            const subtitleFiles = files.filter(file => 
+              (file.endsWith('.vtt') || file.endsWith('.srt')) && 
+              !file.includes('.live_chat.')  // 라이브 채팅 제외
+            );
+
+            console.log('발견된 자막 파일들:', subtitleFiles);
+
+            if (subtitleFiles.length === 0) {
+              resolve({ 
+                success: false, 
+                error: '자막 파일을 찾을 수 없습니다. 이 영상에는 자막이 없을 수 있습니다.' 
+              });
+              return;
+            }
+
+            // 첫 번째 자막 파일 읽기
+            const subtitleFile = subtitleFiles[0];
+            const subtitlePath = path.join(currentDir, subtitleFile);
+            const subtitleContent = await fs.readFile(subtitlePath, 'utf-8');
+
+            // 자막 파일 정리
+            await fs.unlink(subtitlePath);
+            console.log('자막 파일 정리 완료:', subtitlePath);
+
+            // VTT 또는 SRT 형식을 일반 텍스트로 변환
+            const cleanSubtitles = cleanSubtitleText(subtitleContent);
+            
+            // 제목 추출
+            const lines = stdout.trim().split('\n');
+            const title = lines.find(line => line.trim() && !line.includes('Downloading')) || '';
+
+            resolve({
+              success: true,
+              subtitles: cleanSubtitles,
+              title: title.trim()
+            });
+
+          } catch (error) {
+            console.error('자막 파일 처리 오류:', error);
+            resolve({ 
+              success: false, 
+              error: `자막 파일 처리 실패: ${error}` 
+            });
+          }
+        } else {
+          console.error('yt-dlp 자막 추출 실패:', stderr);
+          
+          // 구체적인 오류 메시지 제공
+          let errorMessage = '자막 추출에 실패했습니다.';
+          if (stderr.includes('No such file or directory')) {
+            errorMessage = 'yt-dlp를 찾을 수 없습니다.';
+          } else if (stderr.includes('video unavailable') || stderr.includes('Private video')) {
+            errorMessage = '비공개 영상이거나 사용할 수 없는 영상입니다.';
+          } else if (stderr.includes('No subtitles')) {
+            errorMessage = '이 영상에는 자막이 없습니다.';
+          }
+          
+          resolve({ 
+            success: false, 
+            error: errorMessage 
+          });
+        }
+      });
+
+      subtitleProcess.on('error', (error: Error) => {
+        console.error('자막 추출 프로세스 실행 실패:', error);
+        resolve({ 
+          success: false, 
+          error: `자막 추출 프로세스 실행 실패: ${error.message}` 
+        });
+      });
+    });
+
+  } catch (error: any) {
+    console.error('자막 추출 중 오류 발생:', error);
+    return { 
+      success: false, 
+      error: `자막 추출 실패: ${error.message}` 
+    };
+  }
+}
+
+// 자막 텍스트 정리 함수 (VTT/SRT 형식에서 일반 텍스트로)
+function cleanSubtitleText(subtitleContent: string): string {
+  if (!subtitleContent) return '';
+
+  let lines = subtitleContent.split('\n');
+  let cleanLines: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    
+    // VTT 헤더 제거
+    if (line === 'WEBVTT' || line.startsWith('Kind:') || line.startsWith('Language:')) {
+      continue;
+    }
+    
+    // 타임스탬프 라인 제거 (SRT 숫자, VTT 타임스탬프)
+    if (/^\d+$/.test(line) || /\d{2}:\d{2}:\d{2}/.test(line)) {
+      continue;
+    }
+    
+    // 빈 줄 제거
+    if (line === '') {
+      continue;
+    }
+    
+    // HTML 태그 제거
+    const cleanLine = line.replace(/<[^>]*>/g, '').trim();
+    
+    if (cleanLine && !cleanLines.includes(cleanLine)) {
+      cleanLines.push(cleanLine);
+    }
+  }
+
+  return cleanLines.join('\n');
 }

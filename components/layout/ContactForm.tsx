@@ -2,6 +2,13 @@
 
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { ChevronDownIcon } from '@radix-ui/react-icons'
 
 const TYPES = [
   '버그/시스템 오류',
@@ -26,25 +33,115 @@ export default function ContactForm() {
     alert('접수되었습니다. 최대한 빨리 답변드릴게요!')
   }
   return (
-    <form onSubmit={submit} className="space-y-3">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <label className="flex flex-col gap-1">
-          <span className="text-sm text-neutral-600">문의 유형</span>
-          <select className="border rounded px-3 h-10" value={type} onChange={(e)=>setType(e.target.value as any)}>
-            {TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
+    <form onSubmit={submit} className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <label className="flex flex-col gap-2">
+          <span 
+            className="text-gray-700"
+            style={{
+              fontSize: 'var(--text-regular-size)',
+              lineHeight: 'var(--text-regular-line-height)',
+              letterSpacing: 'var(--text-regular-letter-spacing)',
+              fontWeight: 'var(--font-weight-medium)'
+            }}
+          >
+            문의 유형
+          </span>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button 
+                variant="outline" 
+                className="h-10 w-full justify-between border-gray-300 bg-white hover:bg-gray-50 focus:ring-1 focus:ring-gray-400 focus:border-gray-400"
+                style={{
+                  fontSize: 'var(--text-regular-size)',
+                  lineHeight: 'var(--text-regular-line-height)',
+                  letterSpacing: 'var(--text-regular-letter-spacing)'
+                }}
+              >
+                {type}
+                <ChevronDownIcon className="h-4 w-4 opacity-50" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-full">
+              {TYPES.map(t => (
+                <DropdownMenuItem 
+                  key={t} 
+                  onClick={() => setType(t)}
+                  className="cursor-pointer"
+                >
+                  {t}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-sm text-neutral-600">답변 받을 이메일</span>
-          <input className="border rounded px-3 h-10" type="email" required value={email} onChange={(e)=>setEmail(e.target.value)} placeholder="you@example.com" />
+        <label className="flex flex-col gap-2">
+          <span 
+            className="text-gray-700"
+            style={{
+              fontSize: 'var(--text-regular-size)',
+              lineHeight: 'var(--text-regular-line-height)',
+              letterSpacing: 'var(--text-regular-letter-spacing)',
+              fontWeight: 'var(--font-weight-medium)'
+            }}
+          >
+            답변 받을 이메일
+          </span>
+          <input 
+            className="h-10 border border-gray-300 rounded-lg px-3 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-all bg-white" 
+            type="email" 
+            required 
+            value={email} 
+            onChange={(e)=>setEmail(e.target.value)} 
+            placeholder="you@example.com"
+            style={{
+              fontSize: 'var(--text-regular-size)',
+              lineHeight: 'var(--text-regular-line-height)',
+              letterSpacing: 'var(--text-regular-letter-spacing)'
+            }}
+          />
         </label>
       </div>
-      <label className="flex flex-col gap-1">
-        <span className="text-sm text-neutral-600">문의 내용</span>
-        <textarea className="border rounded px-3 py-2 min-h-[140px]" required value={message} onChange={(e)=>setMessage(e.target.value)} placeholder="어떤 점이 궁금하신가요?" />
+      <label className="flex flex-col gap-2">
+        <span 
+          className="text-gray-700"
+          style={{
+            fontSize: 'var(--text-regular-size)',
+            lineHeight: 'var(--text-regular-line-height)',
+            letterSpacing: 'var(--text-regular-letter-spacing)',
+            fontWeight: 'var(--font-weight-medium)'
+          }}
+        >
+          문의 내용
+        </span>
+        <textarea 
+          className="border border-gray-300 rounded-lg px-3 py-3 min-h-[140px] text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-all bg-white resize-none" 
+          required 
+          value={message} 
+          onChange={(e)=>setMessage(e.target.value)} 
+          placeholder="어떤 점이 궁금하신가요?"
+          style={{
+            fontSize: 'var(--text-regular-size)',
+            lineHeight: 'var(--text-regular-line-height)',
+            letterSpacing: 'var(--text-regular-letter-spacing)'
+          }}
+        />
       </label>
-      <Button className="h-10 px-5 rounded-full bg-black text-white hover:bg-black/90 btn-animate" disabled={loading} type="submit">
-        {loading ? '전송 중…' : '문의 보내기'}
+      <Button 
+        className="h-12 px-8 rounded-full bg-black text-white hover:bg-black/90 btn-animate" 
+        disabled={loading} 
+        type="submit"
+      >
+        <span 
+          style={{
+            fontSize: 'var(--text-regular-size)',
+            lineHeight: 'var(--text-regular-line-height)',
+            letterSpacing: 'var(--text-regular-letter-spacing)',
+            fontWeight: 'var(--font-weight-medium)'
+          }}
+        >
+          {loading ? '전송 중…' : '문의 보내기'}
+        </span>
       </Button>
     </form>
   )

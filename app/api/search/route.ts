@@ -642,34 +642,8 @@ export async function POST(req: Request) {
         credits_used: actualCreditsUsed
       })
       
-      try {
-        const { error: logError } = await supabase
-          .from('search_history')
-          .insert({
-            user_id: user.id,
-            platform: 'instagram',
-            search_type: 'keyword', // 인스타그램은 모두 키워드 검색으로 처리
-            keyword: searchKeyword, // 원본 키워드 저장 (유튜브와 동일)
-            filters: input.filters || {},
-            results_count: sorted.length,
-            credits_used: actualCreditsUsed
-          })
-        
-        if (logError) {
-          console.error('❌ Instagram 검색 기록 저장 실패:', logError)
-          console.error('❌ 에러 세부사항:', JSON.stringify(logError, null, 2))
-        } else {
-          console.log('✅ Instagram 검색 기록 저장 성공!', {
-            search_type: 'keyword',
-            keyword: searchKeyword,
-            credits_used: actualCreditsUsed,
-            results_count: sorted.length
-          })
-        }
-      } catch (error) {
-        console.error('❌ Instagram 검색 기록 저장 오류:', error)
-        console.error('❌ 오류 스택:', (error as Error)?.stack)
-      }
+      // 검색 기록 저장은 클라이언트의 /api/me/search-record에서 처리 (중복 방지)
+      console.log(`📝 Instagram 키워드 검색 완료 - 결과: ${sorted.length}개, 크레딧: ${actualCreditsUsed} (기록은 클라이언트에서 처리)`)
       
       // 크레딧 차감은 settle 함수에서 처리됨 (중복 방지)
       console.log(`💰 Instagram 키워드 검색 실제 크레딧 사용량: ${actualCreditsUsed}`)
@@ -921,35 +895,8 @@ async function handleProfileSearch(
     console.log(`💰 Instagram 프로필 실제 크레딧 사용량: ${actualCreditsUsed} (결과 수: ${searchRows.length})`)
     console.log(`✅ 크레딧 정산은 settle 함수에서 처리됨 (중복 차감 방지)`)
     
-    // 2. B. 검색 기록 저장 (search_history 테이블 직접 INSERT)
-    try {
-      const { createClient } = await import('@supabase/supabase-js')
-      const svc = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!,
-        { auth: { persistSession: false } }
-      )
-      
-      const { error: logError } = await svc
-        .from('search_history')
-        .insert({
-          user_id: userId,
-          platform: 'instagram', // 플랫폼 명시
-          search_type: 'profile',
-          keyword: username,
-          filters: input.filters || {},
-          results_count: searchRows.length,
-          credits_used: actualCreditsUsed
-        })
-      
-      if (logError) {
-        console.error('❌ Instagram 검색 기록 저장 실패:', logError)
-      } else {
-        console.log('✅ Instagram 검색 기록 저장 성공 (search_history)')
-      }
-    } catch (error) {
-      console.error('❌ Instagram 검색 기록 저장 오류:', error)
-    }
+    // 검색 기록 저장은 클라이언트의 /api/me/search-record에서 처리 (중복 방지)
+    console.log(`📝 Instagram 프로필 검색 완료 - 결과: ${searchRows.length}개, 크레딧: ${actualCreditsUsed} (기록은 클라이언트에서 처리)`)
     
     return Response.json({
       items: searchRows, // 프론트엔드가 기대하는 필드명으로 변경

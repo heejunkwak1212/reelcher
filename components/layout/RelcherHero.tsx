@@ -194,7 +194,7 @@ export default function RelcherHero({ user }: RelcherHeroProps) {
             transition={{ duration: 0.4, delay: 0.9 }}
           >
             <p className="mt-8 text-xl md:text-1xl font-medium text-gray-500 mb-10 leading-relaxed tracking-tight max-w-4xl mx-auto px-4">
-            가장 심플하지만 가장 강력한, 콘텐츠 레퍼런스 분석 서비스
+            가장 심플하지만 가장 강력한, 콘텐츠 레퍼런스 분석 솔루션
             </p>
           </motion.div>
 

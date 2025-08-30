@@ -479,6 +479,40 @@ function SearchTestPageContent() {
   
   // 페이지네이션 상태
   const [currentPage, setCurrentPage] = useState(1)
+
+  // ==========================================
+  // 🧹 페이지 벗어나기/새로고침 시 pending 검색 정리
+  // ==========================================
+  useEffect(() => {
+    const handleBeforeUnload = async () => {
+      // 현재 진행 중인 검색이 있으면 failed로 업데이트
+      try {
+        await fetch('/api/me/cleanup-pending-searches', {
+          method: 'POST',
+          keepalive: true // 페이지 언로드 후에도 요청 완료 보장
+        })
+      } catch (error) {
+        console.warn('⚠️ pending 검색 정리 실패:', error)
+      }
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        // 페이지가 숨겨질 때 (탭 전환, 최소화 등)
+        handleBeforeUnload()
+      }
+    }
+
+    // 페이지 언로드 시 정리
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    // 페이지 가시성 변경 시 정리 (모바일에서 효과적)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [])
   const itemsPerPage = 30
   
   // YouTube 검색 타입별 독립적인 키워드 상태
@@ -1018,6 +1052,39 @@ function SearchTestPageContent() {
       console.error('Error loading credits:', error)
     }
   }
+
+  // 초기 데이터 로드 및 pending 검색 정리
+  useEffect(() => {
+    // 1. 통계 및 크레딧 로드
+    loadStats().catch(console.warn)
+    loadCredits().catch(console.warn)
+    
+    // 2. 기존 pending 검색들 정리 (페이지 로드 시)
+    const cleanupPendingSearches = async () => {
+      try {
+        console.log('🧹 페이지 로드 시 pending 검색 정리 시작')
+        const response = await fetch('/api/me/cleanup-pending-searches', {
+          method: 'POST'
+        })
+        
+        if (response.ok) {
+          const result = await response.json()
+          console.log('✅ pending 검색 정리 완료:', result)
+          
+          // 정리 후 통계 재로드
+          if (result.cleaned > 0) {
+            setTimeout(() => {
+              Promise.all([loadStats(), loadCredits()]).catch(console.warn)
+            }, 500)
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ 페이지 로드 시 pending 검색 정리 실패:', error)
+      }
+    }
+    
+    cleanupPendingSearches()
+  }, [])
   
   // Combined reload for faster refreshes
   const reloadUserData = async () => {
@@ -1239,6 +1306,53 @@ function SearchTestPageContent() {
     setRaw('')
     openProgress('검색을 진행 중입니다…', 5)
     tickProgress(92, 1, 500)
+    
+    // ==========================================
+    // 🚀 검색 시작과 동시에 즉시 반영 시스템
+    // ==========================================
+    
+    // 1. 예상 크레딧 차감량 계산
+    const expectedCredits = getCreditCost()
+    
+    // 2. 검색 시작과 동시에 검색 기록 생성 (pending 상태)
+    let searchRecordId: string | null = null
+    try {
+      const keyword = keywords[0]?.trim() || ''
+      if (keyword && !keyword.includes('http')) {
+        const recordPayload = {
+          platform,
+          search_type: searchType,
+          keyword: searchType === 'profile' ? (keyword.startsWith('@') ? keyword : `@${keyword}`) : keyword,
+          expected_credits: expectedCredits,
+          status: 'pending' // 검색 진행 중 상태
+        }
+        
+        console.log(`🚀 검색 시작 즉시 기록 생성:`, recordPayload)
+        
+        const recordRes = await fetch('/api/me/search-record', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(recordPayload)
+        })
+        
+        if (recordRes.ok) {
+          const recordData = await recordRes.json()
+          searchRecordId = recordData.id
+          console.log(`✅ 검색 기록 생성 성공: ${searchRecordId}`)
+          
+          // 즉시 통계 업데이트
+          Promise.all([loadStats(), loadCredits()]).catch(console.warn)
+        } else {
+          console.warn('⚠️ 검색 기록 생성 실패, 계속 진행')
+        }
+      }
+    } catch (error) {
+      console.warn('⚠️ 검색 기록 생성 오류:', error)
+    }
+    
+    // 3. 검색 시작 로깅
+    console.log(`🚀 검색 시작: ${expectedCredits} 크레딧 예상 사용, 기록 ID: ${searchRecordId}`)
+    
     try {
       let payload: any
       let apiEndpoint: string
@@ -1455,60 +1569,57 @@ function SearchTestPageContent() {
       setRaw(JSON.stringify(json, null, 2))
       finishProgress()
       
-      // 검색 완료 후 즉시 통계 업데이트
-      Promise.all([loadStats(), loadCredits()]).catch(console.warn)
+      // ==========================================
+      // 🔄 검색 완료 후 크레딧 반환 처리 및 통계 재업데이트
+      // ==========================================
       
-      // 검색 성공 시 최근 키워드를 서버에 저장 (모든 플랫폼, 키워드 검색만, URL 검색 제외)
-      console.log(`키워드 저장 조건 체크: arr.length=${arr.length}, searchType=${searchType}, platform=${platform}`)
-      if (arr.length > 0 && (searchType === 'keyword' || searchType === 'profile')) {
-        let keyword = keywords[0]?.trim() || ''
-        
-        // 프로필 검색인 경우 @ 접두사 추가
-        if (searchType === 'profile') {
-          // URL에서 사용자명 추출
-          if (keyword.includes('instagram.com/') || keyword.includes('tiktok.com/@') || keyword.includes('youtube.com/')) {
-            // URL에서 사용자명 추출
-            if (keyword.includes('instagram.com/')) {
-              const match = keyword.match(/instagram\.com\/([^/?]+)/)
-              keyword = match ? match[1] : keyword
-            } else if (keyword.includes('tiktok.com/@')) {
-              const match = keyword.match(/tiktok\.com\/@([^/?]+)/)
-              keyword = match ? match[1] : keyword
-            } else if (keyword.includes('youtube.com/')) {
-              const match = keyword.match(/youtube\.com\/[@c]?([^/?]+)/)
-              keyword = match ? match[1] : keyword
-            }
+      // 검색 완료 시 기록 업데이트
+      if (searchRecordId) {
+        try {
+          console.log(`🔄 검색 완료, 기록 업데이트: ${searchRecordId}`)
+          
+          // 실제 크레딧 사용량 계산
+          let actualCredits = 0
+          let returned = arr.length
+          let requested = Number(payload?.limit || 30)
+          
+          if (platform === 'youtube') {
+            actualCredits = Math.floor((returned / 30) * (searchType === 'keyword' ? 50 : 50))
+          } else if (platform === 'tiktok') {
+            actualCredits = Math.floor((returned / 30) * 100)
+          } else {
+            actualCredits = Math.floor((returned / 30) * 100)
           }
           
-          // @ 접두사 추가 (이미 있다면 제거 후 추가)
-          keyword = keyword.startsWith('@') ? keyword : `@${keyword}`
-        }
-        
-        console.log(`키워드 저장 준비: keyword="${keyword}", searchType=${searchType}`)
-        
-        // 키워드나 프로필 검색인 경우 저장 (URL 검색 제외, http 포함 제외)
-        const isValidForSaving = keyword && keyword.length > 0 && !keyword.includes('http')
-        console.log(`키워드 저장 가능 여부: isValidForSaving=${isValidForSaving}`)
-        if (isValidForSaving) {
-          try {
-            console.log(`Saving recent keyword for ${platform}:`, keyword)
-            // 서버에 키워드 저장
-            const keywordRes = await fetch('/api/me/recent-keywords', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ keyword, platform })
-            })
-            if (!keywordRes.ok) {
-              const errorText = await keywordRes.text().catch(() => 'Unknown error')
-              console.warn(`Failed to save keyword (${keywordRes.status}):`, errorText)
-            } else {
-              console.log(`Recent keyword saved successfully for ${platform}`)
-            }
-          } catch (error) {
-            console.warn(`Failed to save recent keyword for ${platform}:`, error)
+          const refundAmount = Math.max(0, expectedCredits - actualCredits)
+          
+          const updatePayload = {
+            id: searchRecordId,
+            status: 'completed',
+            results_count: returned,
+            actual_credits: actualCredits,
+            refund_amount: refundAmount
           }
+          
+          console.log(`🔄 검색 기록 업데이트:`, updatePayload)
+          
+          await fetch('/api/me/search-record', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updatePayload)
+          })
+          
+          console.log(`✅ 검색 기록 업데이트 완료`)
+        } catch (error) {
+          console.warn('⚠️ 검색 기록 업데이트 실패:', error)
         }
       }
+      
+      // 검색 완료 후 즉시 통계 업데이트 (서버에서 크레딧 정산 완료 후)
+      Promise.all([loadStats(), loadCredits()]).catch(console.warn)
+      
+      // 키워드 저장은 검색 기록 API(/api/me/search-record)에서 자동 처리됨 (중복 방지)
+      console.log(`✅ 키워드 저장 완료 - 검색 기록에서 자동 처리됨`)
       // 환불 안내 (플랫폼별 크레딧 계산)
       try {
         let returned = 0
@@ -1569,11 +1680,25 @@ function SearchTestPageContent() {
           const refund = Math.max(0, reserved - actualCredits)
           
           if (refund > 0) {
+            // 검색 기록 업데이트에서 이미 크레딧 반환 처리됨
+            console.log(`💰 크레딧 반환 감지: ${refund} 크레딧 환불됨 (검색 기록에서 이미 처리됨)`)
+            
+            // 통계 재업데이트 (약간의 지연 후 실행)
+            setTimeout(() => {
+              Promise.all([loadStats(), loadCredits()]).catch(console.warn)
+            }, 1000)
+            
+            // 사용자에게 반환 안내 표시
             const toast = document.createElement('div')
-            toast.className = 'fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] bg-black text-white text-sm px-4 py-2 rounded shadow'
-            toast.textContent = `반환 안내: 결과가 적어 ${refund} 크레딧이 환불되었습니다.`
+            toast.className = 'fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] bg-green-600 text-white text-sm px-4 py-2 rounded shadow flex items-center gap-2'
+            toast.innerHTML = `
+              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+              </svg>
+              크레딧 반환: 결과가 적어 ${refund} 크레딧이 환불되었습니다.
+            `
             document.body.appendChild(toast)
-            setTimeout(()=>toast.remove(), 4000)
+            setTimeout(()=>toast.remove(), 5000)
           }
         }
       } catch {
@@ -1584,6 +1709,32 @@ function SearchTestPageContent() {
       const msg = (e as Error)?.message || 'Unknown error'
       setRaw(msg)
       setProgressOpen(false)
+      
+      // 검색 실패 시 기록 업데이트
+      if (searchRecordId) {
+        try {
+          console.log(`❌ 검색 실패, 기록 업데이트: ${searchRecordId}`)
+          
+          const updatePayload = {
+            id: searchRecordId,
+            status: 'failed',
+            results_count: 0,
+            actual_credits: 0,
+            refund_amount: expectedCredits, // 전액 환불
+            error_message: msg
+          }
+          
+          await fetch('/api/me/search-record', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updatePayload)
+          })
+          
+          console.log(`✅ 검색 실패 기록 업데이트 완료`)
+        } catch (error) {
+          console.warn('⚠️ 검색 실패 기록 업데이트 실패:', error)
+        }
+      }
     } finally {
       setLoading(false)
       abortRef.current = null
@@ -1596,6 +1747,10 @@ function SearchTestPageContent() {
     } catch {
       // abort 실패 시 무시
     }
+    
+    // 검색 취소 시 기록 업데이트 (searchRecordId는 함수 스코프 밖에 있으므로 별도 처리 필요)
+    console.log('🚫 검색 취소됨')
+    
     setProgressOpen(false)
     setLoading(false)
   }
@@ -2228,8 +2383,8 @@ function SearchTestPageContent() {
                   )}
             </div>
             
-            {/* TikTok 키워드 검색 시 업로드 기간 필터 */}
-            {platform === 'tiktok' && searchType === 'keyword' && (
+            {/* TikTok 프로필 검색 시만 업로드 기간 필터 */}
+            {platform === 'tiktok' && searchType === 'profile' && (
               <div className="mt-3">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   업로드 기간
@@ -2971,7 +3126,7 @@ function SearchTestPageContent() {
                           <div className="flex flex-col gap-3 items-center">
                             <CaptionDialog caption={r.caption || ''} platform={platform} />
                             {/* YouTube 자막 추출 제거 - Instagram/TikTok만 표시 */}
-                            <SubtitleDialog url={r.url} platform={platform} />
+                            <SubtitleDialog url={r.url} platform={platform} plan={plan} />
                           </div>
                         </td>
                       )}
@@ -3014,7 +3169,8 @@ function SearchTestPageContent() {
                               >
                                 영상 바로가기
                               </button>
-                              {/* YouTube 자막 추출 기능 완전 제거 */}
+                              {/* YouTube 자막 추출 버튼 */}
+                              <SubtitleDialog url={r.url} platform="youtube" plan={plan} />
                               <button 
                                 className="px-3 py-1.5 text-xs text-blue-600 hover:text-blue-800 font-medium transition-colors"
                                 onClick={() => setExpandedTitleRow(null)}
@@ -3614,7 +3770,7 @@ function ExportButtons({ items, platform, onProgress }: { items: SearchRow[]; pl
       const selectedItems = items.filter(i => selected.has(i.url))
       
       if (selectedItems.length === 1) {
-        // 단일 썸네일 다운로드
+        // 단일 썸네일 다운로드 - API 사용하여 조회수 포함
         const item = selectedItems[0]
         const thumbnailUrl = item.thumbnailUrl
         
@@ -3623,16 +3779,22 @@ function ExportButtons({ items, platform, onProgress }: { items: SearchRow[]; pl
           return
         }
         
-        // 썸네일 다운로드 (쇼츠인 경우 특별 처리)
-        const isShorts = item.isShorts === true
-        let downloadUrl = `/api/image-proxy?src=${encodeURIComponent(thumbnailUrl)}&download=true`
-        
-        // YouTube 쇼츠인 경우 세로형 비율 파라미터 추가
-        if (platform === 'youtube' && isShorts) {
-          downloadUrl += '&shorts=true'
-        }
-        
-        const response = await fetch(downloadUrl)
+        // 단일 썸네일도 조회수 정보와 함께 API 호출
+        const thumbnailsWithViews = [{
+          url: thumbnailUrl,
+          views: item.views || 0,
+          title: item.caption || ''
+        }]
+
+        const response = await fetch('/api/downloads/thumbnails', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ 
+            urls: [thumbnailUrl], 
+            platform, 
+            thumbnailsWithViews 
+          })
+        })
         
         if (!response.ok) {
           alert('썸네일 다운로드 실패')
@@ -3644,17 +3806,30 @@ function ExportButtons({ items, platform, onProgress }: { items: SearchRow[]; pl
         const a = document.createElement('a')
         a.href = url
         
-        // 날짜와 플랫폼별 썸네일 파일명 생성
-        const now = new Date()
-        const dateStr = now.toISOString().slice(0, 10) // YYYY-MM-DD
-        const platformNames = {
-          youtube: 'YouTube',
-          tiktok: 'TikTok',
-          instagram: 'Instagram'
+        // 서버에서 제공하는 파일명 사용 (조회수 포함)
+        let fileName = ''
+        const contentDisposition = response.headers.get('Content-Disposition')
+        if (contentDisposition) {
+          const match = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/)
+          if (match && match[1]) {
+            fileName = decodeURIComponent(match[1].replace(/['"]/g, ''))
+          }
         }
-        const platformName = platformNames[platform] || 'Reelcher'
         
-        a.download = `${platformName}_썸네일_${dateStr}.png`
+        // fallback 파일명 (조회수 없이)
+        if (!fileName) {
+          const now = new Date()
+          const dateStr = now.toISOString().slice(0, 10)
+          const platformNames = {
+            youtube: 'YouTube',
+            tiktok: 'TikTok', 
+            instagram: 'Instagram'
+          }
+          const platformName = platformNames[platform] || 'Reelcher'
+          fileName = `${platformName}_썸네일_${dateStr}.png`
+        }
+        
+        a.download = fileName
         a.click()
         URL.revokeObjectURL(url)
       } else {
@@ -3845,13 +4020,29 @@ function CaptionDialog({ caption, platform }: { caption: string; platform: 'yout
   )
 }
 
-function SubtitleDialog({ url, platform }: { url: string; platform?: string }) {
+function SubtitleDialog({ url, platform, plan }: { url: string; platform?: string; plan?: string }) {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [text, setText] = useState('')
   const [confirmOpen, setConfirmOpen] = useState(false)
   // simple in-memory cache per URL
   const cache = (globalThis as any).__subtitleCache || ((globalThis as any).__subtitleCache = new Map<string, string>())
+  const showUpgradeModal = (message = '자막 추출 기능은 STARTER 플랜부터 이용 가능합니다.') => {
+    const modal = document.createElement('div')
+    modal.className = 'fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4'
+    modal.innerHTML = `
+      <div class="bg-white rounded shadow-lg w-full max-w-md p-5">
+        <div class="text-base font-semibold mb-3">플랜 업그레이드 필요</div>
+        <div class="text-sm text-neutral-700">${message}</div>
+        <div class="flex items-center justify-end gap-3 mt-4">
+          <button id="cnl" class="px-3 py-1.5 text-sm border rounded">닫기</button>
+          <a id="go" class="px-3 py-1.5 text-sm border rounded bg-black text-white" href="/pricing">업그레이드</a>
+        </div>
+      </div>`
+    document.body.appendChild(modal)
+    modal.querySelector('#cnl')?.addEventListener('click', () => modal.remove())
+  }
+
   const showCreditModal = (message = '자막 추출에는 크레딧이 필요해요. 업그레이드 또는 충전 후 다시 시도해 주세요.') => {
     const modal = document.createElement('div')
     modal.className = 'fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4'
@@ -3946,6 +4137,10 @@ function SubtitleDialog({ url, platform }: { url: string; platform?: string }) {
             showCooldownModal()
             return
           }
+          if (errorJson.error === 'PLAN_RESTRICTION' || res.status === 403) {
+            showUpgradeModal(errorJson.message || '자막 추출 기능은 STARTER 플랜부터 이용 가능합니다.')
+            return
+          }
           errorMessage = errorJson.error || errorMessage
         } catch {
           // JSON 파싱 실패시 기본 메시지 사용
@@ -3984,11 +4179,22 @@ function SubtitleDialog({ url, platform }: { url: string; platform?: string }) {
   return (
     <>
       <button
-        className="px-2 py-1.5 text-xs border rounded hover:bg-neutral-50"
-        onClick={() => { if (cache.has(url)) { setText(cache.get(url) || ''); setOpen(true); } else { setConfirmOpen(true) } }}
-        disabled={loading}
+        className={`px-2 py-1.5 text-xs border rounded ${plan === 'free' ? 'opacity-50 cursor-not-allowed' : 'hover:bg-neutral-50'}`}
+        onClick={() => { 
+          if (plan === 'free') {
+            showUpgradeModal()
+            return
+          }
+          if (cache.has(url)) { 
+            setText(cache.get(url) || ''); 
+            setOpen(true); 
+          } else { 
+            setConfirmOpen(true) 
+          } 
+        }}
+        disabled={loading || plan === 'free'}
       >
-        {loading ? '추출 중…' : (cache.has(url) ? '자막 확인' : '자막 추출')}
+        {plan === 'free' ? '자막 추출 🔒' : (loading ? '추출 중…' : (cache.has(url) ? '자막 확인' : '자막 추출'))}
       </button>
       {confirmOpen && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setConfirmOpen(false)}>

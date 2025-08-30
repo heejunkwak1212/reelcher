@@ -23,6 +23,8 @@ interface FaqSectionProps extends React.HTMLAttributes<HTMLElement> {
 
 const FaqSection = React.forwardRef<HTMLElement, FaqSectionProps>(
   ({ className, title, description, items, contactInfo, ...props }, ref) => {
+    const [openIndex, setOpenIndex] = React.useState<number | null>(null);
+
     return (
       <section
         ref={ref}
@@ -56,6 +58,8 @@ const FaqSection = React.forwardRef<HTMLElement, FaqSectionProps>(
                 question={item.question}
                 answer={item.answer}
                 index={index}
+                isOpen={openIndex === index}
+                onToggle={() => setOpenIndex(openIndex === index ? null : index)}
               />
             ))}
           </div>
@@ -96,9 +100,11 @@ const FaqItem = React.forwardRef<
     question: string;
     answer: string;
     index: number;
+    isOpen: boolean;
+    onToggle: () => void;
   }
 >((props, ref) => {
-  const [isOpen, setIsOpen] = React.useState(false);
+  const { isOpen, onToggle } = props;
   const { question, answer, index } = props;
 
   return (
@@ -118,7 +124,7 @@ const FaqItem = React.forwardRef<
     >
       <Button
         variant="ghost"
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={onToggle}
         className="w-full px-6 py-4 h-auto justify-between hover:bg-transparent"
       >
         <h3
@@ -165,7 +171,7 @@ const FaqItem = React.forwardRef<
                 initial={{ y: -10, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 exit={{ y: -10, opacity: 0 }}
-                className="text-sm text-gray-600 leading-relaxed font-medium"
+                className="text-sm text-gray-600 leading-relaxed font-medium whitespace-pre-line"
               >
                 {answer}
               </motion.p>

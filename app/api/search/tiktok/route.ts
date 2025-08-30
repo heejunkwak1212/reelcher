@@ -380,62 +380,11 @@ export async function POST(request: NextRequest) {
       // Supabase 서비스 클라이언트 생성 (검색 기록 및 통계 업데이트용)
       const svc = (await import('@/lib/supabase/service')).supabaseService()
       
-      // TikTok 검색 기록 저장 (platform_searches 테이블 사용)
-      try {
-        const { error: historyError } = await svc
-          .from('platform_searches')
-          .insert({
-            user_id: user.id,
-            platform: 'tiktok',
-            search_type: searchRequest.searchType,
-            keyword: searchRequest.query,
-            filters: searchRequest.filters,
-            results_count: actualResults,
-            credits_used: actualCredits
-          })
-
-        if (historyError) {
-          console.error('TikTok 검색 기록 저장 실패:', historyError)
-          // 검색 기록 저장 실패는 응답에 영향을 주지 않음
-        }
-        
-        // 키워드 검색인 경우에만 최근 키워드로 저장 (2일간 보관)
-        if (searchRequest.searchType === 'keyword' && searchRequest.query?.trim()) {
-          // 2일 이상된 키워드 기록 정리
-          const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString()
-          await svc.from('platform_searches')
-            .delete()
-            .eq('user_id', user.id)
-            .eq('platform', 'tiktok')
-            .eq('search_type', 'keyword')
-            .eq('results_count', 0) // 키워드 저장용 더미 레코드만 삭제
-            .is('credits_used', null) // null로 구분
-            .lt('created_at', twoDaysAgo)
-          
-          // 기존 동일 키워드 더미 레코드 삭제 (중복 방지)
-          await svc.from('platform_searches')
-            .delete()
-            .eq('user_id', user.id)
-            .eq('platform', 'tiktok')
-            .eq('search_type', 'keyword')
-            .eq('keyword', searchRequest.query.trim())
-            .eq('results_count', 0) // 키워드 저장용 더미 레코드만 삭제
-            .is('credits_used', null) // null로 구분
-          
-          // 최근 키워드 저장 (더미 레코드)
-          await svc.from('platform_searches').insert({
-            user_id: user.id,
-            platform: 'tiktok',
-            search_type: 'keyword',
-            keyword: searchRequest.query.trim(),
-            results_count: 0, // 키워드 저장만을 위한 더미 count
-            credits_used: null, // null로 구분 (관리자 0과 구분)
-            created_at: new Date().toISOString()
-          })
-        }
-      } catch (historyError) {
-        console.error('TikTok 검색 기록 저장 실패:', historyError)
-      }
+      // 검색 기록 저장은 클라이언트의 /api/me/search-record에서 처리 (중복 방지)
+      console.log(`📝 TikTok 검색 완료 - 결과: ${actualResults}개, 크레딧: ${actualCredits} (기록은 클라이언트에서 처리)`)
+      
+      // 키워드 최근 검색 기록은 search_history에서 자동 관리됨 (중복 방지)
+      console.log(`📝 TikTok 키워드 최근 검색 기록 - search_history에서 자동 처리됨`)
 
       // 검색 통계 업데이트 (모든 사용자)
       try {
@@ -524,28 +473,8 @@ export async function POST(request: NextRequest) {
       const actualCreditsUsed = settle ? await settle(response.items?.length || 0) : 0
       console.log(`💰 TikTok 실제 크레딧 사용량: ${actualCreditsUsed} (결과 수: ${response.items?.length || 0})`)
       
-      // 검색 기록 저장 (search_history 테이블에 실제 사용 크레딧으로 저장)
-      try {
-        const { error: logError } = await supabase
-          .from('search_history')
-          .insert({
-            user_id: user.id,
-            platform: 'tiktok', // 플랫폼 명시
-            search_type: searchRequest.searchType || 'hashtag',
-            keyword: searchRequest.query || '',
-            filters: searchRequest.filters || {},
-            results_count: response.items?.length || 0,
-            credits_used: actualCreditsUsed
-          })
-        
-        if (logError) {
-          console.error('❌ TikTok 검색 기록 저장 실패:', logError)
-        } else {
-          console.log('✅ TikTok 검색 기록 저장 성공 (search_history)')
-        }
-      } catch (error) {
-        console.error('❌ TikTok 검색 기록 저장 오류:', error)
-      }
+      // 검색 기록은 클라이언트의 /api/me/search-record에서 처리 (중복 방지)
+      console.log(`📝 TikTok 해시태그 검색 완료 - 결과: ${response.items?.length || 0}개, 크레딧: ${actualCreditsUsed} (기록은 클라이언트에서 처리)`)
 
       return NextResponse.json(response)
 
@@ -554,16 +483,10 @@ export async function POST(request: NextRequest) {
       console.error('TikTok 검색 오류 상세:', {
         error: searchError,
         message: searchError instanceof Error ? searchError.message : 'Unknown error',
-        stack: searchError instanceof Error ? searchError.stack : undefined,
-        searchRequest,
-        isAdmin,
-        transactionId
+        stack: searchError instanceof Error ? searchError.stack : undefined
       })
 
-      // 검색 실패 시 크레딧 롤백 (관리자가 아닌 경우에만)
-      if (!isAdmin && transactionId) {
-        await supabase.rpc('rollback_credits', { transaction_id: transactionId })
-      }
+      // 검색 실패 시 크레딧 롤백은 클라이언트에서 처리됨
 
       console.error('TikTok 검색 오류:', searchError)
       return NextResponse.json(

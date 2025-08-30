@@ -34,6 +34,33 @@ export async function POST(req: Request) {
       .single()
 
     const isAdmin = userData?.role === 'admin'
+    
+    // 사용자 플랜 확인 (관리자가 아닌 경우에만)
+    if (!isAdmin) {
+      // 이미 userData에서 profiles 정보를 가져왔으므로 추가 조회
+      const { data: profileData, error: profileError } = await ssr
+        .from('profiles')
+        .select('plan')
+        .eq('user_id', user.id)
+        .single()
+
+      const userPlan = profileData?.plan || 'free'
+      
+      // FREE 플랜은 자막 추출 기능 제한
+      if (userPlan === 'free') {
+        return new Response(
+          JSON.stringify({ 
+            error: 'PLAN_RESTRICTION',
+            message: '자막 추출 기능은 STARTER 플랜부터 이용 가능합니다.',
+            requiredPlan: 'starter'
+          }),
+          { status: 403, headers: { 'content-type': 'application/json' } }
+        )
+      }
+      
+      console.log(`👤 자막 추출 플랜 확인: ${userPlan} (허용됨)`)
+    }
+    
     let transactionId = null
 
     // 관리자가 아닌 경우에만 크레딧 처리

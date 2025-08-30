@@ -159,13 +159,14 @@ export function RelcherPricing({
     {
       name: "FREE", // 플랜명
       price: "0", // 월간 가격
-      yearlyPrice: "0", // 연간 가격
+      yearlyPrice: "0", // 연간시 월 요금
       period: "month", // 기간
       features: [
         "월 250 크레딧", // 기능 1 - PRD.MD 기준
-        "30개 검색 결과", // 기능 2
-        "기본 분석 도구", // 기능 3
-        "커뮤니티 지원", // 기능 4
+        "최대 30개 검색 결과", // 기능 2
+        "유튜브 고급 필터링",
+        "엑셀 데이터 추출", // 기능 3
+        "썸네일 & 영상 mp4 추출", // 기능 4
       ],
       description: "개인 사용자를 위한 기본 플랜", // 설명
       buttonText: "무료로 시작하기", // 버튼 텍스트
@@ -175,12 +176,13 @@ export function RelcherPricing({
     {
       name: "STARTER", // 플랜명
       price: "19000", // 월간 가격 (원화) - PRD.MD 기준
-      yearlyPrice: "182400", // 연간 가격 (원화) - 20% 할인 적용 (19000*12*0.8)
+      yearlyPrice: "15200", // 연간시 월 요금 (원화) - 20% 할인 적용 (19000*0.8)
       period: "month", // 기간
       features: [
-        "월 2,000 크레딧", // 기능 1 - PRD.MD 기준
-        "60개 검색 결과", // 기능 2
-        "다중 키워드 검색", // 기능 5
+        "월 2,000 크레딧",
+        "FREE 플랜의 모든 기능", // 기능 1 - PRD.MD 기준
+        "최대 60개 검색 결과", // 기능 2
+        "인스타그램 다중 키워드 검색",
       ],
       description: "소규모 비즈니스를 위한 완벽한 시작", // 설명
       buttonText: "STARTER 시작하기", // 버튼 텍스트
@@ -190,13 +192,12 @@ export function RelcherPricing({
     {
       name: "PRO", // 플랜명
       price: "49000", // 월간 가격 (원화) - PRD.MD 기준
-      yearlyPrice: "470400", // 연간 가격 (원화) - 20% 할인 적용 (49000*12*0.8)
+      yearlyPrice: "39200", // 연간시 월 요금 (원화) - 20% 할인 적용 (49000*0.8)
       period: "month", // 기간
       features: [
-        "월 7,000 크레딧", // 기능 1 - PRD.MD 기준
-        "90개 검색 결과", // 기능 2
-        "고급 필터링", // 기능 5
-        "자막 추출 기능", // 기능 6
+        "월 7,000 크레딧",
+        "STARTER 플랜의 모든 기능", // 기능 1 - PRD.MD 기준
+        "최대 90개 검색 결과", // 기능 2 // 기능 6
       ],
       description: "성장하는 비즈니스를 위한 최적의 선택", // 설명
       buttonText: "PRO 시작하기", // 버튼 텍스트
@@ -206,13 +207,13 @@ export function RelcherPricing({
     {
       name: "BUSINESS", // 플랜명
       price: "119000", // 월간 가격 (원화) - PRD.MD 기준
-      yearlyPrice: "1142400", // 연간 가격 (원화) - 20% 할인 적용 (119000*12*0.8)
+      yearlyPrice: "95200", // 연간시 월 요금 (원화) - 20% 할인 적용 (119000*0.8)
       period: "month", // 기간
       features: [
-        "월 20,000 크레딧", // 기능 1 - PRD.MD 기준
-        "120개 검색 결과", // 기능 2
-        "전체 분석 도구", // 기능 3
-        "24/7 전담 지원", // 기능 4
+        "월 20,000 크레딧",
+        "PRO 플랜의 모든 기능", // 기능 1 - PRD.MD 기준
+        "최대 120개 검색 결과", // 기능 2
+        "최우선 지원", // 기능 3 // 기능 4
       ],
       description: "대규모 팀과 기업을 위한 완전한 솔루션", // 설명
       buttonText: "BUSINESS 시작하기", // 버튼 텍스트
@@ -307,27 +308,36 @@ export function RelcherPricing({
                 {plan.name}
               </p>
               
-              <div className="mt-6 flex items-center justify-center gap-x-1">
-                <span className="text-3xl font-bold tracking-tight text-foreground">
-                  {isMonthly 
-                    ? plan.price === "0" 
-                      ? "무료" 
-                      : `${Number(plan.price).toLocaleString()}원`
-                    : plan.yearlyPrice === "0"
-                      ? "무료"
-                      : `${Number(plan.yearlyPrice).toLocaleString()}원`
-                  }
-                </span>
-                {plan.price !== "0" && (
-                  <span className="text-sm font-semibold leading-6 tracking-wide text-muted-foreground">
-                    / {isMonthly ? "월" : "년"}
-                  </span>
+              <div className="mt-6 flex flex-col items-center justify-center">
+                {/* 연간 선택시 기존 월 요금에 취소선 표시 */}
+                {!isMonthly && plan.price !== "0" && (
+                  <div className="text-lg font-medium text-gray-500 mb-1" style={{ textDecoration: 'line-through' }}>
+                    ₩{Number(plan.price).toLocaleString()}
+                  </div>
                 )}
+                
+                <div className="flex items-center gap-x-1">
+                  <span className="text-3xl font-bold tracking-tight text-foreground">
+                    {isMonthly 
+                      ? plan.price === "0" 
+                        ? "무료" 
+                        : `${Number(plan.price).toLocaleString()}원`
+                      : plan.yearlyPrice === "0"
+                        ? "무료"
+                        : `${Number(plan.yearlyPrice).toLocaleString()}원`
+                    }
+                  </span>
+                  {plan.price !== "0" && (
+                    <span className="text-sm font-semibold leading-6 tracking-wide text-muted-foreground">
+                      / 월
+                    </span>
+                  )}
+                </div>
               </div>
 
               {plan.price !== "0" && (
                 <p className="text-xs leading-5 text-muted-foreground mt-1">
-                  {isMonthly ? "월간 결제" : "연간 결제"}
+                  {isMonthly ? "월간 결제" : "연간 결제 (월 단위 요금)"}
                 </p>
               )}
 

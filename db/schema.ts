@@ -106,4 +106,20 @@ export const monthlyCreditsUsage = pgTable('monthly_credit_usage', {
   updatedAt: timestamp('updated_at').defaultNow(),
 })
 
+// 검색 기록 테이블 (새로운 통합 테이블)
+export const searchHistory = pgTable('search_history', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull(),
+  platform: text('platform').notNull(), // youtube, tiktok, instagram
+  searchType: text('search_type').notNull(), // keyword, profile, url
+  keyword: text('keyword').notNull(),
+  filters: text('filters').default('{}'), // JSON 필터 정보
+  resultsCount: integer('results_count').default(0),
+  creditsUsed: integer('credits_used').default(0),
+  status: text('status').default('pending'), // pending, completed, failed, cancelled
+  errorMessage: text('error_message'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+})
+
 

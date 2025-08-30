@@ -50,6 +50,10 @@ export async function POST(request: NextRequest) {
       const viewCount = viewInfo ? formatViewCount(viewInfo.views) : '0'
       const fileName = `${platformName}_썸네일_${dateStr}_${viewCount}.png`
       
+      console.log('🖼️ 단일 썸네일 다운로드 - URL:', url)
+      console.log('🖼️ 단일 썸네일 다운로드 - viewInfo:', viewInfo)
+      console.log('🖼️ 단일 썸네일 다운로드 - fileName:', fileName)
+      
       return new NextResponse(buffer, {
         headers: {
           'Content-Type': 'image/png',
@@ -82,6 +86,10 @@ export async function POST(request: NextRequest) {
             else if (platform === 'instagram') platformPrefix = 'instagram'
             
             const fileName = `${platformPrefix}_${dateStr}_${viewCount}.${extension}`
+            
+            console.log(`🖼️ 다중 썸네일 ${i + 1}/${urls.length} - URL:`, url)
+            console.log(`🖼️ 다중 썸네일 ${i + 1}/${urls.length} - viewInfo:`, viewInfo)
+            console.log(`🖼️ 다중 썸네일 ${i + 1}/${urls.length} - fileName:`, fileName)
             
             zip.file(fileName, buffer)
           }
