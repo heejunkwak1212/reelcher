@@ -1,12 +1,12 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { supabaseBrowser } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import NavAnchor from '@/components/layout/NavAnchor'
 import { useEffect, useState } from 'react'
 import { ResponsiveLogo } from '@/components/ui/logo'
-import { useRouter } from 'next/navigation'
 
 export default function SiteHeader() {
   const [user, setUser] = useState<any>(null)
@@ -26,6 +26,7 @@ export default function SiteHeader() {
     
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user || null)
+      setLoading(false)
     })
     
     return () => subscription.unsubscribe()

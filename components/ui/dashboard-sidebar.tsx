@@ -30,6 +30,7 @@ import { Separator } from "@/components/ui/separator";
 import { CaretSortIcon } from "@radix-ui/react-icons";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import { relcherAlert } from './relcher-dialog';
 
 const sidebarVariants = {
   open: {
@@ -100,10 +101,10 @@ export function DashboardSidebar({ user, plan = 'free', balance = 0, onSidebarCh
   const usagePercentage = Math.min((usedCredits / totalCredits) * 100, 100)
   
   const planDisplayNames = {
-    free: 'Free 플랜 적용중',
-    starter: 'Starter 플랜 적용중',
-    pro: 'Pro 플랜 적용중',
-    business: 'Business 플랜 적용중'
+    free: 'FREE 플랜 적용중',
+    starter: 'STARTER 플랜 적용중',
+    pro: 'PRO 플랜 적용중',
+    business: 'BUSINESS 플랜 적용중'
   }
   
   const handleExpand = () => {
@@ -125,11 +126,11 @@ export function DashboardSidebar({ user, plan = 'free', balance = 0, onSidebarCh
         router.refresh();
       } else {
         console.error('로그아웃 실패:', result.error);
-        alert('로그아웃 중 오류가 발생했습니다. 다시 시도해주세요.');
+        await relcherAlert('로그아웃 중 오류가 발생했습니다. 다시 시도해주세요.');
       }
     } catch (error) {
       console.error('로그아웃 함수 호출 오류:', error);
-      alert('로그아웃 중 오류가 발생했습니다.');
+      await relcherAlert('로그아웃 중 오류가 발생했습니다.');
     }
   };
   
@@ -223,7 +224,7 @@ export function DashboardSidebar({ user, plan = 'free', balance = 0, onSidebarCh
                       <History className="h-4 w-4" />
                       <motion.li variants={variants}>
                         {!isCollapsed && (
-                          <p className="ml-2 text-sm font-medium">사용 이력</p>
+                          <p className="ml-2 text-sm font-medium">검색 이력</p>
                         )}
                       </motion.li>
                     </Link>
@@ -250,7 +251,7 @@ export function DashboardSidebar({ user, plan = 'free', balance = 0, onSidebarCh
                         <div className="mx-2 mt-3 mb-4">
                           <div className="rounded-lg bg-gray-50 border p-3 space-y-3">
                             <div className="text-sm font-semibold text-gray-900">
-                              {planDisplayNames[plan as keyof typeof planDisplayNames] || 'Free 플랜 적용중'}
+                              {planDisplayNames[plan as keyof typeof planDisplayNames] || 'FREE 플랜 적용중'}
                             </div>
                             
                             <div className="space-y-2">
@@ -367,7 +368,7 @@ export function DashboardSidebar({ user, plan = 'free', balance = 0, onSidebarCh
                           {user?.email || '사용자'}
                         </span>
                         <span className="line-clamp-1 text-xs text-gray-500 capitalize">
-                          {isAdmin ? 'admin' : plan} 플랜
+                          {isAdmin ? 'ADMIN' : plan.toUpperCase()} 플랜
                         </span>
                       </div>
                     </div>

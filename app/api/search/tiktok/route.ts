@@ -73,6 +73,40 @@ export async function POST(request: NextRequest) {
 
     console.log('TikTok 검색 - 관리자 여부:', isAdmin, 'resultsLimit:', searchRequest.resultsLimit)
 
+    // 플랜별 제한 확인 (관리자가 아닌 경우에만)
+    if (!isAdmin) {
+      // 플랜 정보 조회
+      const { data: planData, error: planError } = await supabase
+        .from('profiles')
+        .select('plan')
+        .eq('user_id', user.id)
+        .single()
+
+      const userPlan = planData?.plan || 'free'
+      console.log('TikTok 검색 - 사용자 플랜:', userPlan)
+
+      // 플랜별 결과 수 제한
+      const resultsLimit = searchRequest.resultsLimit
+      if (userPlan === 'free' && ![5, 30].includes(resultsLimit)) {
+        return NextResponse.json(
+          { error: 'FREE 플랜은 30개까지만 가능합니다.' },
+          { status: 403 }
+        )
+      }
+      if (userPlan === 'starter' && ![5, 30, 60].includes(resultsLimit)) {
+        return NextResponse.json(
+          { error: 'STARTER 플랜은 60개까지만 가능합니다.' },
+          { status: 403 }
+        )
+      }
+      if (userPlan === 'pro' && ![5, 30, 60, 90].includes(resultsLimit)) {
+        return NextResponse.json(
+          { error: 'PRO 플랜은 90개까지만 가능합니다.' },
+          { status: 403 }
+        )
+      }
+    }
+
     // 관리자가 아닌 경우에만 크레딧 처리
     if (!isAdmin) {
       // 크레딧 계산 (TikTok은 Instagram과 동일)

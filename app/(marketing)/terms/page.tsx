@@ -3,6 +3,7 @@ import { pages } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { supabaseServer } from '@/lib/supabase/server'
 import InlineEditor from '@/components/admin/InlineEditor'
+import SiteHeader from '@/components/layout/SiteHeader'
 
 export const runtime = 'nodejs'
 
@@ -68,11 +69,14 @@ export default async function TermsPage() {
     isAdmin = data?.role === 'admin'
   }
   return (
-    <div className="max-w-3xl mx-auto px-6 py-10 space-y-4" style={{ fontFamily: 'Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif' }}>
+    <>
+      <SiteHeader />
+      <div className="max-w-3xl mx-auto px-6 py-10 space-y-4" style={{ fontFamily: 'Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif' }}>
       <h1 className="text-2xl font-bold">이용약관</h1>
       <div className="text-sm text-neutral-500">게시일: 2025-08-16</div>
       <InlineEditor slug="terms" initialContent={row?.content || defaultTerms} isAdmin={isAdmin} />
-    </div>
+      </div>
+    </>
   )
 }
 

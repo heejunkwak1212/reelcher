@@ -6,6 +6,7 @@ import ThemeProvider from '@/components/ThemeProvider'
 import { siteBusiness } from '@/lib/site'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import SupabaseProvider from '@/components/providers/SupabaseProvider'
+import { RelcherDialogProvider } from '@/components/ui/relcher-dialog'
 import { supabaseServer } from '@/lib/supabase/server'
 
 // Ensure this layout renders on the Node runtime to avoid edge manifest issues
@@ -29,8 +30,8 @@ export const viewport = {
 }
 
 export const metadata: Metadata = {
-  title: "Reelcher - 인스타그램 릴스 분석 도구",
-  description: "인스타그램 릴스 데이터를 효율적으로 분석하고 트렌드를 파악하세요",
+  title: "Reelcher: 릴스 틱톡 유튜브 검색 벤치마킹 솔루션",
+  description: "터진 콘텐츠와 데이터를 효율적으로 분석하고 트렌드를 파악하세요",
   icons: {
     icon: [
       { url: '/favicon.ico', sizes: '32x32' },
@@ -83,10 +84,12 @@ export default async function RootLayout({
         />
         <ErrorBoundary>
           <SupabaseProvider user={user}>
-            <ThemeProvider />
-            {/* Toss SDK */}
-            <script src="https://js.tosspayments.com/v2/standard" async defer></script>
-            {children}
+            <RelcherDialogProvider>
+              <ThemeProvider />
+              {/* Toss SDK */}
+              <script src="https://js.tosspayments.com/v2/standard" async defer></script>
+              {children}
+            </RelcherDialogProvider>
           </SupabaseProvider>
         </ErrorBoundary>
         <footer className="mt-16 border-t">

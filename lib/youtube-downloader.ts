@@ -170,6 +170,7 @@ export async function extractYouTubeSubtitles(url: string): Promise<SubtitleResu
     }
     
     const videoTitle = info.title || 'YouTube 비디오';
+    console.log('비디오 제목:', videoTitle);
     
     // 자막 정보 확인
     if (!info.subtitles && !info.automatic_captions) {
@@ -179,23 +180,84 @@ export async function extractYouTubeSubtitles(url: string): Promise<SubtitleResu
       };
     }
     
-    // 한국어 자막 우선, 그 다음 영어, 자동 생성 자막 순으로 시도
+    const availableManual = info.subtitles ? Object.keys(info.subtitles) : [];
+    const availableAuto = info.automatic_captions ? Object.keys(info.automatic_captions) : [];
+    
+    console.log('사용 가능한 자막:', {
+      manual: availableManual,
+      auto: availableAuto
+    });
+    
+    // 모든 사용 가능한 언어 수집
+    const allAvailableLanguages = [...new Set([...availableManual, ...availableAuto])];
+    
+    // 언어 우선순위 동적 결정
+    let subtitleLanguages = [];
+    
+    // 1. 한국어 관련 언어가 있으면 최우선
+    const koreanLangs = ['ko', 'kr', 'ko-KR'];
+    const availableKorean = koreanLangs.filter(lang => allAvailableLanguages.includes(lang));
+    if (availableKorean.length > 0) {
+      subtitleLanguages.push(...availableKorean);
+      console.log('한국어 자막 감지됨:', availableKorean);
+    }
+    
+    // 2. 영어 관련 언어 추가
+    const englishLangs = ['en', 'en-US', 'en-GB'];
+    const availableEnglish = englishLangs.filter(lang => allAvailableLanguages.includes(lang));
+    subtitleLanguages.push(...availableEnglish);
+    
+    // 3. 기타 주요 언어들 추가
+    const otherLangs = [
+      'ja',                 // 일본어
+      'zh', 'zh-Hans', 'zh-Hant', // 중국어
+      'es', 'es-ES',        // 스페인어
+      'fr',                 // 프랑스어
+      'de',                 // 독일어
+      'it',                 // 이탈리아어
+      'pt', 'pt-BR',        // 포르투갈어
+      'ru',                 // 러시아어
+      'ar',                 // 아랍어
+      'hi',                 // 힌디어
+      'th',                 // 태국어
+      'vi',                 // 베트남어
+      'id',                 // 인도네시아어
+      'tr',                 // 터키어
+      'pl',                 // 폴란드어
+      'nl',                 // 네덜란드어
+      'sv',                 // 스웨덴어
+      'da',                 // 덴마크어
+      'no',                 // 노르웨이어
+      'fi'                  // 핀란드어
+    ];
+    
+    // 사용 가능한 언어만 추가
+    const availableOthers = otherLangs.filter(lang => allAvailableLanguages.includes(lang));
+    subtitleLanguages.push(...availableOthers);
+    
+    // 중복 제거
+    subtitleLanguages = [...new Set(subtitleLanguages)];
+    
+    console.log('언어 우선순위:', subtitleLanguages.slice(0, 5));
+    
     let subtitleData = '';
-    const subtitleLanguages = ['ko', 'kr', 'en', 'en-US'];
     
     // 수동 자막 먼저 시도
     if (info.subtitles) {
       for (const lang of subtitleLanguages) {
-        if (info.subtitles[lang]) {
+        if (info.subtitles[lang] && Array.isArray(info.subtitles[lang]) && info.subtitles[lang].length > 0) {
           try {
-            // 첫 번째 자막 포맷 사용 (보통 VTT 또는 SRT)
-            const subtitleUrl = info.subtitles[lang][0]?.url;
+            const subtitleEntry = info.subtitles[lang][0];
+            const subtitleUrl = subtitleEntry?.url;
             if (subtitleUrl) {
+              console.log(`수동 자막 URL 찾음 (${lang}):`, subtitleUrl);
               const response = await fetch(subtitleUrl);
-              const rawSubtitles = await response.text();
-              subtitleData = cleanSubtitleText(rawSubtitles);
-              console.log(`수동 자막 추출 완료 (${lang}):`, subtitleData.substring(0, 100) + '...');
-              break;
+              if (response.ok) {
+                const rawSubtitles = await response.text();
+                subtitleData = cleanSubtitleText(rawSubtitles);
+                console.log(`수동 자막 추출 완료 (${lang}): ${subtitleData.length}자`);
+                break;
+              }
             }
           } catch (error) {
             console.warn(`수동 자막 추출 실패 (${lang}):`, error);
@@ -207,15 +269,19 @@ export async function extractYouTubeSubtitles(url: string): Promise<SubtitleResu
     // 자동 생성 자막 시도 (수동 자막이 없는 경우)
     if (!subtitleData && info.automatic_captions) {
       for (const lang of subtitleLanguages) {
-        if (info.automatic_captions[lang]) {
+        if (info.automatic_captions[lang] && Array.isArray(info.automatic_captions[lang]) && info.automatic_captions[lang].length > 0) {
           try {
-            const subtitleUrl = info.automatic_captions[lang][0]?.url;
+            const subtitleEntry = info.automatic_captions[lang][0];
+            const subtitleUrl = subtitleEntry?.url;
             if (subtitleUrl) {
+              console.log(`자동 자막 URL 찾음 (${lang}):`, subtitleUrl);
               const response = await fetch(subtitleUrl);
-              const rawSubtitles = await response.text();
-              subtitleData = cleanSubtitleText(rawSubtitles);
-              console.log(`자동 자막 추출 완료 (${lang}):`, subtitleData.substring(0, 100) + '...');
-              break;
+              if (response.ok) {
+                const rawSubtitles = await response.text();
+                subtitleData = cleanSubtitleText(rawSubtitles);
+                console.log(`자동 자막 추출 완료 (${lang}): ${subtitleData.length}자`);
+                break;
+              }
             }
           } catch (error) {
             console.warn(`자동 자막 추출 실패 (${lang}):`, error);
@@ -225,9 +291,9 @@ export async function extractYouTubeSubtitles(url: string): Promise<SubtitleResu
     }
     
     if (!subtitleData) {
-    return {
-      success: false,
-        error: '자막을 추출할 수 없습니다. 지원되는 언어(한국어, 영어)의 자막이 없습니다.' 
+      return {
+        success: false,
+        error: '자막을 추출할 수 없습니다. 지원되는 언어의 자막이 없거나 자막이 비활성화되어 있습니다.' 
       };
     }
     
@@ -255,20 +321,171 @@ export async function extractYouTubeSubtitles(url: string): Promise<SubtitleResu
 // 자막 텍스트 정리 함수
 // ==================================================================================
 function cleanSubtitleText(rawSubtitles: string): string {
-  // VTT 형식의 헤더 제거
-  let cleaned = rawSubtitles.replace(/^WEBVTT\n/, '');
+  try {
+    // JSON3 형식인지 확인 (YouTube 자동 자막)
+    if (rawSubtitles.trim().startsWith('{')) {
+      console.log('JSON3 자막 형식 감지, 파싱 시작...');
+      const jsonData = JSON.parse(rawSubtitles);
+      
+      // JSON3 형식에서 텍스트 추출
+      let extractedText = '';
+      
+      if (jsonData.events && Array.isArray(jsonData.events)) {
+        for (const event of jsonData.events) {
+          if (event.segs && Array.isArray(event.segs)) {
+            let eventText = '';
+            for (const seg of event.segs) {
+              if (seg.utf8 && typeof seg.utf8 === 'string') {
+                eventText += seg.utf8;
+              }
+            }
+            if (eventText.trim()) {
+              extractedText += eventText.trim() + ' ';
+            }
+          }
+        }
+      }
+      
+      if (extractedText) {
+        console.log(`JSON3 파싱 완료: ${extractedText.length}자 추출`);
+        // 불필요한 효과음/상황 설명 제거
+        const cleanedText = removeAudioDescriptions(extractedText.trim());
+        console.log(`효과음 제거 후: ${cleanedText.length}자`);
+        return cleanedText;
+      }
+    }
+    
+    // VTT/SRT 형식 처리 (기존 로직)
+    console.log('VTT/SRT 자막 형식으로 처리...');
+    
+    // VTT 형식의 헤더 제거
+    let cleaned = rawSubtitles.replace(/^WEBVTT\n/, '');
+    
+    // SRT/VTT 타임스탬프 제거 (여러 형식 지원)
+    cleaned = cleaned.replace(/^\d+\n/gm, ''); // SRT 번호
+    cleaned = cleaned.replace(/\d{2}:\d{2}:\d{2}[.,]\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}[.,]\d{3}/g, ''); // 타임스탬프
+    cleaned = cleaned.replace(/\d{2}:\d{2}[.,]\d{3}\s*-->\s*\d{2}:\d{2}[.,]\d{3}/g, ''); // 짧은 타임스탬프
+    
+    // VTT 스타일 태그 제거
+    cleaned = cleaned.replace(/<\/?[^>]+(>|$)/g, ''); // HTML 태그
+    cleaned = cleaned.replace(/\{[^}]*\}/g, ''); // CSS 스타일
+    
+    // 연속된 줄바꿈을 하나로 통합
+    cleaned = cleaned.replace(/\n{2,}/g, '\n');
+    
+    // 앞뒤 공백 제거
+    cleaned = cleaned.trim();
+    
+    // 불필요한 효과음/상황 설명 제거
+    const finalCleaned = removeAudioDescriptions(cleaned);
+    console.log(`VTT/SRT 효과음 제거 후: ${finalCleaned.length}자`);
+    
+    return finalCleaned;
+    
+  } catch (error) {
+    console.error('자막 파싱 오류:', error);
+    console.log('원본 자막 앞부분:', rawSubtitles.substring(0, 500));
+    
+    // 파싱 실패 시 원본 반환 (응급처치)
+    return rawSubtitles;
+  }
+}
+
+// ==================================================================================
+// 효과음/상황 설명 제거 함수
+// ==================================================================================
+function removeAudioDescriptions(text: string): string {
+  let cleaned = text;
   
-  // SRT/VTT 타임스탬프 제거 (여러 형식 지원)
-  cleaned = cleaned.replace(/^\d+\n/gm, ''); // SRT 번호
-  cleaned = cleaned.replace(/\d{2}:\d{2}:\d{2}[.,]\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}[.,]\d{3}/g, ''); // 타임스탬프
-  cleaned = cleaned.replace(/\d{2}:\d{2}[.,]\d{3}\s*-->\s*\d{2}:\d{2}[.,]\d{3}/g, ''); // 짧은 타임스탬프
+  // 한국어 효과음/상황 설명 제거 패턴
+  const koreanPatterns = [
+    /\[음악\]/g,
+    /\[박수\]/g,
+    /\[웃음\]/g,
+    /\[웃음소리\]/g,
+    /\[환호\]/g,
+    /\[환호성\]/g,
+    /\[기계음\]/g,
+    /\[효과음\]/g,
+    /\[소음\]/g,
+    /\[노래\]/g,
+    /\[멜로디\]/g,
+    /\[울음\]/g,
+    /\[한숨\]/g,
+    /\[침묵\]/g,
+    /\[정적\]/g,
+    /\[배경음악\]/g,
+    /\[BGM\]/g,
+    /\[기침\]/g,
+    /\[숨소리\]/g,
+    /\[발걸음소리\]/g,
+    /\[문 여는 소리\]/g,
+    /\[문 닫는 소리\]/g,
+    /\[전화벨\]/g,
+    /\[알람\]/g,
+    /\[차량 소음\]/g,
+    /\[바람소리\]/g,
+    /\[빗소리\]/g,
+    /\[천둥소리\]/g
+  ];
   
-  // VTT 스타일 태그 제거
-  cleaned = cleaned.replace(/<\/?[^>]+(>|$)/g, ''); // HTML 태그
-  cleaned = cleaned.replace(/\{[^}]*\}/g, ''); // CSS 스타일
+  // 영어 효과음/상황 설명 제거 패턴  
+  const englishPatterns = [
+    /\[Music\]/gi,
+    /\[Applause\]/gi,
+    /\[Laughter\]/gi,
+    /\[Laughing\]/gi,
+    /\[Cheering\]/gi,
+    /\[Sound effect\]/gi,
+    /\[Background music\]/gi,
+    /\[BGM\]/gi,
+    /\[Coughing\]/gi,
+    /\[Breathing\]/gi,
+    /\[Footsteps\]/gi,
+    /\[Door opening\]/gi,
+    /\[Door closing\]/gi,
+    /\[Phone ringing\]/gi,
+    /\[Alarm\]/gi,
+    /\[Traffic noise\]/gi,
+    /\[Wind\]/gi,
+    /\[Rain\]/gi,
+    /\[Thunder\]/gi,
+    /\[Silence\]/gi,
+    /\[Pause\]/gi,
+    /\[Inaudible\]/gi,
+    /\[Unintelligible\]/gi
+  ];
   
-  // 연속된 줄바꿈을 하나로 통합
-  cleaned = cleaned.replace(/\n{2,}/g, '\n');
+  // 일반적인 대괄호 안의 설명 (너무 길지 않은 것들만)
+  const generalPatterns = [
+    /\[[^\]]{1,20}\]/g  // 20자 이하의 대괄호 내용만 제거 (긴 내용은 보존)
+  ];
+  
+  // 한국어 패턴 적용
+  koreanPatterns.forEach(pattern => {
+    cleaned = cleaned.replace(pattern, '');
+  });
+  
+  // 영어 패턴 적용
+  englishPatterns.forEach(pattern => {
+    cleaned = cleaned.replace(pattern, '');
+  });
+  
+  // 일반 패턴 적용 (조심스럽게)
+  // generalPatterns.forEach(pattern => {
+  //   cleaned = cleaned.replace(pattern, '');
+  // });
+  
+  // 불필요한 기호들 제거
+  cleaned = cleaned.replace(/\s*>>\s*/g, ' '); // >> 제거
+  cleaned = cleaned.replace(/\s*<<\s*/g, ' '); // << 제거
+  cleaned = cleaned.replace(/\s*-->\s*/g, ' '); // --> 제거 (타임스탬프 잔여물)
+  cleaned = cleaned.replace(/\s*<--\s*/g, ' '); // <-- 제거
+  cleaned = cleaned.replace(/\s*♪\s*/g, ' '); // 음표 기호 제거
+  cleaned = cleaned.replace(/\s*♫\s*/g, ' '); // 음표 기호 제거
+  
+  // 연속된 공백 정리
+  cleaned = cleaned.replace(/\s+/g, ' ');
   
   // 앞뒤 공백 제거
   cleaned = cleaned.trim();

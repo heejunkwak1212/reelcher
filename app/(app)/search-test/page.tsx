@@ -12,6 +12,7 @@ import { VerificationModal } from '@/components/auth/VerificationModal'
 import { useAuthStore } from '@/store/auth'
 import { Input } from '@/components/input'
 import { Input as ShadcnInput } from '@/components/ui/input'
+import { relcherAlert, relcherConfirm } from '@/components/ui/relcher-dialog'
 
 // 에러 바운더리 컴포넌트
 class ErrorBoundary extends Component<
@@ -40,7 +41,7 @@ class ErrorBoundary extends Component<
             <p className="text-gray-600 mb-4">페이지를 새로고침해주세요.</p>
             <button
               onClick={() => window.location.reload()}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              className="px-4 py-2 bg-black text-white rounded hover:bg-gray-800"
             >
               새로고침
             </button>
@@ -337,7 +338,7 @@ type SearchRow = {
 }
 
 function SearchTestPageContent() {
-  const [platform, setPlatform] = useState<'instagram' | 'youtube' | 'tiktok'>('instagram')
+  const [platform, setPlatform] = useState<'instagram' | 'youtube' | 'tiktok'>('youtube')
   const [searchType, setSearchType] = useState<'keyword' | 'url' | 'profile'>('keyword')
   
   // 틱톡에서 URL 검색이 선택되면 키워드로 변경 (유사 영상 검색 제거)
@@ -474,12 +475,29 @@ function SearchTestPageContent() {
       loadStats().catch(error => console.warn('⚠️ 통계 로드 실패:', error))
     }
     
+    // 월 크레딧 사용량만 업데이트 (자막 추출 시)
+    const handleMonthCreditsUpdate = (event: CustomEvent) => {
+      const { month_credits } = event.detail
+      console.log('📡 월 크레딧 사용량 업데이트 이벤트 수신:', month_credits)
+      setMonthCredits(month_credits)
+    }
+    
+    // 통계 재로드 이벤트 (자막 추출 시 월 크레딧 정보가 없는 경우)
+    const handleStatsReload = () => {
+      console.log('📡 통계 재로드 이벤트 수신')
+      loadStats().catch((error: any) => console.warn('⚠️ 통계 재로드 실패:', error))
+    }
+    
     document.body.addEventListener('relcher:creditsUpdate', handleCreditsUpdate as EventListener)
     document.body.addEventListener('relcher:statsUpdate', handleStatsUpdate as EventListener)
+    document.body.addEventListener('relcher:monthCreditsUpdate', handleMonthCreditsUpdate as EventListener)
+    document.body.addEventListener('relcher:statsReload', handleStatsReload as EventListener)
     
     return () => {
       document.body.removeEventListener('relcher:creditsUpdate', handleCreditsUpdate as EventListener)
       document.body.removeEventListener('relcher:statsUpdate', handleStatsUpdate as EventListener)
+      document.body.removeEventListener('relcher:monthCreditsUpdate', handleMonthCreditsUpdate as EventListener)
+      document.body.removeEventListener('relcher:statsReload', handleStatsReload as EventListener)
     }
   }, [])
   
@@ -919,8 +937,9 @@ function SearchTestPageContent() {
           console.log('✅ 초기 로딩 - 사용자 데이터:', userData)
           setUser(userData)
           setMyCredits(userData.credits || 0)
-          setTodayCount(userData.today || 0)  // todaySearches → today 수정
-          setMonthCount(userData.month || 0)  // monthSearches → month 수정
+          // 통계는 loadStats()에서 별도로 로드하므로 여기서는 설정하지 않음
+          // setTodayCount(userData.today || 0)  // loadStats()에서 처리
+          // setMonthCount(userData.month || 0)  // loadStats()에서 처리
           setMonthCredits(userData.monthCredits || 0)
           // recent 키워드는 별도 API에서 로드
           setIsAdmin(userData.role === 'admin')
@@ -945,6 +964,7 @@ function SearchTestPageContent() {
   const prevLimitRef = useRef<typeof limit>(limit)
   const [loading, setLoading] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
+  const searchRecordIdRef = useRef<string | null>(null)
   const [baseItems, setBaseItems] = useState<SearchRow[] | null>(null)
   const [sort, setSort] = useState<'views' | 'latest' | 'oldest'>('views')
   const [filters, setFilters] = useState<{ views?: [number, number]; followers?: [number, number]; date?: [string, string] }>({})
@@ -1371,7 +1391,7 @@ function SearchTestPageContent() {
     const expectedCredits = getCreditCost()
     
     // 2. 검색 시작과 동시에 검색 기록 생성 (pending 상태)
-    let searchRecordId: string | null = null
+    searchRecordIdRef.current = null
     try {
       const keyword = keywords[0]?.trim() || ''
       if (keyword && !keyword.includes('http')) {
@@ -1393,8 +1413,8 @@ function SearchTestPageContent() {
         
         if (recordRes.ok) {
           const recordData = await recordRes.json()
-          searchRecordId = recordData.id
-          console.log(`✅ 검색 기록 생성 성공: ${searchRecordId}`)
+          searchRecordIdRef.current = recordData.id
+          console.log(`✅ 검색 기록 생성 성공: ${searchRecordIdRef.current}`)
           
           // 즉시 통계 업데이트
           Promise.all([loadStats(), loadCredits()]).catch(error => {
@@ -1409,7 +1429,7 @@ function SearchTestPageContent() {
     }
     
     // 3. 검색 시작 로깅
-    console.log(`🚀 검색 시작: ${expectedCredits} 크레딧 예상 사용, 기록 ID: ${searchRecordId}`)
+    console.log(`🚀 검색 시작: ${expectedCredits} 크레딧 예상 사용, 기록 ID: ${searchRecordIdRef.current}`)
     
     try {
       let payload: any
@@ -1632,9 +1652,9 @@ function SearchTestPageContent() {
       // ==========================================
       
       // 검색 완료 시 기록 업데이트
-      if (searchRecordId) {
+      if (searchRecordIdRef.current) {
         try {
-          console.log(`🔄 검색 완료, 기록 업데이트: ${searchRecordId}`)
+          console.log(`🔄 검색 완료, 기록 업데이트: ${searchRecordIdRef.current}`)
           
           // 실제 크레딧 사용량 계산
           let actualCredits = 0
@@ -1652,7 +1672,7 @@ function SearchTestPageContent() {
           const refundAmount = Math.max(0, expectedCredits - actualCredits)
           
           const updatePayload = {
-            id: searchRecordId,
+            id: searchRecordIdRef.current,
             status: 'completed',
             results_count: returned,
             actual_credits: actualCredits,
@@ -1771,12 +1791,12 @@ function SearchTestPageContent() {
       setProgressOpen(false)
       
       // 검색 실패 시 기록 업데이트
-      if (searchRecordId) {
+      if (searchRecordIdRef.current) {
         try {
-          console.log(`❌ 검색 실패, 기록 업데이트: ${searchRecordId}`)
+          console.log(`❌ 검색 실패, 기록 업데이트: ${searchRecordIdRef.current}`)
           
           const updatePayload = {
-            id: searchRecordId,
+            id: searchRecordIdRef.current,
             status: 'failed',
             results_count: 0,
             actual_credits: 0,
@@ -1808,9 +1828,58 @@ function SearchTestPageContent() {
       // abort 실패 시 무시
     }
     
-    // 검색 취소 시 기록 업데이트 (searchRecordId는 함수 스코프 밖에 있으므로 별도 처리 필요)
-    console.log('🚫 검색 취소됨')
+    // 🚫 검색 취소 시 기록 업데이트
+    if (searchRecordIdRef.current) {
+      console.log(`🚫 검색 취소, 기록 업데이트: ${searchRecordIdRef.current}`)
+      
+      try {
+        // 취소된 검색도 실제로는 Apify 액터가 실행되어 비용이 발생하므로
+        // actual_credits는 expected_credits와 동일하게 설정하고 환불하지 않음
+        // 플랫폼별 크레딧 계산 (getCreditCost 함수와 동일한 로직)
+        const getExpectedCredits = () => {
+          if (platform === 'instagram') {
+            return { '30': 100, '60': 200, '90': 300, '120': 400, '5': 0 }[String(limit)] ?? 0
+          } else if (platform === 'youtube') {
+            if (searchType === 'keyword') {
+              return { '30': 50, '60': 100, '90': 150, '120': 200, '5': 0 }[String(limit)] ?? 0
+            } else {
+              return { '15': 25, '30': 50, '50': 70, '5': 0 }[String(limit)] ?? 0
+            }
+          } else if (platform === 'tiktok') {
+            return { '30': 100, '60': 200, '90': 300, '120': 400, '5': 0 }[String(limit)] ?? 0
+          }
+          return 0
+        }
+        const expectedCredits = getExpectedCredits()
+        
+        const updatePayload = {
+          id: searchRecordIdRef.current,
+          status: 'cancelled',
+          results_count: 0,
+          actual_credits: expectedCredits, // 취소된 검색도 전체 크레딧 차감 유지
+          refund_amount: 0, // 취소된 검색은 환불하지 않음 (실제 비용 발생)
+          error_message: '사용자가 검색을 취소했습니다'
+        }
+        
+        fetch('/api/me/search-record', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updatePayload)
+        }).then(() => {
+          console.log(`✅ 검색 취소 기록 업데이트 완료`)
+          // 취소 후 통계 업데이트
+          Promise.all([loadStats(), loadCredits()]).catch(error => {
+            console.warn('⚠️ 취소 후 통계/크레딧 업데이트 실패:', error)
+          })
+        }).catch(error => {
+          console.warn('⚠️ 검색 취소 기록 업데이트 실패:', error)
+        })
+      } catch (error) {
+        console.warn('⚠️ 검색 취소 기록 업데이트 오류:', error)
+      }
+    }
     
+    console.log('🚫 검색 취소됨')
     setProgressOpen(false)
     setLoading(false)
   }
@@ -2130,19 +2199,6 @@ function SearchTestPageContent() {
             <h2 className="text-lg font-semibold text-gray-700 mb-3">플랫폼 선택</h2>
             <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-lg w-full">
               <button
-                onClick={() => handlePlatformSwitch('instagram')}
-                className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center justify-center gap-2 ${
-                  platform === 'instagram'
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
-                </svg>
-                Instagram
-              </button>
-              <button
                 onClick={() => handlePlatformSwitch('youtube')}
                 className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center justify-center gap-2 ${
                   platform === 'youtube'
@@ -2154,6 +2210,19 @@ function SearchTestPageContent() {
                   <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
                 </svg>
                 YouTube
+              </button>
+              <button
+                onClick={() => handlePlatformSwitch('instagram')}
+                className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center justify-center gap-2 ${
+                  platform === 'instagram'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
+                </svg>
+                Instagram
               </button>
               <button
                 onClick={() => handlePlatformSwitch('tiktok')}
@@ -2717,10 +2786,11 @@ function SearchTestPageContent() {
                     </>
                   ) : (
                     <>
-                        <SelectItem value="30">30개 (50크레딧)</SelectItem>
-                        <SelectItem value="60" disabled={plan==='free'}>60개 (100크레딧){plan==='free'?' 🔒':''}</SelectItem>
-                        <SelectItem value="90" disabled={plan==='free'||plan==='starter'}>90개 (150크레딧){(plan==='free'||plan==='starter')?' 🔒':''}</SelectItem>
-                        <SelectItem value="120" disabled={plan==='free'||plan==='starter'||plan==='pro'}>120개 (200크레딧){(plan==='free'||plan==='starter'||plan==='pro')?' 🔒':''}</SelectItem>
+                        {/* TikTok: 30/60/90/120 */}
+                        <SelectItem value="30">30개 (100크레딧)</SelectItem>
+                        <SelectItem value="60" disabled={plan==='free'}>60개 (200크레딧){plan==='free'?' 🔒':''}</SelectItem>
+                        <SelectItem value="90" disabled={plan==='free'||plan==='starter'}>90개 (300크레딧){(plan==='free'||plan==='starter')?' 🔒':''}</SelectItem>
+                        <SelectItem value="120" disabled={plan==='free'||plan==='starter'||plan==='pro'}>120개 (400크레딧){(plan==='free'||plan==='starter'||plan==='pro')?' 🔒':''}</SelectItem>
                     </>
                   )}
                   </SelectContent>
@@ -2792,7 +2862,7 @@ function SearchTestPageContent() {
             <div className="flex-1 p-6 border border-gray-200 rounded-lg bg-gray-50 flex flex-col justify-between">
               {/* 상단 콘텐츠 (제목 + 키워드)를 하나로 묶음 */}
               <div>
-                <div className="text-sm font-medium text-gray-700 mb-4">나의 최근 키워드</div>
+                <div className="text-sm font-medium text-gray-700 mb-4">최근 검색 키워드</div>
                 <div className="flex flex-wrap gap-3 content-start">
                   {recentKeywords.length > 0 ? (() => {
                     const itemsPerPage = 11 // 페이지당 키워드 개수
@@ -3275,7 +3345,7 @@ function SearchTestPageContent() {
               <div className="h-3 bg-black rounded" style={{ width: `${Math.max(0, Math.min(100, progressPercent))}%` }} />
             </div>
             <div className="mt-2 text-sm text-neutral-600">{Math.round(progressPercent)}%</div>
-            <div className="mt-3 text-xs text-neutral-500">창을 닫지 말아주세요</div>
+            <div className="mt-3 text-xs text-neutral-500">창을 없애지 말아주세요. 창을 없애거나 새로고침하는 경우, 검색결과가 없더라도 크레딧이 소모돼요 </div>
           </div>
         </div>
       )}
@@ -3641,8 +3711,11 @@ function ExportButtons({ items, platform, onProgress }: { items: SearchRow[]; pl
       console.warn('Failed to set global row select:', error)
     }
   }, [selected])
-  const guardSelected = () => {
-    if (!selected.size) { alert('선택된 콘텐츠가 없습니다.'); return false }
+  const guardSelected = async () => {
+    if (!selected.size) { 
+      await relcherAlert('선택된 콘텐츠가 없습니다.'); 
+      return false 
+    }
     return true
   }
   
@@ -3657,7 +3730,7 @@ function ExportButtons({ items, platform, onProgress }: { items: SearchRow[]; pl
           <div class="text-sm text-gray-600 mb-6">${message}</div>
           <div class="flex items-center justify-end gap-3">
             <button id="cancel-btn" class="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">취소</button>
-            <button id="confirm-btn" class="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">확인</button>
+            <button id="confirm-btn" class="px-4 py-2 text-sm bg-black text-white rounded-lg hover:bg-gray-800 transition-colors">확인</button>
           </div>
         </div>
       `
@@ -3679,7 +3752,7 @@ function ExportButtons({ items, platform, onProgress }: { items: SearchRow[]; pl
     })
   }
   const toXlsx = async () => {
-    if (!guardSelected()) return
+    if (!(await guardSelected())) return
     
     const confirmed = await showConfirmDialog(
       '엑셀 추출',
@@ -3724,7 +3797,7 @@ function ExportButtons({ items, platform, onProgress }: { items: SearchRow[]; pl
     onProgress.finish()
   }
   const downloadVideos = async () => {
-    if (!guardSelected()) return
+    if (!(await guardSelected())) return
     
     const confirmed = await showConfirmDialog(
       '영상(MP4) 추출',
@@ -3815,7 +3888,7 @@ function ExportButtons({ items, platform, onProgress }: { items: SearchRow[]; pl
 
 
     const downloadThumbnails = async () => {
-    if (!guardSelected()) return
+    if (!(await guardSelected())) return
     
     const confirmed = await showConfirmDialog(
       '썸네일 추출',
@@ -3949,8 +4022,8 @@ function ExportButtons({ items, platform, onProgress }: { items: SearchRow[]; pl
     }
   }
 
-  const openLinks = () => {
-    if (!guardSelected()) return
+  const openLinks = async () => {
+    if (!(await guardSelected())) return
     const urls = items.filter(i => selected.has(i.url)).map(i => i.url)
     if (typeof window !== 'undefined') urls.forEach(u => window.open(u, '_blank'))
   }
@@ -4045,7 +4118,7 @@ function RowCheck({ url, index }: { url: string; index: number }) {
     >
       <Checkbox 
         checked={isChecked} 
-        className="w-5 h-5 border-2 border-gray-400 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600 pointer-events-none"
+        className="w-5 h-5 border-2 border-gray-400 data-[state=checked]:bg-black data-[state=checked]:border-black pointer-events-none"
       />
     </div>
   )
@@ -4068,7 +4141,7 @@ function CaptionDialog({ caption, platform }: { caption: string; platform: 'yout
             <div className="flex items-center justify-between mb-2">
               <h2 className="font-medium">{modalTitle}</h2>
               <div className="flex items-center gap-3">
-                <button className="text-xs px-2 py-1 border rounded" onClick={() => { navigator.clipboard.writeText(caption || ''); alert('복사되었습니다') }}>복사</button>
+                <button className="text-xs px-2 py-1 border rounded" onClick={async () => { navigator.clipboard.writeText(caption || ''); await relcherAlert('복사되었습니다') }}>복사</button>
                 <button className="text-sm text-neutral-600" onClick={() => setOpen(false)}>닫기</button>
               </div>
             </div>
@@ -4225,7 +4298,18 @@ function SubtitleDialog({ url, platform, plan }: { url: string; platform?: strin
           } 
         }))
         
-        // 자막 추출은 검색이 아니므로 검색통계는 업데이트하지 않음
+        // 자막 추출 후 크레딧 사용량만 업데이트 (검색 횟수는 제외)
+        if (j?.credits?.month_credits !== undefined) {
+          console.log('💰 자막 추출 후 월 크레딧 사용량 업데이트:', j.credits.month_credits)
+          // 월 크레딧 사용량 업데이트 이벤트 발생
+          document.body.dispatchEvent(new CustomEvent('relcher:monthCreditsUpdate', { 
+            detail: { month_credits: j.credits.month_credits } 
+          }))
+        } else {
+          // 월 크레딧 정보가 없으면 통계 재로드 이벤트 발생
+          console.log('💰 자막 추출 후 통계 재로드 이벤트 발생')
+          document.body.dispatchEvent(new CustomEvent('relcher:statsReload'))
+        }
       }
     } catch (e: any) {
       console.error('자막 추출 오류:', e)
@@ -4275,7 +4359,7 @@ function SubtitleDialog({ url, platform, plan }: { url: string; platform?: strin
             <div className="flex items-center justify-between mb-2">
               <h2 className="font-medium">자막</h2>
               <div className="flex items-center gap-3">
-                <button className="text-xs px-2 py-1 border rounded" onClick={() => { navigator.clipboard.writeText(text || ''); alert('복사되었습니다') }}>복사</button>
+                <button className="text-xs px-2 py-1 border rounded" onClick={async () => { navigator.clipboard.writeText(text || ''); await relcherAlert('복사되었습니다') }}>복사</button>
                 <button className="text-sm text-neutral-600" onClick={() => setOpen(false)}>닫기</button>
               </div>
             </div>

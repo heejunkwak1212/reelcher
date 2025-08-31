@@ -9,6 +9,7 @@ import Reveal from '@/components/ux/Reveal'
 import { supabaseServer } from '@/lib/supabase/server'
 import { FaqSection } from '@/components/faq'
 import { FeaturesSectionWithHoverEffects } from '@/components/feature-section-with-hover-effects'
+import MainPageWrapper from '@/components/layout/MainPageWrapper'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic';
@@ -80,7 +81,8 @@ export default async function Home() {
   const { data } = await supabase.auth.getUser().catch(() => ({ data: { user: null } as any }))
   const user = data?.user
   return (
-    <main className="min-h-screen bg-white">
+    <MainPageWrapper>
+      <main className="min-h-screen bg-white">
       <SiteHeader />
       <RelcherHero user={user} />
       
@@ -104,7 +106,7 @@ export default async function Home() {
       </section>
 
       {/* Service Description Section */}
-      <section className="max-w-6xl mx-auto px-6 pt-16 pb-16">
+      <section id="features" className="max-w-6xl mx-auto px-6 pt-16 pb-16">
         <Reveal>
           <div className="text-center mb-8">
             <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-6">
@@ -235,6 +237,7 @@ export default async function Home() {
           </div>
         </Reveal>
       </section>
-    </main>
+      </main>
+    </MainPageWrapper>
   )
 }

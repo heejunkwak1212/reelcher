@@ -1,22 +1,189 @@
-import { supabaseServer } from '@/lib/supabase/server'
+'use client'
 
-export const runtime = 'nodejs'
+import { useState, useEffect } from 'react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { LogOut, Settings as SettingsIcon } from 'lucide-react'
+import { supabaseBrowser } from '@/lib/supabase/client'
+import { useRouter } from 'next/navigation'
+import { relcherAlert, relcherConfirm } from '@/components/ui/relcher-dialog'
 
-export default async function SettingsPage() {
-  const ssr = await supabaseServer()
-  const { data: { user } } = await ssr.auth.getUser()
-  if (!user) return null
-  const { data: prof } = await ssr.from('profiles').select('display_name, how_found, plan').eq('user_id', user.id).single()
+export default function SettingsPage() {
+  const [user, setUser] = useState<any>(null)
+  const [profile, setProfile] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const router = useRouter()
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const supabase = supabaseBrowser()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+          router.push('/sign-in')
+          return
+        }
+
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('display_name, how_found, plan, created_at')
+          .eq('user_id', user.id)
+          .single()
+
+        setUser(user)
+        setProfile(prof)
+      } catch (error) {
+        console.error('데이터 조회 실패:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [router])
+
+  const handleLogout = async () => {
+    try {
+      const supabase = supabaseBrowser()
+      const { error } = await supabase.auth.signOut()
+      if (error) throw error
+      router.push('/')
+    } catch (error) {
+      console.error('로그아웃 실패:', error)
+      await relcherAlert('로그아웃에 실패했습니다.')
+    }
+  }
+
+  const handleWithdrawal = async () => {
+    const confirmed = await relcherConfirm(
+      '정말로 회원 탈퇴하시겠습니까? 이 작업은 되돌릴 수 없습니다.',
+      '회원 탈퇴 확인'
+    )
+    if (confirmed) {
+      await relcherAlert('회원 탈퇴 기능은 준비 중입니다. 고객센터로 문의해 주세요.')
+    }
+  }
+
+  const getPlanInfo = (plan: string) => {
+    switch (plan) {
+      case 'starter':
+        return { name: 'STARTER 플랜', description: '월 2,000 크레딧' }
+      case 'pro':
+        return { name: 'PRO 플랜', description: '월 7,000 크레딧' }
+      case 'business':
+        return { name: 'BUSINESS 플랜', description: '월 20,000 크레딧' }
+      default:
+        return { name: '무료 플랜', description: '현재 FREE 플랜 적용 중' }
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-8">
+        <div className="animate-pulse">
+          <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
+          <div className="h-64 bg-gray-200 rounded-lg"></div>
+        </div>
+      </div>
+    )
+  }
+
+  const currentPlan = profile?.plan || 'free'
+  const planInfo = getPlanInfo(currentPlan)
+
   return (
-    <div className="space-y-4">
-      <h1 className="text-lg font-semibold">설정</h1>
-      <div className="border border-gray-200 rounded-lg p-4 space-y-2 text-sm">
-        <div className="text-neutral-500">닉네임</div>
-        <div className="font-medium">{(prof as any)?.display_name || '-'}</div>
-        <div className="text-neutral-500 mt-4">유입 경로</div>
-        <div className="font-medium">{(prof as any)?.how_found || '-'}</div>
-        <div className="text-neutral-500 mt-4">플랜</div>
-        <div className="font-medium capitalize">{(prof as any)?.plan || 'free'}</div>
+    <div className="max-w-4xl mx-auto space-y-8 pt-6">
+      {/* 헤더 */}
+      <div>
+        <h1 className="text-xl font-semibold text-gray-700">설정</h1>
+        <p className="text-sm font-medium text-gray-600 mt-1">계정 정보를 확인 및 관리하세요</p>
+      </div>
+
+      {/* 계정 정보 섹션 */}
+      <Card className="border-gray-200" style={{ backgroundColor: '#F3F4F6' }}>
+        <CardHeader>
+          <CardTitle className="text-lg font-semibold text-gray-700">계정 정보</CardTitle>
+          <p className="text-sm font-medium text-gray-600">가입 당시 설정한 계정 정보</p>
+        </CardHeader>
+        <CardContent className="p-4">
+          <div className="flex items-center gap-4 p-4 bg-white rounded-lg">
+            <Avatar className="w-12 h-12">
+              <AvatarFallback className="bg-gray-200 text-gray-600">
+                {profile?.display_name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || 'U'}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex-1">
+              <h3 className="font-semibold text-gray-800">
+                {profile?.display_name || '김컴피'}
+              </h3>
+              <p className="text-sm text-gray-600">
+                {user?.email || 'kimcomfy@email.com'}
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* 구독 정보 섹션 */}
+      <Card className="border-gray-200" style={{ backgroundColor: '#F3F4F6' }}>
+        <CardHeader>
+          <CardTitle className="text-lg font-semibold text-gray-700">구독 정보</CardTitle>
+          <p className="text-sm font-medium text-gray-600">현재 플랜 및 구독 상태를 확인하세요</p>
+        </CardHeader>
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between p-4 bg-white rounded-lg">
+            <div className="flex items-center gap-3">
+              <Badge variant="outline" className="bg-white text-gray-700 border-gray-300">
+                {currentPlan.toUpperCase()}
+              </Badge>
+              <div>
+                <h3 className="font-semibold text-gray-800">{planInfo.name}</h3>
+                <p className="text-sm text-gray-600">{planInfo.description}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-sm border-gray-300 hover:bg-gray-50"
+                onClick={() => router.push('/dashboard/billing')}
+              >
+                <SettingsIcon className="w-4 h-4 mr-1" />
+                구독 관리
+              </Button>
+              <Button
+                size="sm"
+                className="text-sm bg-black text-white hover:bg-gray-800"
+                onClick={() => router.push('/pricing')}
+              >
+                업그레이드 ↗
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* 로그아웃 및 회원탈퇴 */}
+      <div className="flex items-center gap-3">
+        <Button
+          variant="outline"
+          size="sm"
+          className="text-sm border-gray-300 hover:bg-gray-50"
+          onClick={handleLogout}
+        >
+          <LogOut className="w-4 h-4 mr-1" />
+          로그아웃
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="text-sm text-red-600 border-red-300 hover:bg-red-50"
+          onClick={handleWithdrawal}
+        >
+          회원탈퇴
+        </Button>
       </div>
     </div>
   )

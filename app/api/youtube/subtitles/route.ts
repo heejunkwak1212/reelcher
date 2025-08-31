@@ -137,6 +137,26 @@ export async function POST(req: NextRequest) {
         
         console.log(`✅ YouTube 자막 추출 크레딧 차감 성공: ${requiredCredits}`)
         
+        // search_history에 자막 추출 기록 추가 (크레딧 사용량 통계를 위해)
+        try {
+          await supabase
+            .from('search_history')
+            .insert({
+              user_id: user.id,
+              platform: 'youtube',
+              search_type: 'subtitle_extraction',
+              keyword: '자막 추출', // URL 대신 "자막 추출"로 저장
+              filters: { url },
+              results_count: 1,
+              credits_used: requiredCredits,
+              status: 'completed'
+            })
+          
+          console.log(`✅ YouTube 자막 추출 기록 저장 완료`)
+        } catch (historyError) {
+          console.error('❌ YouTube 자막 추출 기록 저장 실패:', historyError)
+        }
+        
       } catch (error) {
         console.error('❌ YouTube 자막 추출 크레딧 차감 실패:', error)
       }
@@ -159,10 +179,27 @@ export async function POST(req: NextRequest) {
           .single()
         
         if (updatedCredits) {
+          // 최근 30일 크레딧 사용량 계산
+          const now = new Date()
+          const todayStart = new Date(now)
+          todayStart.setHours(0, 0, 0, 0)
+          const monthStart = new Date(todayStart)
+          monthStart.setDate(monthStart.getDate() - 29) // 오늘 포함 30일
+          
+          const { data: monthUsage } = await supabase
+            .from('search_history')
+            .select('credits_used')
+            .eq('user_id', user.id)
+            .gt('credits_used', 0)
+            .gte('created_at', monthStart.toISOString())
+          
+          const monthCredits = monthUsage?.reduce((sum, record) => sum + (record.credits_used || 0), 0) || 0
+          
           responseData.credits = {
             balance: updatedCredits.balance,
             reserved: updatedCredits.reserved,
-            used: 10 // YouTube 자막 추출은 10 크레딧
+            used: 10, // YouTube 자막 추출은 10 크레딧
+            month_credits: monthCredits
           }
           console.log(`✅ YouTube 자막 추출 후 크레딧 정보 포함:`, responseData.credits)
         }

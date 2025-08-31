@@ -60,48 +60,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '검색 상태 업데이트 실패' }, { status: 500 })
     }
 
-    // 크레딧 환불 처리
-    let totalRefund = 0
-    for (const search of pendingSearches) {
-      if (search.credits_used && search.credits_used > 0) {
-        totalRefund += search.credits_used
-      }
-    }
-
-    if (totalRefund > 0) {
-      console.log(`💰 총 ${totalRefund} 크레딧 환불 처리`)
-      
-      try {
-        // 현재 크레딧 조회
-        const { data: creditData, error: creditError } = await supabase
-          .from('credits')
-          .select('balance')
-          .eq('user_id', user.id)
-          .single()
-
-        if (!creditError && creditData) {
-          // 크레딧 환불
-          await supabase
-            .from('credits')
-            .update({
-              balance: creditData.balance + totalRefund
-            })
-            .eq('user_id', user.id)
-
-          console.log(`✅ 크레딧 환불 완료: ${totalRefund} 크레딧`)
-        }
-      } catch (refundError) {
-        console.error('❌ 크레딧 환불 실패:', refundError)
-      }
-    }
-
-    // 환불된 크레딧만큼 search_history의 credits_used를 0으로 업데이트
-    await supabase
-      .from('search_history')
-      .update({ credits_used: 0 })
-      .eq('user_id', user.id)
-      .eq('status', 'cancelled')
-      .lt('created_at', fiveMinutesAgo)
+    // ⚠️ 중요: 취소된 검색이라도 실제로는 Apify 액터가 실행되어 비용이 발생하므로
+    // 크레딧은 환불하지 않고, credits_used도 그대로 유지합니다.
+    // 이는 실제 비용 발생과 통계의 정확성을 위해 필요합니다.
+    
+    console.log(`📊 취소된 검색들의 크레딧은 실제 비용 발생으로 인해 차감 상태로 유지됩니다`)
 
     console.log(`✅ ${pendingSearches.length}개의 pending 검색 정리 완료`)
 
@@ -109,7 +72,7 @@ export async function POST(request: NextRequest) {
       success: true,
       message: `${pendingSearches.length}개의 미완료 검색이 정리되었습니다`,
       cleaned: pendingSearches.length,
-      refunded: totalRefund
+      refunded: 0 // 취소된 검색은 크레딧을 환불하지 않음
     })
 
   } catch (error) {

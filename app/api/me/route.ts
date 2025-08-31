@@ -20,31 +20,59 @@ export async function GET(req: Request) {
     const scope = url.searchParams.get('scope')
     if (scope === 'search-stats') {
       try {
-        // search_history 테이블에서 모든 통계를 직접 계산 (/api/me/stats와 동일한 방식)
+        // 검색 통계와 크레딧 사용량을 분리하여 계산
+        // 1. 검색 기록 (자막 추출 제외)
         const { data: searchHistory, error: statsError } = await svc
           .from('search_history')
           .select('created_at, credits_used, keyword, search_type')
           .eq('user_id', user.id)
+          .neq('search_type', 'subtitle_extraction') // 자막 추출은 검색통계에서 제외
         
-        if (statsError) {
-          console.error('🔴 search-stats 조회 실패:', statsError)
-          return Response.json({ 
-            today: 0, 
-            month: 0, 
-            recent: [], 
-            monthCredits: 0,
-            credits: (cr?.balance || 0) as number
-          })
+        // 2. 크레딧 기록 (자막 추출 포함)
+        const { data: creditHistory, error: creditError } = await svc
+          .from('search_history')
+          .select('created_at, credits_used')
+          .eq('user_id', user.id)
+          .gt('credits_used', 0) // 크레딧이 사용된 모든 기록 (자막 추출 포함)
+        
+        if (statsError || creditError) {
+          console.error('🔴 search-stats 조회 실패:', { statsError, creditError })
+                  return Response.json({ 
+          id: user.id,
+          email: user.email,
+          role: prof?.role || 'user',
+          plan: prof?.plan || 'free',
+          display_name: prof?.display_name,
+          today: 0, 
+          month: 0, 
+          recent: [], 
+          monthCredits: 0,
+          credits: (cr?.balance || 0) as number
+        })
         }
         
         const now = new Date()
         const today_date = now.toISOString().split('T')[0] // YYYY-MM-DD
         
-        // 최근 30일 (오늘 포함)
-        const thirtyDaysAgo = new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000)
-        thirtyDaysAgo.setHours(0, 0, 0, 0)
-        const monthStart = thirtyDaysAgo
-        const monthEnd = now
+        // 정확한 날짜 계산: 오늘 00:00:00부터 시작
+        const todayStart = new Date(now)
+        todayStart.setHours(0, 0, 0, 0)
+        
+        // 최근 30일: 오늘 포함하여 30일 전 00:00:00부터 오늘 끝까지
+        const monthStart = new Date(todayStart)
+        monthStart.setDate(monthStart.getDate() - 29) // 오늘 포함 30일
+        const monthEnd = new Date(todayStart)
+        monthEnd.setDate(monthEnd.getDate() + 1) // 내일 00:00:00 (오늘 23:59:59까지)
+        
+        console.log('📅 /api/me 날짜 범위:', {
+          today_date,
+          monthStart: monthStart.toISOString(),
+          monthEnd: monthEnd.toISOString()
+        })
+        console.log('📊 /api/me 검색 기록 개수:', {
+          searchRecords: searchHistory?.length || 0,
+          creditRecords: creditHistory?.length || 0
+        })
         
         let today = 0
         let month = 0
@@ -60,10 +88,9 @@ export async function GET(req: Request) {
             today++
           }
           
-          // 최근 30일 검색 수 및 크레딧 사용량
-          if (recordDate >= monthStart && recordDate <= monthEnd) {
+          // 최근 30일 검색 수 (/api/me/stats와 동일한 로직)
+          if (recordDate >= monthStart) {
             month++
-            monthCredits += Number(record.credits_used || 0)
           }
           
           // 최근 키워드 수집 (2일 이내, 자막 추출/URL 검색 제외)
@@ -87,6 +114,16 @@ export async function GET(req: Request) {
           }
         }
         
+        // 크레딧 사용량 계산 (자막 추출 포함)
+        for (const record of creditHistory || []) {
+          const recordDate = new Date(record.created_at)
+          
+          // 최근 30일 크레딧 사용량 (/api/me/stats와 동일한 로직)
+          if (recordDate >= monthStart) {
+            monthCredits += Number(record.credits_used || 0)
+          }
+        }
+        
         // 키워드를 최신순으로 정렬하고 중복 제거
         const uniqueKeywords = []
         const seenKeywords = new Set()
@@ -103,9 +140,21 @@ export async function GET(req: Request) {
         
         const recentKeywords = uniqueKeywords
 
-        console.log('🔄 search-stats API 응답 (search_history 기반):', { today, month, monthCredits, recent: recentKeywords.length })
+        console.log('📊 /api/me (search-stats) 최종 계산 결과:', { 
+          today, 
+          month, 
+          monthCredits, 
+          recent: recentKeywords.length,
+          searchHistoryCount: searchHistory?.length || 0,
+          creditHistoryCount: creditHistory?.length || 0
+        })
         
         return Response.json({ 
+          id: user.id,
+          email: user.email,
+          role: prof?.role || 'user',
+          plan: prof?.plan || 'free',
+          display_name: prof?.display_name,
           today, 
           month, 
           monthCredits,
@@ -114,6 +163,11 @@ export async function GET(req: Request) {
       } catch (error) {
         console.error('search-stats 조회 전체 오류:', error)
         return Response.json({ 
+          id: user.id,
+          email: user.email,
+          role: prof?.role || 'user',
+          plan: prof?.plan || 'free',
+          display_name: prof?.display_name,
           today: 0, 
           month: 0, 
           monthCredits: 0,

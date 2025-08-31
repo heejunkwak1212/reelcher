@@ -38,7 +38,44 @@ export async function POST(request: NextRequest) {
 
     console.log(`📝 검색 기록 생성 요청:`, data)
 
-    // search_history 테이블에 기록 생성
+    // 🚀 1단계: 크레딧 즉시 차감 (실제 차감)
+    if (data.expected_credits > 0) {
+      console.log(`💰 크레딧 즉시 차감: ${data.expected_credits} 크레딧`)
+      
+      // 현재 크레딧 조회
+      const { data: creditData, error: creditError } = await supabase
+        .from('credits')
+        .select('balance')
+        .eq('user_id', user.id)
+        .single()
+
+      if (creditError || !creditData) {
+        console.error('❌ 크레딧 조회 실패:', creditError)
+        return NextResponse.json({ error: '크레딧 조회 실패' }, { status: 500 })
+      }
+
+      if (creditData.balance < data.expected_credits) {
+        console.error(`❌ 크레딧 부족: 잔액 ${creditData.balance}, 필요 ${data.expected_credits}`)
+        return NextResponse.json({ error: '크레딧이 부족합니다' }, { status: 402 })
+      }
+
+      // 크레딧 차감 실행
+      const { error: deductError } = await supabase
+        .from('credits')
+        .update({
+          balance: creditData.balance - data.expected_credits
+        })
+        .eq('user_id', user.id)
+
+      if (deductError) {
+        console.error('❌ 크레딧 차감 실패:', deductError)
+        return NextResponse.json({ error: '크레딧 차감 실패' }, { status: 500 })
+      }
+
+      console.log(`✅ 크레딧 즉시 차감 완료: ${creditData.balance} → ${creditData.balance - data.expected_credits}`)
+    }
+
+    // 🚀 2단계: search_history 테이블에 기록 생성
     const { data: searchRecord, error } = await supabase
       .from('search_history')
       .insert({
@@ -57,6 +94,31 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error('❌ 검색 기록 생성 실패:', error)
+      
+      // 검색 기록 생성 실패 시 크레딧 롤백
+      if (data.expected_credits > 0) {
+        console.log(`🔄 크레딧 롤백 실행: ${data.expected_credits} 크레딧`)
+        try {
+          const { data: currentCredit } = await supabase
+            .from('credits')
+            .select('balance')
+            .eq('user_id', user.id)
+            .single()
+          
+          if (currentCredit) {
+            await supabase
+              .from('credits')
+              .update({
+                balance: currentCredit.balance + data.expected_credits
+              })
+              .eq('user_id', user.id)
+            console.log(`✅ 크레딧 롤백 완료`)
+          }
+        } catch (rollbackError) {
+          console.error('❌ 크레딧 롤백 실패:', rollbackError)
+        }
+      }
+      
       return NextResponse.json({ error: '검색 기록 생성 실패' }, { status: 500 })
     }
 
@@ -125,6 +187,12 @@ export async function PUT(request: NextRequest) {
     if (data.actual_credits !== undefined) {
       updateData.credits_used = data.actual_credits
       console.log(`💰 크레딧 사용량 업데이트: ${existingRecord.credits_used} → ${data.actual_credits}`)
+    }
+
+    // 🔧 반환 크레딧 저장 (중요: refund_amount를 updateData에 포함)
+    if (data.refund_amount !== undefined) {
+      updateData.refund_amount = data.refund_amount
+      console.log(`💰 반환 크레딧 기록 저장: ${data.refund_amount} 크레딧`)
     }
 
     // 오류 메시지 추가

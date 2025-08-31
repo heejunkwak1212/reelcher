@@ -85,18 +85,14 @@ export async function POST(req: Request) {
           // 파일 정리
           cleanupVideoFile(result.filePath).catch(() => {})
           
-                  // 파일명 정리: 특수문자 제거하고 길이 제한
-        let cleanTitle = result.title || 'youtube-video'
-        cleanTitle = cleanTitle
-          .replace(/[^a-zA-Z0-9가-힣\s\-_]/g, '') // 특수문자 제거
-          .replace(/\s+/g, ' ') // 연속 공백을 하나로
-          .trim() // 앞뒤 공백 제거
-          .substring(0, 40) // 조회수 추가로 인해 길이 단축
+                  // 썸네일과 동일한 파일명 구조 사용
+        const now = new Date()
+        const dateStr = now.toISOString().slice(0, 10) // YYYY-MM-DD
         
         // 조회수 정보 추가
         const viewInfo = viewsMap.get(url)
         const viewCount = viewInfo ? formatViewCount(viewInfo.views) : '0'
-        const fileName = cleanTitle ? `${cleanTitle}_${viewCount}.mp4` : `youtube-video_${viewCount}.mp4`
+        const fileName = `YouTube_영상_${dateStr}_${viewCount}.mp4`
           
           console.log('Response 생성 시작, 파일명:', fileName)
           
@@ -118,12 +114,12 @@ export async function POST(req: Request) {
           const upstream = await fetch(url)
           if (!upstream.ok || !upstream.body) return new Response('TikTok video fetch error', { status: 502 })
           
-          // 조회수 정보 추가
+          // 조회수 정보 추가 - 썸네일과 동일한 형식으로 변경
           const viewInfo = viewsMap.get(url)
           const viewCount = viewInfo ? formatViewCount(viewInfo.views) : '0'
           const now = new Date()
           const dateStr = now.toISOString().slice(0, 10) // YYYY-MM-DD
-          const fileName = `tiktok_${dateStr}_${viewCount}.mp4`
+          const fileName = `TikTok_영상_${dateStr}_${viewCount}.mp4`
           
           console.log('🎵 TikTok 직접 URL 단일 다운로드 - URL:', url)
           console.log('🎵 TikTok 직접 URL 단일 다운로드 - viewInfo:', viewInfo)
@@ -157,12 +153,12 @@ export async function POST(req: Request) {
           // 파일 정리
           cleanupVideoFile(result.filePath).catch(() => {})
           
-          // 조회수 정보 추가
+          // 조회수 정보 추가 - 썸네일과 동일한 형식으로 변경
           const viewInfo = viewsMap.get(url)
           const viewCount = viewInfo ? formatViewCount(viewInfo.views) : '0'
           const now = new Date()
           const dateStr = now.toISOString().slice(0, 10) // YYYY-MM-DD
-          const fileName = `tiktok_${dateStr}_${viewCount}.mp4`
+          const fileName = `TikTok_영상_${dateStr}_${viewCount}.mp4`
           
           console.log('🎵 TikTok 웹 URL 단일 다운로드 - URL:', url)
           console.log('🎵 TikTok 웹 URL 단일 다운로드 - viewInfo:', viewInfo)
@@ -185,12 +181,12 @@ export async function POST(req: Request) {
         const upstream = await fetch(url)
         if (!upstream.ok || !upstream.body) return new Response('Upstream error', { status: 502 })
         
-        // 조회수 정보 추가
+        // 조회수 정보 추가 - 썸네일과 동일한 형식으로 변경
         const viewInfo = viewsMap.get(url)
         const viewCount = viewInfo ? formatViewCount(viewInfo.views) : '0'
         const now = new Date()
         const dateStr = now.toISOString().slice(0, 10) // YYYY-MM-DD
-        const fileName = `instagram_${dateStr}_${viewCount}.mp4`
+        const fileName = `Instagram_영상_${dateStr}_${viewCount}.mp4`
         
         console.log('📷 Instagram 단일 다운로드 - URL:', url)
         console.log('📷 Instagram 단일 다운로드 - viewInfo:', viewInfo)
@@ -238,12 +234,12 @@ export async function POST(req: Request) {
             if (result.success && result.filePath) {
               const buf = await fs.readFile(result.filePath)
               
-              // 조회수 정보 추가 - 간단한 형식으로 변경
+              // 조회수 정보 추가 - 썸네일과 동일한 형식으로 변경
               const viewInfo = viewsMap.get(url)
               const viewCount = viewInfo ? formatViewCount(viewInfo.views) : '0'
               const now = new Date()
               const dateStr = now.toISOString().slice(0, 10) // YYYY-MM-DD
-              const fileName = `youtube_${dateStr}_${viewCount}.mp4`
+              const fileName = `youtube_영상_${dateStr}_${viewCount}.mp4`
               
               console.log(`📁 파일명 생성 (${current + 1}/${urls.length}):`, fileName);
               files.push({ name: fileName, data: buf as unknown as ArrayBuffer })
@@ -259,12 +255,12 @@ export async function POST(req: Request) {
             if (res.ok) {
               const buf = await res.arrayBuffer()
               
-              // 조회수 정보 추가 - 간단한 형식으로 변경
+              // 조회수 정보 추가 - 썸네일과 동일한 형식으로 변경
               const viewInfo = viewsMap.get(url)
               const viewCount = viewInfo ? formatViewCount(viewInfo.views) : '0'
               const now = new Date()
               const dateStr = now.toISOString().slice(0, 10) // YYYY-MM-DD
-              const fileName = `tiktok_${dateStr}_${viewCount}.mp4`
+              const fileName = `tiktok_영상_${dateStr}_${viewCount}.mp4`
               
               console.log(`📁 TikTok 직접 URL 파일명 생성 (${current + 1}/${urls.length}):`, fileName, 'viewInfo:', viewInfo);
               
@@ -286,12 +282,12 @@ export async function POST(req: Request) {
             if (result.success && result.filePath) {
               const buf = await fs.readFile(result.filePath)
               
-              // 조회수 정보 추가 - 간단한 형식으로 변경
+              // 조회수 정보 추가 - 썸네일과 동일한 형식으로 변경
               const viewInfo = viewsMap.get(url)
               const viewCount = viewInfo ? formatViewCount(viewInfo.views) : '0'
               const now = new Date()
               const dateStr = now.toISOString().slice(0, 10) // YYYY-MM-DD
-              const fileName = `tiktok_${dateStr}_${viewCount}.mp4`
+              const fileName = `tiktok_영상_${dateStr}_${viewCount}.mp4`
               
               console.log(`📁 TikTok 파일명 생성 (${current + 1}/${urls.length}):`, fileName);
               files.push({ name: fileName, data: buf as unknown as ArrayBuffer })
@@ -307,12 +303,12 @@ export async function POST(req: Request) {
             if (!res.ok) continue
             const buf = await res.arrayBuffer()
             
-            // 조회수 정보 추가 - 간단한 형식으로 변경
+            // 조회수 정보 추가 - 썸네일과 동일한 형식으로 변경
             const viewInfo = viewsMap.get(url)
             const viewCount = viewInfo ? formatViewCount(viewInfo.views) : '0'
             const now = new Date()
             const dateStr = now.toISOString().slice(0, 10) // YYYY-MM-DD
-            const fileName = `instagram_${dateStr}_${viewCount}.mp4`
+            const fileName = `instagram_영상_${dateStr}_${viewCount}.mp4`
             
             console.log(`📁 Instagram 파일명 생성 (${current + 1}/${urls.length}):`, fileName, 'viewInfo:', viewInfo);
             

@@ -3,17 +3,28 @@ import { useEffect, useState } from 'react'
 import { supabaseBrowser } from '@/lib/supabase/client'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
+import { BarChart, Bar, XAxis, YAxis } from 'recharts'
 
 export default function DashboardPage() {
   const [credit, setCredit] = useState<number | null>(null)
   const [recent, setRecent] = useState<number | null>(null)
   const [searches, setSearches] = useState<any[]>([])
-  const [todayUsage, setTodayUsage] = useState<number>(0)
+  const [sevenDayUsage, setSevenDayUsage] = useState<number>(0)
+  const [fourteenDayUsage, setFourteenDayUsage] = useState<number>(0)
   const [thirtyDayUsage, setThirtyDayUsage] = useState<number>(0)
+  const [remainingCredits, setRemainingCredits] = useState<number>(0)
+  const [sevenDaySearchCount, setSevenDaySearchCount] = useState<number>(0)
+  const [fourteenDaySearchCount, setFourteenDaySearchCount] = useState<number>(0)
+  const [thirtyDaySearchCount, setThirtyDaySearchCount] = useState<number>(0)
+  const [chartData, setChartData] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
   
-  useEffect(() => {
-    const run = async () => {
+  // 데이터 로딩 함수 분리
+  const loadDashboardData = async () => {
       try {
+        setLoading(true)
       const supabase = supabaseBrowser()
         const { data: { user }, error: authError } = await supabase.auth.getUser()
         
@@ -29,7 +40,7 @@ export default function DashboardPage() {
         
         console.log('🔄 대시보드 데이터 로딩 시작:', user.id)
       
-      // 크레딧 정보
+        // 1. 잔여 크레딧 조회
         const { data: credits, error: creditsError } = await supabase
           .from('credits')
           .select('balance')
@@ -39,74 +50,213 @@ export default function DashboardPage() {
         if (creditsError) {
           console.error('❌ 크레딧 조회 오류:', creditsError)
           setCredit(0)
+          setRemainingCredits(0)
         } else {
-          setCredit(credits?.balance ?? 0)
-          console.log('✅ 크레딧 로드 완료:', credits?.balance)
+          const remainingBalance = credits?.balance ?? 0
+          setCredit(remainingBalance)
+          setRemainingCredits(remainingBalance)
+          console.log('✅ 크레딧 로드 완료:', remainingBalance)
         }
-        
-        // 14일 이내 검색 기록과 통계를 병렬로 가져오기
-        const fourteenDaysAgo = new Date()
-        fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14)
-        
-        const [searchHistoryRes, statsRes] = await Promise.all([
+
+        // 2. 기간별 검색 횟수와 크레딧 사용량을 분리하여 조회
+        // 검색 횟수: 자막 추출 제외, 크레딧 사용량: 자막 추출 포함
+        const [search7d, search14d, search30d, credit7d, credit14d, credit30d] = await Promise.all([
+          // 검색 횟수 (자막 추출 제외)
           supabase
             .from('search_history')
-            .select('*')
+            .select('credits_used, status, search_type')
             .eq('user_id', user.id)
-            .neq('search_type', 'subtitle_extraction') // 자막 추출 제외
-            .gte('created_at', fourteenDaysAgo.toISOString()) // 14일 이내만
-            .order('created_at', { ascending: false })
-            .limit(5),
-          fetch('/api/me/stats', { 
-            cache: 'no-store',
-            headers: {
-              'Cache-Control': 'no-cache, no-store, must-revalidate',
-              'Pragma': 'no-cache',
-              'Expires': '0'
-            }
-          }).then(r => r.ok ? r.json() : null).catch(e => {
-            console.error('❌ 통계 API 호출 오류:', e)
-            return null
-          })
+            .gt('credits_used', 0)
+            .neq('search_type', 'subtitle_extraction')
+            .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
+          
+          supabase
+            .from('search_history')
+            .select('credits_used, status, search_type')
+            .eq('user_id', user.id)
+            .gt('credits_used', 0)
+            .neq('search_type', 'subtitle_extraction')
+            .gte('created_at', new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()),
+          
+          supabase
+            .from('search_history')
+            .select('credits_used, status, search_type')
+            .eq('user_id', user.id)
+            .gt('credits_used', 0)
+            .neq('search_type', 'subtitle_extraction')
+            .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()),
+            
+          // 크레딧 사용량 (자막 추출 포함)
+          supabase
+            .from('search_history')
+            .select('credits_used')
+            .eq('user_id', user.id)
+            .gt('credits_used', 0)
+            .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
+          
+          supabase
+            .from('search_history')
+            .select('credits_used')
+            .eq('user_id', user.id)
+            .gt('credits_used', 0)
+            .gte('created_at', new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()),
+          
+          supabase
+            .from('search_history')
+            .select('credits_used')
+            .eq('user_id', user.id)
+            .gt('credits_used', 0)
+            .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
         ])
+
+        // 크레딧 사용량 계산 (자막 추출 포함)
+        const usage7dTotal = credit7d.data?.reduce((sum, record) => sum + (record.credits_used || 0), 0) || 0
+        const usage14dTotal = credit14d.data?.reduce((sum, record) => sum + (record.credits_used || 0), 0) || 0
+        const usage30dTotal = credit30d.data?.reduce((sum, record) => sum + (record.credits_used || 0), 0) || 0
+
+        setSevenDayUsage(usage7dTotal)
+        setFourteenDayUsage(usage14dTotal)
+        setThirtyDayUsage(usage30dTotal)
+
+        // 검색 횟수 계산 (자막 추출 제외)
+        const search7dCount = search7d.data?.length || 0
+        const search14dCount = search14d.data?.length || 0
+        const search30dCount = search30d.data?.length || 0
+
+        setSevenDaySearchCount(search7dCount)
+        setFourteenDaySearchCount(search14dCount)
+        setThirtyDaySearchCount(search30dCount)
+
+        console.log('✅ 사용량/검색횟수 로드 완료:', { 
+          usage: { usage7dTotal, usage14dTotal, usage30dTotal },
+          searches: { search7dCount, search14dCount, search30dCount }
+        })
+
+        // 3. 최근 30일간 일별 크레딧 사용량 조회 (차트용)
+        // ⚠️ 중요: 모든 상태 포함하여 실제 크레딧 차감을 반영
+        const { data: dailyUsageData, error: dailyError } = await supabase
+          .from('search_history')
+          .select('created_at, credits_used, status')
+          .eq('user_id', user.id)
+          .gt('credits_used', 0) // credits_used > 0인 검색만 포함
+          .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+          .order('created_at', { ascending: true })
+
+        if (dailyError) {
+          console.error('❌ 일별 사용량 조회 오류:', dailyError)
+        } else {
+          // 일별 데이터 집계
+          const dailyMap = new Map<string, number>()
+          
+          // 최근 30일 날짜 배열 생성
+          const last30Days = []
+          for (let i = 29; i >= 0; i--) {
+            const date = new Date()
+            date.setDate(date.getDate() - i)
+            const dateStr = date.toISOString().split('T')[0]
+            last30Days.push(dateStr)
+            dailyMap.set(dateStr, 0)
+          }
+
+          // 실제 사용량 데이터 매핑
+          dailyUsageData?.forEach(record => {
+            const dateStr = new Date(record.created_at).toISOString().split('T')[0]
+            const currentUsage = dailyMap.get(dateStr) || 0
+            dailyMap.set(dateStr, currentUsage + (record.credits_used || 0))
+          })
+
+          // 차트 데이터 형태로 변환
+          const chartData = last30Days.map(dateStr => ({
+            date: dateStr,
+            dateDisplay: new Date(dateStr).toLocaleDateString('ko-KR', { 
+              month: 'short', 
+              day: 'numeric' 
+            }),
+            usage: dailyMap.get(dateStr) || 0
+          }))
+
+          setChartData(chartData)
+          console.log('✅ 차트 데이터 로드 완료:', chartData)
+        }
         
-        if (searchHistoryRes.error) {
-          console.error('❌ 검색 기록 조회 오류:', searchHistoryRes.error)
+        // 4. 검색 기록 조회
+        const { data: searchHistoryData, error: searchError } = await supabase
+          .from('search_history')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(10)
+
+        if (searchError) {
+          console.error('❌ 검색 기록 조회 오류:', searchError)
           setSearches([])
         } else {
-          const allSearches = searchHistoryRes.data || []
-          setSearches(allSearches.slice(0, 10))
-          console.log('✅ 검색 기록 로드 완료:', allSearches.length)
+          setSearches(searchHistoryData || [])
+          console.log('✅ 검색 기록 로드 완료:', searchHistoryData?.length)
         }
-        
-        // 통계 데이터 설정
-        if (statsRes) {
-          setTodayUsage(statsRes.today_searches || 0) // 오늘 검색 수로 변경
-          setThirtyDayUsage(statsRes.month_credits || 0) 
-          setRecent(statsRes.total_searches || 0)
-          console.log('✅ 대시보드 통계 로드 완료:', {
-            todayUsage: statsRes.today_searches,
-            thirtyDayUsage: statsRes.month_credits,
-            totalSearches: statsRes.total_searches
-          })
-        } else {
-          console.warn('⚠️ 대시보드 통계 로드 실패, 기본값 설정')
-          setTodayUsage(0)
-          setThirtyDayUsage(0)
-          setRecent(0)
-        }
+
+        // 5. 최근 30일 검색량 조회 (자막 추출 제외)
+        const { data: monthlySearches } = await supabase
+          .from('search_history')
+          .select('id', { count: 'exact' })
+          .eq('user_id', user.id)
+          .neq('search_type', 'subtitle_extraction') // 자막 추출은 검색통계에서 제외
+          .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+
+        setRecent(monthlySearches?.length || 0)
+
       } catch (error) {
         console.error('❌ 대시보드 전체 로딩 오류:', error)
         // 에러 발생 시 기본값 설정
         setCredit(0)
-        setTodayUsage(0)
+        setSevenDayUsage(0)
+        setFourteenDayUsage(0)
         setThirtyDayUsage(0)
+        setRemainingCredits(0)
+        setSevenDaySearchCount(0)
+        setFourteenDaySearchCount(0)
+        setThirtyDaySearchCount(0)
         setRecent(0)
         setSearches([])
+        setChartData([])
+      } finally {
+        setLoading(false)
       }
     }
-    
-    run()
+
+  useEffect(() => {
+    // 초기 로드
+    loadDashboardData()
+
+    // 🔄 실시간 업데이트를 위한 윈도우 포커스 이벤트 리스너
+    const handleFocus = () => {
+      console.log('🔄 대시보드 포커스 이벤트 - 데이터 새로고침')
+      loadDashboardData()
+    }
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        console.log('🔄 대시보드 가시성 변경 - 데이터 새로고침') 
+        loadDashboardData()
+      }
+    }
+
+    // 이벤트 리스너 등록
+    window.addEventListener('focus', handleFocus)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    // 주기적 업데이트 (30초마다)
+    const intervalId = setInterval(() => {
+      console.log('🔄 대시보드 주기적 업데이트 (30초)')
+      loadDashboardData()
+    }, 30000)
+
+    // 정리 함수
+    return () => {
+      window.removeEventListener('focus', handleFocus)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      clearInterval(intervalId)
+    }
   }, [])
 
   return (
@@ -114,202 +264,236 @@ export default function DashboardPage() {
       <div className="max-w-7xl mx-auto p-6">
         {/* Header */}
         <div className="mb-6">
-          <h1 className="text-lg font-semibold text-gray-900">내 검색 기록</h1>
-            <p className="text-gray-600 text-sm mt-1">검색 활동과 크레딧 사용량을 관리하세요</p>
+          <h1 className="text-lg font-semibold text-gray-900">크레딧 사용 기록</h1>
+            <p className="text-gray-600 text-sm mt-1">기간별 크레딧 사용량 확인</p>
         </div>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          <div className="bg-white rounded-lg p-6 shadow-sm border border-gray-200">
-            <div className="text-sm text-gray-500 mb-1">오늘</div>
-            <div className="text-3xl font-bold text-gray-900 mb-2">{todayUsage.toLocaleString()}</div>
-            <div className="text-xs text-gray-500">검색 수</div>
-          </div>
-          <div className="bg-white rounded-lg p-6 shadow-sm border border-gray-200">
-            <div className="text-sm text-gray-500 mb-1">최근 30일</div>
-            <div className="text-3xl font-bold text-gray-900 mb-2">{thirtyDayUsage.toLocaleString()}</div>
-            <div className="text-xs text-gray-500">크레딧 사용량</div>
-          </div>
-        </div>
-
-        {/* Main Content */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left - Search History */}
-          <div className="lg:col-span-2 bg-white rounded-lg shadow-sm border border-gray-200">
-            <div className="p-6 border-b border-gray-200">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-gray-900">검색 기록</h2>
-                <Link href="/dashboard/history">
-                  <Button variant="outline" size="sm" className="text-gray-600 hover:text-gray-900">
-                    전체보기
-                  </Button>
-                </Link>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <Card className="border-gray-200 shadow-none rounded-lg">
+            <CardHeader className="pb-2 relative">
+              <CardTitle className="text-sm font-medium text-gray-500">최근 7일</CardTitle>
+              <div className="absolute top-3 right-3">
+                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                </svg>
               </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-gray-900">
+                {loading ? '-' : `${sevenDayUsage.toLocaleString()}`}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">사용량</p>
+            </CardContent>
+          </Card>
+          
+          <Card className="border-gray-200 shadow-none rounded-lg">
+            <CardHeader className="pb-2 relative">
+              <CardTitle className="text-sm font-medium text-gray-500">최근 14일</CardTitle>
+              <div className="absolute top-3 right-3">
+                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                </svg>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-gray-900">
+                {loading ? '-' : `${fourteenDayUsage.toLocaleString()}`}
+          </div>
+              <p className="text-xs text-gray-500 mt-1">사용량</p>
+            </CardContent>
+          </Card>
+          
+          <Card className="border-gray-200 shadow-none rounded-lg">
+            <CardHeader className="pb-2 relative">
+              <CardTitle className="text-sm font-medium text-gray-500">최근 30일</CardTitle>
+              <div className="absolute top-3 right-3">
+                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                </svg>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-gray-900">
+                {loading ? '-' : `${thirtyDayUsage.toLocaleString()}`}
+        </div>
+              <p className="text-xs text-gray-500 mt-1">사용량</p>
+            </CardContent>
+          </Card>
+          
+          <Card className="border-gray-200 shadow-none rounded-lg">
+            <CardHeader className="pb-2 relative">
+              <CardTitle className="text-sm font-medium text-gray-500">잔여 크레딧</CardTitle>
+              <div className="absolute top-3 right-3">
+                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12s-1.536-.219-2.121-.659c-1.172-.879-1.172-2.303 0-3.182C10.464 7.69 11.232 7.471 12 7.471s1.536.219 2.121.659" />
+                </svg>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-gray-900">
+                {loading ? '-' : `${remainingCredits.toLocaleString()}`}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">사용 가능</p>
+            </CardContent>
+          </Card>
             </div>
             
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">검색어</th>
-                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">플랫폼</th>
-                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">상태</th>
-                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">일시</th>
-                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">사용 크레딧</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {searches.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="px-6 py-8 text-center text-gray-500">
-                        아직 검색 기록이 없습니다.
-                      </td>
-                    </tr>
-                  ) : (
-                    searches.map((search, index) => (
-                      <tr key={index} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-center">
-                          <div className="text-sm font-medium text-gray-900">
-                            {search.search_type === 'profile' ? (
-                              <div className="flex flex-col items-center">
-                                <span className="text-purple-600 font-medium">{search.keyword || '프로필 없음'}</span>
-                                <span className="text-xs text-gray-500">프로필 검색</span>
+        {/* Credit Usage Chart & Stats */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 mb-8">
+          {/* Chart */}
+          <div className="lg:col-span-3">
+            <Card className="border-gray-200 shadow-none rounded-lg">
+              <CardHeader>
+                <CardTitle className="text-lg font-semibold text-gray-900">최근 30일 크레딧 사용량</CardTitle>
+                <p className="text-sm text-gray-600">일별 세부부 크레딧 사용 패턴 확인</p>
+              </CardHeader>
+              <CardContent className="p-3 flex justify-center">
+                {loading ? (
+                  <div className="h-96 flex items-center justify-center w-full">
+                    <div className="text-gray-500">로딩 중...</div>
                               </div>
-                            ) : search.search_type === 'url' ? (
-                              <div className="flex flex-col items-center">
-                                <span className="text-blue-600 font-medium truncate max-w-xs" title={search.keyword}>
-                                  {search.keyword || 'URL 없음'}
-                                </span>
-                                <span className="text-xs text-gray-500">URL 검색</span>
-                              </div>
-                            ) : (
-                              <div className="flex flex-col items-center">
-                                <span>{search.keyword || '검색어 없음'}</span>
-                                <span className="text-xs text-gray-500">키워드 검색</span>
+                ) : chartData.length > 0 ? (
+                  <ChartContainer
+                    config={{
+                      usage: {
+                        label: "크레딧 사용량",
+                        color: "#000000",
+                      },
+                    }}
+                    className="h-96 w-full"
+                  >
+                    <BarChart 
+                      data={chartData}
+                      margin={{ top: 20, right: 30, left: 30, bottom: 20 }}
+                    >
+                      <XAxis 
+                        dataKey="dateDisplay" 
+                        tick={{ fontSize: 12 }}
+                        axisLine={false}
+                        tickLine={false}
+                        interval="preserveStartEnd"
+                        tickFormatter={(value, index) => {
+                          // 30일 데이터에서 마지막부터 5일 간격으로 표시
+                          const totalDays = 30;
+                          const interval = 5;
+                          const shouldShow = (totalDays - 1 - index) % interval === 0;
+                          return shouldShow ? value : '';
+                        }}
+                      />
+                      <YAxis 
+                        tick={{ fontSize: 12 }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <ChartTooltip 
+                        content={<ChartTooltipContent 
+                          formatter={(value: any, name: any, props: any) => [
+                            `${value.toLocaleString()} 크레딧`,
+                            '사용량'
+                          ]}
+                          labelFormatter={(label: any, payload: any) => {
+                            if (payload && payload[0]) {
+                              const fullDate = new Date(payload[0].payload.date)
+                              return fullDate.toLocaleDateString('ko-KR', {
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric'
+                              })
+                            }
+                            return label
+                          }}
+                          indicator="dot"
+                          hideLabel={false}
+                        />}
+                      />
+                      <Bar 
+                        dataKey="usage" 
+                        fill="#000000"
+                        radius={[4, 4, 0, 0]}
+                      />
+                    </BarChart>
+                  </ChartContainer>
+                ) : (
+                  <div className="h-80 flex items-center justify-center">
+                    <div className="text-gray-500">사용 데이터가 없습니다</div>
                               </div>
                             )}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-center">
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 capitalize">
-                            {search.platform || 'Instagram'}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-center">
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                            완료
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">
-                          {search.created_at ? new Date(search.created_at).toLocaleDateString('ko-KR') : '-'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium text-gray-900">
-                          {search.credits_used ? `${search.credits_used.toLocaleString()}` : '0'}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+              </CardContent>
+            </Card>
           </div>
 
-          {/* Right - Account Info */}
-          <div className="space-y-6">
-            <div className="bg-white rounded-lg p-6 shadow-sm border border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">계정 정보</h3>
-              <div className="space-y-3">
-                <div>
-                  <div className="text-sm text-gray-500">잔여 크레딧</div>
-                  <div className="text-2xl font-bold text-gray-900">{credit?.toLocaleString() ?? '-'}</div>
-                </div>
-                <div>
-                  <div className="text-sm text-gray-500">최근 30일 검색량</div>
-                  <div className="text-lg font-semibold text-gray-900">{recent ?? '-'}</div>
-                </div>
-              </div>
+                              {/* Search Count Cards */}
+          <div className="lg:col-span-1">
+            {/* Section Header */}
+            <div className="mb-6">
+            <h2 className="text-lg font-semibold text-gray-900">최근 검색 횟수</h2>
+              <p className="text-sm text-gray-600 mt-1">기간별 검색 활동 확인</p>
             </div>
-
-            <SubscriptionManager />
+            
+            <div className="space-y-6">
+              {/* 7일 검색 횟수 */}
+              <Card className="border-gray-200 shadow-none rounded-lg">
+                <CardHeader className="pb-2 relative">
+                  <CardTitle className="text-sm font-medium text-gray-500">최근 7일</CardTitle>
+                  <div className="absolute top-4 right-3">
+                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607z" />
+                    </svg>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-gray-900 flex items-end gap-1">
+                    {loading ? '-' : sevenDaySearchCount.toLocaleString()}
+                    <span className="text-sm font-medium text-gray-600 mb-1">회</span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">검색 횟수</p>
+                </CardContent>
+              </Card>
+              
+              {/* 14일 검색 횟수 */}
+              <Card className="border-gray-200 shadow-none rounded-lg">
+                <CardHeader className="pb-2 relative">
+                  <CardTitle className="text-sm font-medium text-gray-500">최근 14일</CardTitle>
+                  <div className="absolute top-4 right-3">
+                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z" />
+                    </svg>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-gray-900 flex items-end gap-1">
+                    {loading ? '-' : fourteenDaySearchCount.toLocaleString()}
+                    <span className="text-sm font-medium text-gray-600 mb-1">회</span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">검색 횟수</p>
+                </CardContent>
+              </Card>
+              
+              {/* 30일 검색 횟수 */}
+              <Card className="border-gray-200 shadow-none rounded-lg">
+                <CardHeader className="pb-2 relative">
+                  <CardTitle className="text-sm font-medium text-gray-500">최근 30일</CardTitle>
+                  <div className="absolute top-4 right-3">
+                    <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.75 6A2.25 2.25 0 0 1 6 3.75h2.25A2.25 2.25 0 0 1 10.5 6v2.25a2.25 2.25 0 0 1-2.25 2.25H6a2.25 2.25 0 0 1-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 0 1 6 13.5h2.25a2.25 2.25 0 0 1 2.25 2.25V18a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18v-2.25zM13.5 6a2.25 2.25 0 0 1 2.25-2.25H18A2.25 2.25 0 0 1 20.25 6v2.25A2.25 2.25 0 0 1 18 10.5h-2.25a2.25 2.25 0 0 1-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 0 1 2.25-2.25H18a2.25 2.25 0 0 1 2.25 2.25V18A2.25 2.25 0 0 1 18 20.25h-2.25A2.25 2.25 0 0 1 13.5 18v-2.25z" />
+                    </svg>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-gray-900 flex items-end gap-1">
+                    {loading ? '-' : thirtyDaySearchCount.toLocaleString()}
+                    <span className="text-sm font-medium text-gray-600 mb-1">회</span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">검색 횟수</p>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         </div>
+
+
       </div>
     </div>
   )
 }
-
-function SubscriptionManager() {
-  const [me, setMe] = useState<any>(null)
-  const [loading, setLoading] = useState(false)
-  useEffect(()=>{ (async()=>{ const j = await fetch('/api/me',{cache:'no-store'}).then(r=>r.json()).catch(()=>null); setMe(j) })() },[])
-  const changePlan = async (p: 'starter'|'pro'|'business') => {
-    setLoading(true)
-    try {
-      const res = await fetch('/api/subscriptions/change', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ plan: p }) })
-      if (!res.ok) throw new Error(await res.text())
-      alert('플랜이 변경되었습니다')
-      location.reload()
-    } catch(e:any){ alert(e?.message||'변경 실패') } finally { setLoading(false) }
-  }
-  const cancel = async () => {
-    if (!confirm('구독을 취소하시겠어요?')) return
-    setLoading(true)
-    try {
-      const res = await fetch('/api/subscriptions/cancel', { method:'POST' })
-      if (!res.ok) throw new Error(await res.text())
-      alert('구독이 취소되었습니다')
-      location.reload()
-    } catch(e:any){ alert(e?.message||'취소 실패') } finally { setLoading(false) }
-  }
-  return (
-    <div className="bg-white rounded-lg p-6 shadow-sm border border-gray-200">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">구독 관리</h3>
-      <div className="space-y-4">
-        <div>
-          <div className="text-sm text-gray-500">현재 플랜</div>
-          <div className="text-lg font-semibold text-gray-900 capitalize">{me?.plan || 'Free'}</div>
-        </div>
-        <div className="space-y-2">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={()=>changePlan('starter')} 
-            disabled={loading}
-            className="w-full justify-start"
-          >
-            Starter로 변경
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={()=>changePlan('pro')} 
-            disabled={loading}
-            className="w-full justify-start"
-          >
-            Pro로 변경
-          </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={()=>changePlan('business')} 
-            disabled={loading}
-            className="w-full justify-start"
-          >
-            Business로 변경
-          </Button>
-          <Button 
-            variant="destructive" 
-            size="sm" 
-            onClick={cancel} 
-            disabled={loading}
-            className="w-full"
-          >
-            구독 취소
-          </Button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-

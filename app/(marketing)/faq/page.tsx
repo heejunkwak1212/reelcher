@@ -1,6 +1,10 @@
+import SiteHeader from '@/components/layout/SiteHeader'
+
 export default function FAQPage() {
   return (
-    <div className="max-w-3xl mx-auto px-6 py-10 space-y-8">
+    <>
+      <SiteHeader />
+      <div className="max-w-3xl mx-auto px-6 py-10 space-y-8">
       <h1 className="text-2xl font-bold">자주 묻는 질문(FAQ)</h1>
 
       <section className="space-y-3">
@@ -37,7 +41,8 @@ export default function FAQPage() {
         <h2 className="text-xl font-semibold">문의는 어디로 하면 되나요?</h2>
         <p className="prose">support@relcher.app 로 연락 주세요.</p>
       </section>
-    </div>
+      </div>
+    </>
   )
 }
 

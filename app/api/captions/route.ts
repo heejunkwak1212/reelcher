@@ -124,8 +124,14 @@ export async function POST(req: Request) {
     const out = await waitForRunItems<any[]>({ token, runId: started.runId })
     const first = Array.isArray(out.items) ? (out.items[0] as any) : undefined
     let text: string = first?.text || first?.transcript || first?.transcription || ''
-    // Strip timestamps like "[0.24s - 1.92s] "
-    if (typeof text === 'string' && text.length) {
+    
+    // 자막이 없거나 오류 메시지인 경우 처리
+    if (!text || text.trim() === '' || 
+        text.toLowerCase().includes('no speech found') || 
+        text.toLowerCase().includes('unexpected error')) {
+      text = '자막이 존재하지 않습니다.'
+    } else {
+      // Strip timestamps like "[0.24s - 1.92s] "
       text = text.replace(/\[\s*\d+(?:\.\d+)?s\s*-\s*\d+(?:\.\d+)?s\s*\]\s*/g, '')
       text = text.replace(/\s{2,}/g, ' ').trim()
     }
@@ -175,7 +181,8 @@ export async function POST(req: Request) {
               keyword: '자막 추출', // URL 대신 "자막 추출"로 저장 (최근 키워드에 URL이 나타나지 않게)
               filters: { url: input.url }, // URL은 filters에 저장
               results_count: 1, // 자막 추출은 1건으로 카운트
-              credits_used: requiredCredits
+              credits_used: requiredCredits,
+              status: 'completed'
             })
           
           if (logError) {
@@ -206,10 +213,27 @@ export async function POST(req: Request) {
           .single()
         
         if (updatedCredits) {
+          // 최근 30일 크레딧 사용량 계산
+          const now = new Date()
+          const todayStart = new Date(now)
+          todayStart.setHours(0, 0, 0, 0)
+          const monthStart = new Date(todayStart)
+          monthStart.setDate(monthStart.getDate() - 29) // 오늘 포함 30일
+          
+          const { data: monthUsage } = await ssr
+            .from('search_history')
+            .select('credits_used')
+            .eq('user_id', user.id)
+            .gt('credits_used', 0)
+            .gte('created_at', monthStart.toISOString())
+          
+          const monthCredits = monthUsage?.reduce((sum, record) => sum + (record.credits_used || 0), 0) || 0
+          
           responseData.credits = {
             balance: updatedCredits.balance,
             reserved: updatedCredits.reserved,
-            used: input.url.includes('youtube.com') || input.url.includes('youtu.be') ? 10 : 20
+            used: input.url.includes('youtube.com') || input.url.includes('youtu.be') ? 10 : 20,
+            month_credits: monthCredits
           }
         }
         

@@ -3,8 +3,6 @@
 @tailwind components;
 @tailwind utilities;
 
-
-
 :root {
   --background: 0 0% 100%;
   --foreground: 222.2 84% 4.9%;
@@ -52,8 +50,6 @@
   --ds-gray-1000: hsla(0, 0%, 9%, 1);
   --ds-background-100: hsla(0, 0%, 100%, 1);
 }
-
-
 
 @media (prefers-color-scheme: dark) {
   :root {
@@ -153,6 +149,7 @@ textarea { outline: none; }
     --shadow-error-input-hover: var(--ds-input-error-hover-ring);
     --color-ds-background-100: var(----ds-background-100);
     --color-ds-gray-1000: var(----ds-gray-1000);
+    --animate-rainbow: rainbow var(--speed, 2s) infinite linear;
   }
   :root {
     --context-card-border: hsla(0, 0%, 92%, 1);
@@ -173,6 +170,11 @@ textarea { outline: none; }
     --ds-input-error-hover-ring: 0 0 0 1px var(--ds-red-900), 0 0 0 4px var(--ds-red-500);
     --ds-gray-1000: hsla(0, 0%, 9%, 1);
     --color-red-900: oklch(54.99% 0.232 25.29);
+    --color-1: 0 100% 63%;
+    --color-2: 270 100% 63%;
+    --color-3: 210 100% 63%;
+    --color-4: 195 100% 63%;
+    --color-5: 90 100% 63%;
   }
   .dark {
     --context-card-border: hsla(0, 0%, 18%, 1);
@@ -194,8 +196,6 @@ textarea { outline: none; }
   }
 }
 
-
-
 @layer base {
   * {
     @apply border-border;
@@ -205,3 +205,13 @@ textarea { outline: none; }
   }
 }
 
+@theme inline {
+  @keyframes rainbow {
+  0% {
+    background-position: 0%;
+    }
+  100% {
+    background-position: 200%;
+    }
+  }
+}
