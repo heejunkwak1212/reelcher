@@ -182,7 +182,6 @@ export function RelcherPricing({
         "월 2,000 크레딧",
         "FREE 플랜의 모든 기능", // 기능 1 - PRD.MD 기준
         "최대 60개 검색 결과", // 기능 2
-        "인스타그램 다중 키워드 검색",
       ],
       description: "소규모 비즈니스를 위한 완벽한 시작", // 설명
       buttonText: "STARTER 시작하기", // 버튼 텍스트

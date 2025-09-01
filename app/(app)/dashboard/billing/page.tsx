@@ -72,7 +72,6 @@ const planContent = {
       '월 2,000 크레딧',
       'FREE 플랜의 모든 기능',
       '최대 60개 검색 결과',
-      '인스타그램 다중 키워드 검색'
     ],
     buttonText: '모든 플랜 보기'
   },
@@ -138,15 +137,15 @@ export default function BillingPage() {
   }, [])
 
   if (loading) {
-    return (
+  return (
       <div className="space-y-6">
         <div className="animate-pulse">
           <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
           <div className="h-64 bg-gray-200 rounded-lg"></div>
-        </div>
       </div>
-    )
-  }
+    </div>
+  )
+}
 
   const currentPlan = profile?.plan || 'free'
   const balance = Number(credits?.balance || 0)

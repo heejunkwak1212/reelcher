@@ -291,8 +291,8 @@ export async function extractYouTubeSubtitles(url: string): Promise<SubtitleResu
     }
     
     if (!subtitleData) {
-      return {
-        success: false,
+    return {
+      success: false,
         error: '자막을 추출할 수 없습니다. 지원되는 언어의 자막이 없거나 자막이 비활성화되어 있습니다.' 
       };
     }
@@ -382,7 +382,7 @@ function cleanSubtitleText(rawSubtitles: string): string {
     
     return finalCleaned;
     
-  } catch (error) {
+            } catch (error) {
     console.error('자막 파싱 오류:', error);
     console.log('원본 자막 앞부분:', rawSubtitles.substring(0, 500));
     

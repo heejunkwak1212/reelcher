@@ -1380,7 +1380,7 @@ function SearchTestPageContent() {
     abortRef.current = new AbortController()
     setDebug(null)
     setRaw('')
-    openProgress('검색을 진행 중입니다…', 5)
+    openProgress('영상을 수집하고 있어요', 5)
     tickProgress(92, 1, 500)
     
     // ==========================================
@@ -2501,15 +2501,7 @@ function SearchTestPageContent() {
                       error={showValidationErrors && validationErrors.keywords}
                   />
                   </div>
-                  {keywords.length < 3 && platform !== 'youtube' && platform !== 'tiktok' && (
-                    <button 
-                      className="h-10 px-4 border border-gray-300 rounded-md bg-gray-50 hover:bg-gray-100 text-gray-700 text-sm font-medium transition-all shadow-sm hover:shadow-md" 
 
-                      onClick={(e)=>{e.preventDefault(); if (plan==='free'){ showUpgradeModal('여러 키워드 검색은 스타터 플랜부터 이용이 가능해요'); return } setKeywords(prev=>[...prev,''])}}
-                    >
-                      + 키워드 추가
-                    </button>
-                  )}
             </div>
             
             {/* TikTok 프로필 검색 시만 업로드 기간 필터 */}
@@ -2625,25 +2617,7 @@ function SearchTestPageContent() {
                 )}
               </div>
             )}
-                {platform !== 'youtube' && platform !== 'tiktok' && keywords.slice(1).map((kw, idx)=> (
-                  <div key={idx} className="flex items-center gap-3 mt-2">
-                    <div className="flex-1">
-                      <Input
-                        size="large"
-                      placeholder={`키워드 ${idx + 2}`}
-                      value={kw} 
-                        onChange={(value) => setKeywords(prev=>prev.map((v,i)=>i===idx+1?value:v))}
-                    />
-                    </div>
-                    <button 
-                      className="h-10 px-4 border border-gray-300 rounded-md bg-gray-50 hover:bg-gray-100 text-gray-700 text-sm font-medium transition-all shadow-sm hover:shadow-md" 
 
-                      onClick={(e)=>{e.preventDefault(); setKeywords(prev=>prev.filter((_,i)=>i!==idx+1))}}
-                    >
-                      삭제
-                    </button>
-                  </div>
-                ))}
               </>
             )}
           </div>
@@ -3345,7 +3319,7 @@ function SearchTestPageContent() {
               <div className="h-3 bg-black rounded" style={{ width: `${Math.max(0, Math.min(100, progressPercent))}%` }} />
             </div>
             <div className="mt-2 text-sm text-neutral-600">{Math.round(progressPercent)}%</div>
-            <div className="mt-3 text-xs text-neutral-500">창을 없애지 말아주세요. 창을 없애거나 새로고침하는 경우, 검색결과가 없더라도 크레딧이 소모돼요 </div>
+            <div className="mt-3 text-xs text-neutral-500">창을 없애지 말아주세요. 창을 없애거나 새로고침하는 경우, 검색결과와는 상관없이 크레딧이 소모돼요 </div>
           </div>
         </div>
       )}

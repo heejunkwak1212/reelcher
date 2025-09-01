@@ -346,7 +346,7 @@ export default function DashboardPage() {
             <Card className="border-gray-200 shadow-none rounded-lg">
               <CardHeader>
                 <CardTitle className="text-lg font-semibold text-gray-900">최근 30일 크레딧 사용량</CardTitle>
-                <p className="text-sm text-gray-600">일별 세부부 크레딧 사용 패턴 확인</p>
+                <p className="text-sm text-gray-600">일별 세부 크레딧 사용 패턴 확인</p>
               </CardHeader>
               <CardContent className="p-3 flex justify-center">
                 {loading ? (

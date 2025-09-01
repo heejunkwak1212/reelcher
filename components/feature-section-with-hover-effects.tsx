@@ -37,7 +37,7 @@ export function FeaturesSectionWithHoverEffects() {
     },
     {
       title: "데이터 추출 및 활용",
-      description: "검색 결과 속 모든 데이터를 정리된 엑셀 파일로 받아볼 수 있어요. 벤치마킹하고 싶은 콘텐츠의 썸네일과 영상(mp4) 파일 또한 바로 추출 가능해요.",
+      description: "검색 결과 속 모든 데이터를 정리된 엑셀 파일로 받아볼 수 있어요. 벤치마킹하고 싶은 콘텐츠의 썸네일과 영상(mp4) 파일 추출 또한 바로 가능해요.",
       icon: <IconCloud />,
     },
   ];

@@ -103,7 +103,7 @@ export default function SettingsPage() {
 
       {/* 계정 정보 섹션 */}
       <Card className="border-gray-200" style={{ backgroundColor: '#F3F4F6' }}>
-        <CardHeader>
+        <CardHeader className="pb-3">
           <CardTitle className="text-lg font-semibold text-gray-700">계정 정보</CardTitle>
           <p className="text-sm font-medium text-gray-600">가입 당시 설정한 계정 정보</p>
         </CardHeader>
@@ -128,7 +128,7 @@ export default function SettingsPage() {
 
       {/* 구독 정보 섹션 */}
       <Card className="border-gray-200" style={{ backgroundColor: '#F3F4F6' }}>
-        <CardHeader>
+        <CardHeader className="pb-3">
           <CardTitle className="text-lg font-semibold text-gray-700">구독 정보</CardTitle>
           <p className="text-sm font-medium text-gray-600">현재 플랜 및 구독 상태를 확인하세요</p>
         </CardHeader>

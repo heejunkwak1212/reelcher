@@ -217,7 +217,7 @@ export default function HistoryPage() {
                         </TableCell>
                         <TableCell className="px-3 text-center">
                           <span className="font-semibold text-gray-900 text-sm">
-                            {s.status === 'cancelled' ? (
+                            {s.status === 'cancelled' || s.status === 'pending' ? (
                               <span className="text-red-600">검색 취소</span>
                             ) : s.results_count ? (
                               `${s.results_count}개`
