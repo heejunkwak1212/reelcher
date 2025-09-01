@@ -188,6 +188,10 @@ export async function POST(req: Request) {
       didReserve = true
     }
 
+    // 세션 관리 변수들을 전역 스코프에 선언
+    let searchSessionId: string | undefined = undefined
+    let queueManager: any = undefined
+    
     let settle: null | ((finalCount: number) => Promise<number>) = null
     settle = async (finalCount: number) => {
       if (!didReserve || reserveAmount <= 0) return 0
@@ -285,6 +289,13 @@ export async function POST(req: Request) {
         
         console.log('Instagram 배치 계획:', { kwCount, base, perTarget, perOversample })
 
+        // 검색 세션 ID 생성 (전체 검색의 연속성 보장)  
+        searchSessionId = `instagram_${user.id}_${Date.now()}`
+        console.log(`🎯 Instagram 검색 세션 생성: ${searchSessionId}`)
+        
+        const { getMemoryQueueManager } = await import('@/lib/memory-queue-manager')
+        queueManager = getMemoryQueueManager()
+
         const runs = await Promise.all(normalizedKeywords.map(async (kw, idx) => {
           const want = Math.max(1, perOversample[idx])
           const batches = Math.ceil(want / 30)
@@ -294,7 +305,28 @@ export async function POST(req: Request) {
             const slice = Math.min(30, want - b * 30)
             if (slice <= 0) break
             console.log(`Instagram Apify 액터 호출 시작 - taskId: ${taskId}, kw: ${kw}, slice: ${slice}`)
-            const started = await startTaskRun({ taskId, token, input: { hashtags: [kw], resultsLimit: slice, whatToScrape: 'reels', firstPageOnly: false } })
+            
+            const result = await queueManager.executeWithSessionContinuity(
+              taskId,
+              { hashtags: [kw], resultsLimit: slice, whatToScrape: 'reels', firstPageOnly: false },
+              {
+                priority: 'high', // Instagram 검색은 높은 우선순위
+                maxRetries: 3,
+                sessionId: searchSessionId,
+                sessionStep: 1, // 1단계: 해시태그 검색
+                onQueued: (position: number) => {
+                  console.log(`🔄 Instagram 키워드 검색이 대기열 ${position}번째에 추가됨`)
+                }
+              }
+            )
+            
+            if (!result.success) {
+              console.log(`⏳ Instagram 키워드 검색이 대기열에 추가됨: ${result.message}`)
+              // 1단계 실패시에만 전체 실패 처리 (필수 단계)
+              throw new Error(`시스템 사용량이 높습니다. ${result.message}`)
+            }
+            
+            const started = { runId: result.runId! }
             console.log(`Instagram Apify 액터 시작됨 - runId: ${started.runId}`)
             apifyRunIds.add(started.runId)
             const run = await waitForRunItems<IHashtagItem>({ token, runId: started.runId })
@@ -304,6 +336,9 @@ export async function POST(req: Request) {
           return acc
         }))
         hashtagItems = runs.flat()
+        
+        // 1단계 성공 - 세션 활성화
+        queueManager.startSearchSession(searchSessionId)
         for (const it of hashtagItems) {
           const u = getUrl(it)
           if (!u) continue
@@ -360,9 +395,30 @@ export async function POST(req: Request) {
       for (let i = 0; i < maxIdx; i += batchSize) {
         batches.push(reelUrls.slice(i, i + batchSize))
       }
-      // Run all batches in parallel as before; account-level concurrency will queue if needed
+      // Run all batches in parallel with session continuity
       await Promise.all(batches.map(async (batch) => {
-        const started = await startTaskRun({ taskId: detailsTaskId, token, input: { directUrls: batch, resultsType: 'posts', addParentData: false, resultsLimit: batch.length } })
+        const queueResult = await queueManager.executeWithSessionContinuity(
+          detailsTaskId,
+          { directUrls: batch, resultsType: 'posts', addParentData: false, resultsLimit: batch.length },
+          {
+            priority: 'normal',
+            maxRetries: 3,
+            sessionId: searchSessionId,
+            sessionStep: 2, // 2단계: Details 수집
+            onQueued: (position: number) => {
+              console.log(`🔄 Instagram details 검색이 대기열 ${position}번째에 추가됨`)
+            }
+          }
+        )
+        
+        if (!queueResult.success) {
+          console.log(`⏳ Instagram details 검색이 대기열에 추가됨: ${queueResult.message}`)
+          // 일부 배치가 대기열에 들어가더라도 다른 배치는 계속 진행
+          console.warn(`⚠️ Details 배치 대기열 추가, 다른 배치는 계속 진행: ${queueResult.message}`)
+          return // 이 배치만 건너뛰고 다른 배치는 계속
+        }
+        
+        const started = { runId: queueResult.runId! }
         apifyRunIds.add(started.runId)
         const gotMeta = await waitForRunItems<IReelDetail>({ token, runId: started.runId })
         const got = gotMeta.items
@@ -385,9 +441,34 @@ export async function POST(req: Request) {
     let profiles: IProfileSummary[] = []
     if (usernames.length) {
       const chunkSize = 30
+      const { getMemoryQueueManager } = await import('@/lib/memory-queue-manager')
+      const queueManager = getMemoryQueueManager()
+      
       for (let i = 0; i < usernames.length; i += chunkSize) {
         const slice = usernames.slice(i, i + chunkSize)
-        const started = await startTaskRun({ taskId: 'interesting_dingo/instagram-profile-scraper-task', token, input: { usernames: slice, ...proxyOpt } })
+        
+        const queueResult = await queueManager.executeWithSessionContinuity(
+          'interesting_dingo/instagram-profile-scraper-task',
+          { usernames: slice, ...proxyOpt },
+          {
+            priority: 'low',
+            maxRetries: 3,
+            sessionId: searchSessionId,
+            sessionStep: 3, // 3단계: Profile 수집
+            onQueued: (position) => {
+              console.log(`🔄 Instagram profile 검색이 대기열 ${position}번째에 추가됨`)
+            }
+          }
+        )
+        
+        if (!queueResult.success) {
+          console.log(`⏳ Instagram profile 검색이 대기열에 추가됨: ${queueResult.message}`)
+          // 3단계(프로필) 실패시 경고만 출력하고 계속 진행 (선택적 단계)
+          console.warn(`⚠️ Profile 정보 수집 실패, 기본 검색 결과로 계속 진행: ${queueResult.message}`)
+          break // 이 루프만 중단하고 기존 결과로 계속
+        }
+        
+        const started = { runId: queueResult.runId! }
         apifyRunIds.add(started.runId)
         const res = await waitForRunItems<IProfileSummary>({ token, runId: started.runId })
         profiles.push(...res.items)
@@ -497,7 +578,30 @@ export async function POST(req: Request) {
         .map(r => r.username as string)
       const uniqueMissing = Array.from(new Set(missingUsernames)).filter(u => !profiles.some(p => p.username === u))
       if (uniqueMissing.length === 0) break
-      const started = await startTaskRun({ taskId: 'interesting_dingo/instagram-profile-scraper-task', token, input: { usernames: uniqueMissing.slice(0, 20), ...proxyOpt } })
+      
+      const { getMemoryQueueManager } = await import('@/lib/memory-queue-manager')
+      const additionalQueueManager = getMemoryQueueManager()
+      
+      const queueResult = await additionalQueueManager.executeWithSessionContinuity(
+        'interesting_dingo/instagram-profile-scraper-task',
+        { usernames: uniqueMissing.slice(0, 20), ...proxyOpt },
+        {
+          priority: 'low',
+          maxRetries: 3,
+          sessionId: searchSessionId,
+          sessionStep: 3, // 3단계: 추가 Profile 수집
+          onQueued: (position: number) => {
+            console.log(`🔄 Instagram 추가 profile 검색이 대기열 ${position}번째에 추가됨`)
+          }
+        }
+      )
+      
+      if (!queueResult.success) {
+        console.log(`⏳ Instagram 추가 profile 검색이 대기열에 추가됨: ${queueResult.message}`)
+        break // 추가 profile은 필수가 아니므로 실패 시 중단
+      }
+      
+      const started = { runId: queueResult.runId! }
       apifyRunIds.add(started.runId)
       const more = await waitForRunItems<IProfileSummary>({ token, runId: started.runId })
       const moreProfiles = more.items
@@ -693,6 +797,9 @@ export async function POST(req: Request) {
           credits: { toCharge, basis: 100, per: 30 },
         })
       } else {
+        // 검색 성공 완료 - 세션 종료
+        queueManager.completeSearchSession(searchSessionId)
+        
         return Response.json({ 
           items: sorted, 
           credits: { toCharge, basis: 100, per: 30 } 
@@ -704,6 +811,14 @@ export async function POST(req: Request) {
     console.error('에러 타입:', typeof e)
     console.error('에러 객체:', e)
     console.error('에러 스택:', (e as Error)?.stack)
+    
+    // 에러 발생 시 세션 정리
+    try {
+      console.log('에러 발생으로 세션 정리 중...')
+      // 에러 시 정리는 별도 로직으로 처리하거나 타임아웃으로 자동 정리
+    } catch (sessionError) {
+      console.warn('세션 정리 중 에러:', sessionError)
+    }
     
     // Best-effort: no settle here because we don't have user/reserve in this scope anymore
     // Always return JSON for easier debugging from clients/CLI
@@ -820,7 +935,32 @@ async function handleProfileSearch(
     
     console.log('Apify 태스크 입력:', JSON.stringify(taskInput, null, 2))
     
-    const started = await startTaskRun({ taskId, token, input: taskInput })
+    // 메모리 대기열 시스템을 통한 안전한 실행
+    const { getMemoryQueueManager } = await import('@/lib/memory-queue-manager')
+    const queueManager = getMemoryQueueManager()
+    
+    const queueResult = await queueManager.executeWithTryFirst(
+      taskId,
+      taskInput,
+      {
+        priority: 'high', // Instagram 프로필 검색은 높은 우선순위
+        maxRetries: 3,
+        onQueued: (position) => {
+          console.log(`🔄 Instagram 프로필 검색이 대기열 ${position}번째에 추가됨`)
+        }
+      }
+    )
+    
+    if (!queueResult.success) {
+      console.log(`⏳ Instagram 프로필 검색이 대기열에 추가됨: ${queueResult.message}`)
+      return Response.json({
+        success: false,
+        message: `시스템 사용량이 높습니다. ${queueResult.message}`,
+        queueId: queueResult.queueId
+      }, { status: 202 }) // Accepted, 처리 중
+    }
+    
+    const started = { runId: queueResult.runId! }
     console.log('Apify 태스크 시작됨 - runId:', started.runId)
     apifyRunIds.add(started.runId)
     

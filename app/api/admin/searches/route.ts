@@ -49,47 +49,25 @@ export async function GET(req: Request) {
   // 유저 ID들 추출
   const userIds = [...new Set(searchHistory.map(item => item.user_id))]
   
-  // 유저 정보 가져오기 (auth.users는 직접 접근할 수 없으므로 profiles를 통해)
+  // 유저 정보 가져오기 (profiles 테이블에 email 컬럼 추가 필요)
   const { data: profiles, error: profileError } = await svc
     .from('profiles')
-    .select('user_id, plan, subscription_start_date, last_payment_date, display_name')
+    .select('user_id, plan, subscription_start_date, last_payment_date, display_name, email')
     .in('user_id', userIds)
 
   if (profileError) {
     console.error('Profiles fetch error:', profileError)
   }
 
-  // auth.users에서 이메일 가져오기
-  let users: Array<{id: string, email: string}> = []
-  try {
-    // service role key로 auth.users 직접 접근 시도
-    const { data: usersData, error: usersError } = await ssr
-      .from('auth.users')
-      .select('id, email')
-      .in('id', userIds)
-    
-    if (usersError) {
-      console.error('Users fetch error with SSR:', usersError)
-      console.error('Error details:', JSON.stringify(usersError, null, 2))
-    } else {
-      users = usersData || []
-      console.log(`Successfully fetched ${users.length} user emails`)
-    }
-  } catch (error) {
-    console.error('Failed to fetch user emails:', error)
-  }
-
-  // 데이터 조합
+  // 데이터 조합 (profiles에서 이메일 정보 직접 사용)
   const profileMap = new Map(profiles?.map(p => [p.user_id, p]) || [])
-  const userMap = new Map(users?.map(u => [u.id, u]) || [])
 
   const transformedData = searchHistory.map(item => {
     const profile = profileMap.get(item.user_id)
-    const user = userMap.get(item.user_id)
     
     return {
       ...item,
-      user_email: user?.email || 'Unknown',
+      user_email: profile?.email || profile?.display_name || `user_${item.user_id.slice(0, 8)}`,
       user_plan: profile?.plan || 'free',
       subscription_start_date: profile?.subscription_start_date,
       last_payment_date: profile?.last_payment_date,

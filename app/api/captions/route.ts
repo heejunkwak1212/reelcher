@@ -118,9 +118,44 @@ export async function POST(req: Request) {
     // Sanitize: strip query/hash to avoid actor mis-detection
     const urlObj = new URL(input.url)
     const cleanUrl = `${urlObj.origin}${urlObj.pathname}`
-         const taskId = 'interesting_dingo/tiktok-instagram-facebook-transcriber-task'
-    // This actor expects 'start_urls' not 'directUrls'. If the param is wrong, it falls back to example URL.
-    const started = await startTaskRun({ taskId, token, input: { start_urls: cleanUrl } })
+    const taskId = 'interesting_dingo/tiktok-instagram-facebook-transcriber-task'
+    
+    // Try-First 방식으로 자막 추출 실행
+    const { getMemoryQueueManager } = await import('@/lib/memory-queue-manager')
+    const queueManager = getMemoryQueueManager()
+    
+    let started: { runId: string }
+    
+    try {
+      const result = await queueManager.executeWithTryFirst(
+        taskId,
+        { start_urls: cleanUrl },
+        {
+          priority: 'normal',
+          maxRetries: 3,
+          onQueued: (position) => {
+            console.log(`🔄 자막 추출이 대기열 ${position}번째에 추가됨`)
+          }
+        }
+      )
+      
+      if (!result.success) {
+        return new Response(JSON.stringify({
+          error: 'SYSTEM_BUSY',
+          message: `시스템이 바쁩니다. ${result.message}`,
+          queueId: result.queueId
+        }), { status: 202 }) // Accepted, 처리 중
+      }
+      
+      started = { runId: result.runId! }
+    } catch (error: any) {
+      console.error('자막 추출 실행 실패:', error)
+      return new Response(JSON.stringify({
+        error: '자막 추출에 실패했습니다.',
+        details: error.message
+      }), { status: 500 })
+    }
+    
     const out = await waitForRunItems<any[]>({ token, runId: started.runId })
     const first = Array.isArray(out.items) ? (out.items[0] as any) : undefined
     let text: string = first?.text || first?.transcript || first?.transcription || ''
@@ -195,6 +230,30 @@ export async function POST(req: Request) {
         }
       } catch (error) {
         console.error('❌ 자막 추출 크레딧 차감 실패:', error)
+      }
+    } else {
+      // Admin 계정의 경우 크레딧 차감 없이 기록만 저장
+      console.log(`🔑 관리자 계정 - 크레딧 차감 없이 기록만 저장`)
+      try {
+        const platform = input.url.includes('youtube.com') || input.url.includes('youtu.be') ? 'youtube' : 
+                         input.url.includes('tiktok.com') ? 'tiktok' : 'instagram'
+        
+        await ssr
+          .from('search_history')
+          .insert({
+            user_id: user.id,
+            platform: platform,
+            search_type: 'subtitle_extraction',
+            keyword: '자막 추출',
+            filters: { url: input.url },
+            results_count: 1,
+            credits_used: 0, // Admin은 크레딧 사용량 0
+            status: 'completed'
+          })
+        
+        console.log(`✅ 관리자 ${platform} 자막 추출 기록 저장 완료`)
+      } catch (historyError) {
+        console.error('❌ 관리자 자막 추출 기록 저장 실패:', historyError)
       }
     }
     

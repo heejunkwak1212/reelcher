@@ -1,12 +1,12 @@
 // app/api/admin/apify/stats/route.ts
 import { NextRequest } from 'next/server';
-import { createServerClient } from '@/lib/supabase/server';
+import { supabaseServer } from '@/lib/supabase/server';
 import ApifyMonitor from '@/lib/apify-monitor';
 
 export async function GET(request: NextRequest) {
   try {
     // 관리자 권한 확인
-    const supabase = createServerClient();
+    const supabase = await supabaseServer();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     
     if (authError || !user) {
@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
     }
 
     const monitor = new ApifyMonitor(apifyToken);
-    const stats = await monitor.getUsageStats(days);
+    const stats = await monitor.getDetailedUsageStats(days);
 
     return new Response(JSON.stringify(stats), {
       headers: {

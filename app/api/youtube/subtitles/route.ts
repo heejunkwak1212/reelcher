@@ -148,7 +148,7 @@ export async function POST(req: NextRequest) {
               keyword: '자막 추출', // URL 대신 "자막 추출"로 저장
               filters: { url },
               results_count: 1,
-              credits_used: requiredCredits,
+              credits_used: requiredCredits, // 실제 크레딧 사용량
               status: 'completed'
             })
           
@@ -159,6 +159,27 @@ export async function POST(req: NextRequest) {
         
       } catch (error) {
         console.error('❌ YouTube 자막 추출 크레딧 차감 실패:', error)
+      }
+    } else {
+      // Admin 계정의 경우 크레딧 차감 없이 기록만 저장
+      console.log(`🔑 관리자 계정 - 크레딧 차감 없이 기록만 저장`)
+      try {
+        await supabase
+          .from('search_history')
+          .insert({
+            user_id: user.id,
+            platform: 'youtube',
+            search_type: 'subtitle_extraction',
+            keyword: '자막 추출',
+            filters: { url },
+            results_count: 1,
+            credits_used: 0, // Admin은 크레딧 사용량 0
+            status: 'completed'
+          })
+        
+        console.log(`✅ 관리자 YouTube 자막 추출 기록 저장 완료`)
+      } catch (historyError) {
+        console.error('❌ 관리자 YouTube 자막 추출 기록 저장 실패:', historyError)
       }
     }
 

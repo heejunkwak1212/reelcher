@@ -45,10 +45,21 @@ export default function AdminSearches() {
 
   // 정확한 플랫폼별 원가 계산 함수 (취소된 검색 대응)
   const calculateApifyCost = (record: SearchRecord): number => {
-    // 취소된 검색의 경우 요청수 기준으로 계산, 그외는 실제 결과수
-    const effectiveCount = record.status === 'cancelled' && record.requested_count 
-      ? record.requested_count 
-      : (record.results_count || 0)
+    // 취소된/pending 검색의 경우 요청수 또는 크레딧 기반 추정
+    let effectiveCount = record.results_count || 0
+    
+    if ((record.status === 'cancelled' || record.status === 'pending') && record.credits_used) {
+      if (record.requested_count) {
+        effectiveCount = record.requested_count
+      } else {
+        // credits_used를 기반으로 요청수 추정
+        const creditsUsed = record.credits_used
+        if (creditsUsed <= 120) effectiveCount = 30      // 100크레딧 기준
+        else if (creditsUsed <= 240) effectiveCount = 60  // 200크레딧 기준
+        else if (creditsUsed <= 360) effectiveCount = 90  // 300크레딧 기준  
+        else effectiveCount = 120                         // 400크레딧 기준
+      }
+    }
     const platform = record.platform
     const searchType = record.search_type
     
@@ -75,7 +86,7 @@ export default function AdminSearches() {
       if (platform === 'youtube') {
         return 0  // YouTube는 yt-dlp 사용으로 무료
       } else if (platform === 'instagram' || platform === 'tiktok') {
-        return costs.instagram.subtitle / 1000  // Apify 자막 추출 비용 (1건당)
+        return 0.038  // 인스타/틱톡 자막 추출: 1개당 $0.038
       }
       return 0
     }

@@ -1244,6 +1244,41 @@ function SearchTestPageContent() {
   //   setPendingSearchAction(null)
   // }
 
+  // 대기열 처리 함수
+  const handleQueuedSearch = async (queueId: string, message: string) => {
+    console.log(`🔄 검색이 대기열에 추가됨: ${queueId}`)
+    setLoading(false)
+    
+    // 팝업 제거 - 대기열 처리를 조용히 백그라운드에서 진행
+    console.log(`📢 대기열 메시지: ${message}`)
+    
+    // 대기열 상태 폴링 시작
+    const pollQueue = async () => {
+      try {
+        const statusResponse = await fetch(`/api/search/queue-status?queueId=${queueId}`)
+        const statusData = await statusResponse.json()
+        
+        if (statusResponse.ok && statusData.success) {
+          console.log(`📊 대기열 상태: ${statusData.status.position}/${statusData.status.totalQueue}, 예상 대기시간: ${statusData.status.estimatedWaitTime}분`)
+          
+          // 5초 후 다시 확인
+          setTimeout(pollQueue, 5000)
+        } else {
+          // 대기열에서 제거됨 (완료 또는 실패)
+          console.log('✅ 대기열 처리 완료 또는 제거됨')
+          // 통계 새로고침
+          loadStats()
+          loadCredits()
+        }
+      } catch (error) {
+        console.error('대기열 상태 확인 오류:', error)
+      }
+    }
+    
+    // 첫 번째 상태 확인
+    setTimeout(pollQueue, 2000)
+  }
+
   const run = async () => {
     // 새 검색 시 페이지 리셋
     setCurrentPage(1)
@@ -1400,6 +1435,7 @@ function SearchTestPageContent() {
           search_type: searchType,
           keyword: searchType === 'profile' ? (keyword.startsWith('@') ? keyword : `@${keyword}`) : keyword,
           expected_credits: expectedCredits,
+          requested_count: Number(limit), // 요청한 검색 결과 수
           status: 'pending' // 검색 진행 중 상태
         }
         
@@ -1535,6 +1571,14 @@ function SearchTestPageContent() {
         body: JSON.stringify(payload),
         signal: abortRef.current?.signal,
       })
+      
+      // 대기열 응답 처리 (202 Accepted)
+      if (res.status === 202) {
+        const queueData = await res.json()
+        await handleQueuedSearch(queueData.queueId, queueData.message)
+        return
+      }
+      
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
         console.error('검색 API 오류:', {

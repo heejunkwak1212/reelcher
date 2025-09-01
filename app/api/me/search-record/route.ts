@@ -10,6 +10,7 @@ const createRecordSchema = z.object({
   search_type: z.enum(['keyword', 'profile', 'url']),
   keyword: z.string().min(1),
   expected_credits: z.number().int().min(0),
+  requested_count: z.number().int().min(0).optional(), // 요청한 검색 결과 수
   status: z.enum(['pending', 'completed', 'failed', 'cancelled']).default('pending')
 })
 
@@ -85,7 +86,8 @@ export async function POST(request: NextRequest) {
         keyword: data.keyword,
         filters: JSON.stringify({}), // JSON 문자열로 저장
         results_count: 0, // 초기값
-        credits_used: data.expected_credits, // 예상 크레딧으로 초기 설정
+        credits_used: 0, // 초기값 (실제 크레딧은 검색 완료 후 업데이트)
+        requested_count: data.requested_count, // 요청한 검색 결과 수
         status: data.status,
         created_at: new Date().toISOString()
       })

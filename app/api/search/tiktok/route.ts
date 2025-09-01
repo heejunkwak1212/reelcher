@@ -303,11 +303,31 @@ export async function POST(request: NextRequest) {
         ? 'interesting_dingo/tiktok-scraper-task' // 프로필 검색용 기존 액터
         : 'interesting_dingo/tiktok-scraper-task-2' // 키워드 검색용 새 액터
       
-      const started = await startTaskRun({ 
-        taskId, 
-        token: process.env.APIFY_TOKEN!, 
-        input: taskInput
-      })
+      // 메모리 대기열 시스템을 통한 안전한 실행
+      const { getMemoryQueueManager } = await import('@/lib/memory-queue-manager')
+      const queueManager = getMemoryQueueManager()
+      
+      const result = await queueManager.executeWithTryFirst(
+        taskId,
+        taskInput,
+        {
+          priority: 'normal',
+          maxRetries: 3,
+          onQueued: (position) => {
+            console.log(`🔄 TikTok 요청이 대기열 ${position}번째에 추가됨`)
+          }
+        }
+      )
+      
+      if (!result.success) {
+        return Response.json({
+          success: false,
+          message: result.message,
+          queueId: result.queueId
+        }, { status: 202 }) // Accepted, 처리 중
+      }
+      
+      const started = { runId: result.runId! }
       
       console.log(`TikTok Task 시작됨 - runId: ${started.runId}`)
       

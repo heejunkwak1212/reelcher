@@ -1,5 +1,7 @@
 import { supabaseServer } from '@/lib/supabase/server'
 import Link from 'next/link'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, subMonths } from 'date-fns'
 
 export default async function AdminPage() {
   const supabase = await supabaseServer()
@@ -52,6 +54,47 @@ export default async function AdminPage() {
     .select('*', { count: 'exact', head: true })
     .gte('created_at', monthAgo)
 
+  // MRR 차트 데이터 생성 (최근 6개월)
+  const getMRRData = async () => {
+    const months = []
+    for (let i = 5; i >= 0; i--) {
+      const date = subMonths(new Date(), i)
+      const monthStart = startOfMonth(date)
+      const monthEnd = endOfMonth(date)
+      
+      // 해당 월의 유료 사용자 수 조회
+      const { data: monthlyUsers } = await supabase
+        .from('profiles')
+        .select('plan, subscription_start_date')
+        .not('plan', 'eq', 'free')
+        .lte('subscription_start_date', monthEnd.toISOString())
+        
+      // 플랜별 수익 계산
+      let monthlyRevenue = 0
+      if (monthlyUsers) {
+        monthlyUsers.forEach(user => {
+          const subStart = new Date(user.subscription_start_date || monthStart)
+          if (subStart <= monthEnd) {
+            switch (user.plan) {
+              case 'starter': monthlyRevenue += 2000; break
+              case 'pro': monthlyRevenue += 7000; break
+              case 'business': monthlyRevenue += 12500; break
+            }
+          }
+        })
+      }
+      
+      months.push({
+        date: format(date, 'MMM yyyy'),
+        revenue: monthlyRevenue,
+        userCount: monthlyUsers?.length || 0
+      })
+    }
+    return months
+  }
+
+  const mrrData = await getMRRData()
+
   // 비용 계산 (인스타그램 액터별 비용)
   const { data: searchesWithCost } = await supabase
     .from('searches')
@@ -96,17 +139,42 @@ export default async function AdminPage() {
           </Link>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          <div className="bg-white rounded-lg p-6 shadow-sm border border-gray-200">
-            <div className="text-sm text-gray-500 mb-1">오늘</div>
-            <div className="text-3xl font-bold text-gray-900 mb-2">₩{Math.round(todayCost).toLocaleString()}</div>
-            <div className="text-xs text-gray-500">API 사용 비용</div>
+        {/* MRR 차트 */}
+        <div className="bg-white rounded-lg p-6 shadow-sm border border-gray-200 mb-6">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">Monthly Recurring Revenue</h2>
+              <p className="text-sm text-gray-600">최근 6개월 구독 매출 현황</p>
+            </div>
+            <div className="text-right">
+              <div className="text-3xl font-bold text-green-600">
+                {mrrData[mrrData.length - 1]?.revenue.toLocaleString()}원
+              </div>
+              <div className="text-sm text-gray-500">이번 달 MRR</div>
+            </div>
           </div>
-          <div className="bg-white rounded-lg p-6 shadow-sm border border-gray-200">
-            <div className="text-sm text-gray-500 mb-1">최근 30일</div>
-            <div className="text-3xl font-bold text-gray-900 mb-2">₩{Math.round(monthlyCost).toLocaleString()}</div>
-            <div className="text-xs text-gray-500">API 사용 비용</div>
+          
+          <div className="h-80">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={mrrData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" />
+                <YAxis 
+                  tickFormatter={(value) => `${(value / 1000).toFixed(0)}K원`}
+                />
+                <Tooltip 
+                  formatter={(value: number) => [`${value.toLocaleString()}원`, 'MRR']}
+                  labelFormatter={(label) => `${label}`}
+                />
+                <Line 
+                  type="monotone" 
+                  dataKey="revenue" 
+                  stroke="#10b981" 
+                  strokeWidth={3}
+                  dot={{ fill: '#10b981', strokeWidth: 2, r: 6 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
           </div>
         </div>
 
@@ -131,25 +199,25 @@ export default async function AdminPage() {
               </div>
             </div>
             
-            <div className="p-6">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div className="p-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-gray-900">{userCount?.toLocaleString() || 0}</div>
+                  <div className="text-xl font-bold text-gray-900">{userCount?.toLocaleString() || 0}</div>
                   <div className="text-xs text-gray-500">총 사용자</div>
                   <div className="text-xs text-green-600 mt-1">+{todaySignups} 오늘</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-gray-900">{activeUsers}</div>
+                  <div className="text-xl font-bold text-gray-900">{activeUsers}</div>
                   <div className="text-xs text-gray-500">활성 사용자</div>
                   <div className="text-xs text-gray-500 mt-1">7일 기준</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-gray-900">{todaySearches || 0}</div>
+                  <div className="text-xl font-bold text-gray-900">{todaySearches || 0}</div>
                   <div className="text-xs text-gray-500">오늘 검색</div>
                   <div className="text-xs text-gray-500 mt-1">{monthlySearches || 0} 최근 30일</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-gray-900">
+                  <div className="text-xl font-bold text-gray-900">
                     {((planCounts.starter || 0) + (planCounts.pro || 0) + (planCounts.business || 0))}
                   </div>
                   <div className="text-xs text-gray-500">유료 사용자</div>

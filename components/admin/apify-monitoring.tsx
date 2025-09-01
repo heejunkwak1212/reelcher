@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { RefreshCw, Activity, Server, Clock, BarChart3, Users, Zap } from 'lucide-react';
 import { ApifyUsageInfo, ApifyUsageStats, ApifyRunInfo } from '@/lib/apify-monitor';
+import ApifyMonitor from '@/lib/apify-monitor';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 
 export default function ApifyMonitoring() {
@@ -18,6 +19,7 @@ export default function ApifyMonitoring() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [apifyMonitor, setApifyMonitor] = useState<ApifyMonitor | null>(null);
 
   const fetchData = async (showRefreshing = false) => {
     if (showRefreshing) setRefreshing(true);
@@ -39,6 +41,11 @@ export default function ApifyMonitoring() {
       }
 
       setLastUpdated(new Date());
+      
+      // ApifyMonitor 인스턴스 생성 (클라이언트 사이드에서는 토큰 없이)
+      if (!apifyMonitor) {
+        setApifyMonitor(new ApifyMonitor(''));
+      }
     } catch (error) {
       console.error('Failed to fetch Apify data:', error);
     } finally {
@@ -47,11 +54,26 @@ export default function ApifyMonitoring() {
     }
   };
 
+  // RAM 사용률 경고
+  const getRAMWarning = () => {
+    if (!usageInfo || !usageInfo.accountInfo?.limits) return null;
+    const currentRam = usageInfo.currentMemoryUsage || 0;
+    const maxRam = usageInfo.accountInfo.limits.maxCombinedActorMemoryMbytes || 1;
+    const usage = (currentRam / maxRam) * 100;
+    
+    if (usage > 90) {
+      return "🔴 위험: RAM 사용률이 90%를 초과했습니다. 새로운 액터 실행이 차단될 수 있습니다.";
+    } else if (usage > 75) {
+      return "🟡 경고: RAM 사용률이 75%를 초과했습니다. 주의가 필요합니다.";
+    }
+    return null;
+  };
+
   useEffect(() => {
     fetchData();
     
-    // 30초마다 자동 새로고침
-    const interval = setInterval(() => fetchData(), 30000);
+    // 실시간 모니터링을 위해 10초마다 자동 새로고침
+    const interval = setInterval(() => fetchData(), 10000);
     return () => clearInterval(interval);
   }, []);
 
@@ -117,7 +139,7 @@ export default function ApifyMonitoring() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Apify 리소스 모니터링</h2>
-          <p className="text-gray-600">실시간 액터 실행 상태 및 리소스 사용량</p>
+          <p className="text-gray-600">실시간 액터 실행 상태 및 리소스 사용량 (10초마다 자동 업데이트)</p>
         </div>
         <div className="flex items-center gap-4">
           {lastUpdated && (
@@ -136,6 +158,15 @@ export default function ApifyMonitoring() {
         </div>
       </div>
 
+      {/* RAM 경고 표시 */}
+      {getRAMWarning() && (
+        <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <div className="text-yellow-800 font-medium">
+            {getRAMWarning()}
+          </div>
+        </div>
+      )}
+
       {/* 주요 지표 카드들 */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
@@ -145,11 +176,11 @@ export default function ApifyMonitoring() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold mb-2">
-              <span className={getUsageColor(usageInfo.usagePercentage)}>
-                {usageInfo.usagePercentage.toFixed(1)}%
+              <span className={getUsageColor(usageInfo.usagePercentage || 0)}>
+                {(usageInfo.usagePercentage || 0).toFixed(1)}%
               </span>
             </div>
-            <Progress value={usageInfo.usagePercentage} className="mb-2" />
+            <Progress value={usageInfo.usagePercentage || 0} className="mb-2" />
             <p className="text-xs text-muted-foreground">
               {formatMemory(usageInfo.currentMemoryUsage)} / {formatMemory(usageInfo.maxMemoryAllowed)}
             </p>
@@ -174,12 +205,26 @@ export default function ApifyMonitoring() {
             <CardTitle className="text-sm font-medium">계정 플랜</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{usageInfo.accountInfo.plan?.toUpperCase()}</div>
-            <p className="text-xs text-muted-foreground">
-              {usageInfo.accountInfo.username}
-            </p>
-          </CardContent>
+                      <CardContent>
+              <div className="text-2xl font-bold">{usageInfo.accountInfo.plan?.toString()?.toUpperCase() || 'FREE'}</div>
+              <p className="text-xs text-muted-foreground">
+                {usageInfo.accountInfo.username}
+              </p>
+              <div className="mt-2">
+                <div className="text-sm text-gray-600">
+                  RAM 사용률: {usageInfo.accountInfo?.limits ? 
+                    ((usageInfo.currentMemoryUsage / usageInfo.accountInfo.limits.maxCombinedActorMemoryMbytes) * 100).toFixed(1) : '0'}%
+                </div>
+                <Progress 
+                  value={usageInfo.accountInfo?.limits ? 
+                    (usageInfo.currentMemoryUsage / usageInfo.accountInfo.limits.maxCombinedActorMemoryMbytes) * 100 : 0} 
+                  className="h-2 mt-1"
+                />
+                <div className="text-xs text-gray-500 mt-1">
+                  {usageInfo.currentMemoryUsage || 0}MB / {usageInfo.accountInfo?.limits?.maxCombinedActorMemoryMbytes || 0}MB
+                </div>
+              </div>
+            </CardContent>
         </Card>
 
         <Card>
@@ -233,8 +278,13 @@ export default function ApifyMonitoring() {
                   <TableBody>
                     {usageInfo.runningActors.map((actor) => (
                       <TableRow key={actor.id}>
-                        <TableCell className="font-mono text-sm">
-                          {actor.actId.split('/').pop()}
+                        <TableCell>
+                          <div>
+                            <div className="font-medium text-sm">
+                              {apifyMonitor?.getActorDisplayName(actor.actId) || actor.actId}
+                            </div>
+                            <div className="font-mono text-xs text-gray-500">{actor.id}</div>
+                          </div>
                         </TableCell>
                         <TableCell>
                           <Badge variant={getStatusBadgeVariant(actor.status)}>
