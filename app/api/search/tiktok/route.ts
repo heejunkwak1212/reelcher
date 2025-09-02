@@ -17,7 +17,8 @@ const tiktokSearchSchema = z.object({
     minViews: z.number().min(0).optional(),
 
     sortBy: z.enum(['trending', 'recent', 'most_liked']).optional()
-  }).optional().default({})
+  }).optional().default({}),
+  queuedRunId: z.string().optional() // 대기열에서 완료된 runId
 })
 
 export async function POST(request: NextRequest) {
@@ -46,12 +47,64 @@ export async function POST(request: NextRequest) {
   console.log('🔍 TikTok API - User ID:', user.id)
   console.log('🔍 TikTok API - User Email:', user.email)
 
-    // 요청 본문 파싱 및 검증
-    const body = await request.json()
+    // 요청 본문 파싱 및 검증 (에러 핸들링 추가)
+    const body = await request.json().catch(() => ({}))
     const validatedData = tiktokSearchSchema.parse(body)
     const searchRequest: ITikTokSearchRequest = {
       ...validatedData,
       resultsLimit: validatedData.resultsLimit as 5 | 30 | 60 | 90 | 120
+    }
+
+    // 대기열에서 완료된 runId가 있는 경우 해당 결과 사용
+    if (validatedData.queuedRunId) {
+      console.log(`[Queued] 완료된 실행 결과 가져오기 시작: runId=${validatedData.queuedRunId}`)
+      try {
+        const { waitForRunItems } = await import('@/lib/apify')
+        const token = process.env.APIFY_TOKEN!
+        const result = await waitForRunItems({ token, runId: validatedData.queuedRunId })
+        
+        const items = Array.isArray(result.items) ? result.items : []
+        console.log(`[Queued] 원시 데이터 ${items.length}개 가져오기 성공`);
+
+        // 일반 검색과 동일한 데이터 가공 로직
+        const videos: ITikTokVideo[] = items.map((item: any) => {
+            const videoId = item.id || item.videoId || `tiktok_${Date.now()}_${Math.random()}`
+            const username = item.authorMeta?.name || item.username || 'unknown'
+            const authorName = item.authorMeta?.nickName || item.authorName || username
+            const webVideoUrl = item.webVideoUrl || `https://www.tiktok.com/@${username}/video/${videoId}`
+            
+            return {
+              videoId,
+              title: item.text || item.title || '',
+              description: item.text || item.description || '',
+              username,
+              authorName,
+              publishedAt: item.createTimeISO || (item.createTime ? new Date(item.createTime * 1000).toISOString() : new Date().toISOString()),
+              thumbnailUrl: item.videoMeta?.coverUrl || item.videoMeta?.originalCoverUrl || null,
+              videoUrl: item.mediaUrls?.[0] || item.videoMeta?.downloadAddr || webVideoUrl,
+              duration: Number(item.videoMeta?.duration) || 0,
+              viewCount: Number(item.playCount) || 0,
+              likeCount: Number(item.diggCount) || 0,
+              commentCount: Number(item.commentCount) || 0,
+              shareCount: Number(item.shareCount) || 0,
+              followersCount: Number(item.authorMeta?.fans) || 0,
+              hashtags: Array.isArray(item.hashtags) ? item.hashtags.map((tag: any) => tag?.name || tag || '') : [],
+              musicInfo: item.musicMeta ? {
+                musicName: item.musicMeta.musicName || '',
+                musicAuthor: item.musicMeta.musicAuthor || ''
+              } : undefined
+            }
+        })
+
+        // 가공된 'videos'를 반환
+        return NextResponse.json({ 
+          items: videos,
+          fromQueue: true
+        })
+      } catch (error) {
+        console.error('❌ TikTok 대기열 runId 결과 가져오기 실패:', error)
+        return NextResponse.json({ error: '대기열 결과를 가져올 수 없습니다.' }, { status: 500 })
+      }
     }
 
     // 사용자 정보 조회 (관리자 확인용)
@@ -107,7 +160,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 관리자가 아닌 경우에만 크레딧 처리
+    // 관리자가 아닌 경우에만 크레딧 즉시 차감 (search-record API 방식)
+    let expectedCredits = 0
+    let searchRecordId: string | null = null
+    
     if (!isAdmin) {
       // 크레딧 계산 (TikTok은 Instagram과 동일)
       const creditCosts: Record<number, number> = {
@@ -117,71 +173,54 @@ export async function POST(request: NextRequest) {
         90: 300,  // Instagram과 동일
         120: 400  // Instagram과 동일
       }
-      const requiredCredits = creditCosts[searchRequest.resultsLimit] || 0
+      expectedCredits = creditCosts[searchRequest.resultsLimit] || 0
 
-      // 크레딧이 필요한 경우에만 잔액 확인 (예약 시스템 제거)
-      if (requiredCredits > 0) {
-        // 현재 크레딧 상태 확인
-        const { data: creditData, error: creditError } = await supabase
-          .from('credits')
-          .select('balance')
-          .eq('user_id', user.id)
-          .single()
-
-        if (creditError || !creditData) {
-          return NextResponse.json(
-            { error: '크레딧 정보를 확인할 수 없습니다.' },
-            { status: 500 }
-          )
-        }
-
-        // 잔여 크레딧 확인 (예약 없이 단순 잔액만 확인)
-        if (creditData.balance < requiredCredits) {
-          return NextResponse.json(
-            { error: '크레딧이 부족합니다.' },
-            { status: 402 }
-          )
-        }
-
-        console.log(`💰 TikTok 크레딧 사전 확인 완료: 잔액=${creditData.balance}, 필요=${requiredCredits}`)
-      }
-    }
-
-    // settle 함수 준비 (Instagram과 동일한 방식)
-    let settle: null | ((finalCount: number) => Promise<number>) = null
-    settle = async (finalCount: number) => {
-      if (isAdmin) return 0
-      
-      // 실제 사용할 크레딧 계산 (proration)
-      const toCharge = Math.floor((finalCount / 30) * 100)
-      console.log(`💰 TikTok settle 함수 - 결과수: ${finalCount}, 차감: ${toCharge}`)
-      
-      // 실제 크레딧 차감
-      if (toCharge > 0) {
+      // 크레딧이 필요한 경우 즉시 차감 및 검색 기록 생성
+      if (expectedCredits > 0) {
         try {
-          const { data: currentCredits } = await supabase
-            .from('credits')
-            .select('balance')
-            .eq('user_id', user.id)
-            .single()
+          const keyword = searchRequest.query?.trim() || ''
+          const recordPayload = {
+            platform: 'tiktok' as const,
+            search_type: (searchRequest.searchType === 'hashtag' ? 'keyword' : searchRequest.searchType) as 'keyword' | 'profile' | 'url',
+            keyword: searchRequest.searchType === 'profile' ? (keyword.startsWith('@') ? keyword : `@${keyword}`) : keyword,
+            expected_credits: expectedCredits,
+            requested_count: searchRequest.resultsLimit,
+            status: 'pending' as const
+          }
           
-          if (currentCredits) {
-            const newBalance = Math.max(0, currentCredits.balance - toCharge)
+          console.log(`🚀 TikTok 검색 시작 즉시 기록 생성:`, recordPayload)
+          
+                       const recordRes = await fetch(new URL('/api/me/search-record', request.url), {
+               method: 'POST',
+               headers: { 
+                 'Content-Type': 'application/json',
+                 'Cookie': request.headers.get('cookie') || ''
+               },
+               body: JSON.stringify(recordPayload)
+             })
+          
+          if (recordRes.ok) {
+            const recordData = await recordRes.json()
+            searchRecordId = recordData.id
+            console.log(`✅ TikTok 검색 기록 생성 성공: ${searchRecordId}`)
+          } else {
+            const errorText = await recordRes.text()
+            console.error(`❌ TikTok 검색 기록 생성 실패: ${recordRes.status} ${errorText}`)
             
-            await supabase
-              .from('credits')
-              .update({ balance: newBalance })
-              .eq('user_id', user.id)
-            
-            console.log(`✅ TikTok 크레딧 차감 성공: ${toCharge} (${currentCredits.balance} → ${newBalance})`)
+            // 크레딧 부족 또는 기타 오류 처리
+            if (recordRes.status === 402) {
+              return NextResponse.json({ error: '크레딧이 부족합니다.' }, { status: 402 })
+            }
+            return NextResponse.json({ error: '검색 기록 생성 실패' }, { status: 500 })
           }
         } catch (error) {
-          console.error('❌ TikTok 크레딧 차감 오류:', error)
+          console.error('❌ TikTok 검색 기록 생성 오류:', error)
+          return NextResponse.json({ error: '검색 기록 생성 실패' }, { status: 500 })
         }
       }
-      
-      return toCharge // 실제 차감된 크레딧 반환
     }
+
+    // settle 함수 제거 - search-record API 방식으로 대체
 
     try {
       // 새로운 TikTok Scraper Task 실행 (향상된 기능 포함)
@@ -190,6 +229,14 @@ export async function POST(request: NextRequest) {
       // 검색 타입에 따른 입력 설정
       const isUrlSearch = searchRequest.searchType === 'url' && searchRequest.query.includes('tiktok.com')
       const isProfileSearch = searchRequest.searchType === 'profile'
+      const isKeywordSearch = searchRequest.searchType === 'keyword' || searchRequest.searchType === 'hashtag'
+      
+      console.log(`🔍 [DEBUG] 검색 타입 분석:`)
+      console.log(`  - 원본 searchType: "${searchRequest.searchType}"`)
+      console.log(`  - isUrlSearch: ${isUrlSearch}`)
+      console.log(`  - isProfileSearch: ${isProfileSearch}`)
+      console.log(`  - isKeywordSearch: ${isKeywordSearch}`)
+      console.log(`  - 검색어: "${searchRequest.query}"`)
       
       // 성공 사례 기반 기본 taskInput 구조
       const taskInput: any = {
@@ -256,8 +303,10 @@ export async function POST(request: NextRequest) {
         // URL 검색: postURLs 필드 사용
         (taskInput as any).postURLs = [searchRequest.query]
         console.log(`TikTok URL 기반 연관 영상 검색: ${searchRequest.query}`)
-      } else {
-        // 키워드 검색: 새로운 키워드 전용 액터 사용하여 성공 사례와 동일한 구조
+      } else if (isKeywordSearch) {
+        // 키워드/해시태그 검색: 새로운 키워드 전용 액터 사용
+        console.log(`🏷️ [DEBUG] 키워드 검색 설정`)
+        
         const keywords = Array.isArray((searchRequest as any).keywords) 
           ? (searchRequest as any).keywords 
           : [searchRequest.query]
@@ -266,15 +315,17 @@ export async function POST(request: NextRequest) {
           kw.replace(/^#/, '').trim()
         ).filter(Boolean)
         
+        console.log(`📝 [DEBUG] 해시태그 설정: ${JSON.stringify(taskInput.hashtags)}`)
+        
         // 키워드 검색 전용 설정 (성공 사례 기반)
         taskInput.profileScrapeSections = ["videos"]
         taskInput.profileSorting = "latest"
         taskInput.searchSection = "/video"
         taskInput.shouldDownloadSubtitles = false // 키워드 검색에서는 false
         
-        // 업로드 기간 설정 (키워드 검색도 period 기반)
+        // 업로드 기간 설정 (키워드 검색)
         const period = searchRequest.filters.period
-        console.log(`🔍 TikTok 키워드 검색 기간 필터 - period: ${period}`)
+        console.log(`🔍 [DEBUG] TikTok 키워드 검색 기간 필터 - period: ${period}`)
         
         if (period && period !== 'all') {
           const periodMap: Record<string, string> = {
@@ -287,11 +338,43 @@ export async function POST(request: NextRequest) {
             'year': '1 year'
           }
           taskInput.oldestPostDateUnified = periodMap[period] || "3 months"
-          console.log(`✅ TikTok 키워드 검색 (기간 필터): ${taskInput.hashtags}, period: ${period} → ${taskInput.oldestPostDateUnified}`)
+          console.log(`✅ [DEBUG] TikTok 키워드 검색 (기간 필터): ${taskInput.hashtags}, period: ${period} → ${taskInput.oldestPostDateUnified}`)
         } else {
-          // 기간이 설정되지 않았거나 'all'인 경우 기본값
           taskInput.oldestPostDateUnified = "3 months"
-          console.log(`TikTok 키워드 검색 (기본 기간): ${taskInput.hashtags}, 기간: 3개월`)
+          console.log(`🔍 [DEBUG] TikTok 키워드 검색 (기본 기간): ${taskInput.hashtags}, 기간: 3개월`)
+        }
+      } else {
+        // 기본값: 키워드 검색으로 처리 (프로필 검색이 아닌 경우에만)
+        console.log(`⚠️ [DEBUG] 알 수 없는 검색 타입, 키워드 검색으로 기본 처리`)
+        
+        // 프로필 검색이 아닌 경우에만 hashtags 추가
+        if (!isProfileSearch) {
+          taskInput.hashtags = [searchRequest.query.replace(/^#/, '').trim()]
+        }
+        taskInput.profileScrapeSections = ["videos"]
+        taskInput.profileSorting = "latest"
+        taskInput.searchSection = "/video"
+        taskInput.shouldDownloadSubtitles = false
+        
+        // 업로드 기간 설정 (기본값 처리)
+        const period = searchRequest.filters.period
+        console.log(`🔍 [DEBUG] TikTok 기본 검색 기간 필터 - period: ${period}`)
+        
+        if (period && period !== 'all') {
+          const periodMap: Record<string, string> = {
+            'day': '1 day',
+            'week': '1 week', 
+            'month': '1 month',
+            'month2': '2 months',
+            'month3': '3 months',
+            'month6': '6 months',
+            'year': '1 year'
+          }
+          taskInput.oldestPostDateUnified = periodMap[period] || "3 months"
+          console.log(`✅ [DEBUG] TikTok 기본 검색 (기간 필터): ${taskInput.hashtags}, period: ${period} → ${taskInput.oldestPostDateUnified}`)
+        } else {
+          taskInput.oldestPostDateUnified = "3 months"
+          console.log(`🔍 [DEBUG] TikTok 기본 검색 (기본 기간): ${taskInput.hashtags}, 기간: 3개월`)
         }
       }
       
@@ -300,30 +383,51 @@ export async function POST(request: NextRequest) {
       
       // 검색 타입에 따라 다른 액터 사용
       const taskId = isProfileSearch 
-        ? 'interesting_dingo/tiktok-scraper-task' // 프로필 검색용 기존 액터
-        : 'interesting_dingo/tiktok-scraper-task-2' // 키워드 검색용 새 액터
+        ? 'bold_argument/tiktok-scraper-task' // 프로필 검색용 기존 액터
+        : 'bold_argument/tiktok-scraper-task-2' // 키워드/해시태그 검색용 새 액터
+
+      console.log(`🏷️ [DEBUG] 태스크 선택 로직:`)
+      console.log(`  - 검색 타입: ${searchRequest.searchType}`)
+      console.log(`  - URL 검색 여부: ${isUrlSearch}`)
+      console.log(`  - 프로필 검색 여부: ${isProfileSearch}`)
+      console.log(`  - 선택된 태스크: ${taskId}`)
+      console.log(`  - 검색어: "${searchRequest.query}"`)
       
-      // 메모리 대기열 시스템을 통한 안전한 실행
-      const { getMemoryQueueManager } = await import('@/lib/memory-queue-manager')
-      const queueManager = getMemoryQueueManager()
+      // DB 대기열 시스템을 통한 안전한 실행
+      const { getDatabaseQueueManager } = await import('@/lib/db-queue-manager')
+      const queueManager = getDatabaseQueueManager()
       
       const result = await queueManager.executeWithTryFirst(
         taskId,
         taskInput,
         {
+          userId: user.id,
           priority: 'normal',
           maxRetries: 3,
-          onQueued: (position) => {
-            console.log(`🔄 TikTok 요청이 대기열 ${position}번째에 추가됨`)
-          }
+          originalApiEndpoint: '/api/search/tiktok',
+          originalPayload: body
         }
       )
       
       if (!result.success) {
+        console.log(`🔄 [DEBUG] TikTok 대기열 추가 상세:`)
+        console.log(`  - 사용자: ${user.id} (${user.email})`)
+        console.log(`  - 검색어: "${searchRequest.query}"`)
+        console.log(`  - 결과수: ${searchRequest.resultsLimit}`)
+        console.log(`  - 태스크ID: ${taskId}`)
+        console.log(`  - 대기열ID: ${result.queueId}`)
+        console.log(`  - 메시지: ${result.message}`)
+        console.log(`  - 응답: 202 Accepted (대기열 처리 중)`)
+        
         return Response.json({
           success: false,
           message: result.message,
-          queueId: result.queueId
+          queueId: result.queueId,
+          debug: {
+            userId: user.id,
+            taskId,
+            timestamp: new Date().toISOString()
+          }
         }, { status: 202 }) // Accepted, 처리 중
       }
       
@@ -520,15 +624,46 @@ export async function POST(request: NextRequest) {
       })
 
       // ==========================================
-      // 🔄 크레딧 정산 및 기록 저장 (TikTok)
+      // 🔄 검색 완료 후 search-record 업데이트 (TikTok)
       // ==========================================
       
-      // 크레딧 정산 (settle 함수 사용)
-      const actualCreditsUsed = settle ? await settle(response.items?.length || 0) : 0
-      console.log(`💰 TikTok 실제 크레딧 사용량: ${actualCreditsUsed} (결과 수: ${response.items?.length || 0})`)
+      // 검색 완료 시 search-record 업데이트
+      if (searchRecordId) {
+        try {
+          console.log(`🔄 TikTok 검색 완료, 기록 업데이트: ${searchRecordId}`)
+          
+          // 실제 크레딧 사용량 계산 (proration)
+          const returned = response.items?.length || 0
+          const requested = searchRequest.resultsLimit
+          const actualCredits = Math.floor((returned / 30) * 100)
+          const refundAmount = Math.max(0, expectedCredits - actualCredits)
+          
+          const updatePayload = {
+            id: searchRecordId,
+            status: 'completed',
+            results_count: returned,
+            actual_credits: actualCredits,
+            refund_amount: refundAmount
+          }
+          
+          console.log(`🔄 TikTok 검색 기록 업데이트:`, updatePayload)
+          
+          await fetch(new URL('/api/me/search-record', request.url), {
+            method: 'PUT',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Cookie': request.headers.get('cookie') || ''
+            },
+            body: JSON.stringify(updatePayload)
+          })
+          
+          console.log(`✅ TikTok 검색 기록 업데이트 완료`)
+        } catch (error) {
+          console.warn('⚠️ TikTok 검색 기록 업데이트 실패:', error)
+        }
+      }
       
-      // 검색 기록은 클라이언트의 /api/me/search-record에서 처리 (중복 방지)
-      console.log(`📝 TikTok 해시태그 검색 완료 - 결과: ${response.items?.length || 0}개, 크레딧: ${actualCreditsUsed} (기록은 클라이언트에서 처리)`)
+      console.log(`📝 TikTok 검색 완료 - 결과: ${response.items?.length || 0}개, 크레딧: search-record API에서 처리됨`)
 
       return NextResponse.json(response)
 
@@ -540,7 +675,35 @@ export async function POST(request: NextRequest) {
         stack: searchError instanceof Error ? searchError.stack : undefined
       })
 
-      // 검색 실패 시 크레딧 롤백은 클라이언트에서 처리됨
+      // 검색 실패 시 search-record 업데이트
+      if (searchRecordId) {
+        try {
+          console.log(`❌ TikTok 검색 실패, 기록 업데이트: ${searchRecordId}`)
+          
+          const errorMsg = searchError instanceof Error ? searchError.message : 'Unknown error'
+          const updatePayload = {
+            id: searchRecordId,
+            status: 'failed',
+            results_count: 0,
+            actual_credits: 0,
+            refund_amount: expectedCredits, // 전액 환불
+            error_message: errorMsg
+          }
+          
+          await fetch(new URL('/api/me/search-record', request.url), {
+            method: 'PUT',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Cookie': request.headers.get('cookie') || ''
+            },
+            body: JSON.stringify(updatePayload)
+          })
+          
+          console.log(`✅ TikTok 검색 실패 기록 업데이트 완료`)
+        } catch (error) {
+          console.warn('⚠️ TikTok 검색 실패 기록 업데이트 실패:', error)
+        }
+      }
 
       console.error('TikTok 검색 오류:', searchError)
       return NextResponse.json(

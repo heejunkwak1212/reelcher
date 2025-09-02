@@ -138,7 +138,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 관리자가 아닌 경우에만 크레딧 확인 (예약 시스템 제거)
+    // 관리자가 아닌 경우에만 크레딧 즉시 차감 (search-record API 방식)
+    let expectedCredits = 0
+    let searchRecordId: string | null = null
+    
     if (!isAdmin) {
       // 크레딧 계산 (YouTube는 Instagram보다 저렴하게)
       const creditCosts: Record<number, number> = {
@@ -148,33 +151,50 @@ export async function POST(request: NextRequest) {
         90: 150,  // Instagram 300 → YouTube 150
         120: 200  // Instagram 400 → YouTube 200
       }
-      requiredCredits = creditCosts[searchRequest.resultsLimit] || 0
+      expectedCredits = creditCosts[searchRequest.resultsLimit] || 0
 
-      // 크레딧이 필요한 경우에만 잔액 확인
-      if (requiredCredits > 0) {
-        // 현재 크레딧 상태 확인
-        const { data: creditData, error: creditError } = await supabase
-          .from('credits')
-          .select('balance')
-          .eq('user_id', user.id)
-          .single()
-
-        if (creditError || !creditData) {
-          return NextResponse.json(
-            { error: '크레딧 정보를 확인할 수 없습니다.' },
-            { status: 500 }
-          )
+      // 크레딧이 필요한 경우 즉시 차감 및 검색 기록 생성
+      if (expectedCredits > 0) {
+        try {
+          const keyword = searchRequest.query?.trim() || ''
+          const recordPayload = {
+            platform: 'youtube' as const,
+            search_type: searchRequest.searchType as 'keyword' | 'url',
+            keyword: keyword,
+            expected_credits: expectedCredits,
+            requested_count: searchRequest.resultsLimit,
+            status: 'pending' as const
+          }
+          
+          console.log(`🚀 YouTube 검색 시작 즉시 기록 생성:`, recordPayload)
+          
+          const recordRes = await fetch(new URL('/api/me/search-record', request.url), {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Cookie': request.headers.get('cookie') || ''
+            },
+            body: JSON.stringify(recordPayload)
+          })
+          
+          if (recordRes.ok) {
+            const recordData = await recordRes.json()
+            searchRecordId = recordData.id
+            console.log(`✅ YouTube 검색 기록 생성 성공: ${searchRecordId}`)
+          } else {
+            const errorText = await recordRes.text()
+            console.error(`❌ YouTube 검색 기록 생성 실패: ${recordRes.status} ${errorText}`)
+            
+            // 크레딧 부족 또는 기타 오류 처리
+            if (recordRes.status === 402) {
+              return NextResponse.json({ error: '크레딧이 부족합니다.' }, { status: 402 })
+            }
+            return NextResponse.json({ error: '검색 기록 생성 실패' }, { status: 500 })
+          }
+        } catch (error) {
+          console.error('❌ YouTube 검색 기록 생성 오류:', error)
+          return NextResponse.json({ error: '검색 기록 생성 실패' }, { status: 500 })
         }
-
-        // 잔여 크레딧 확인 (예약 없이 단순 잔액만 확인)
-        if (creditData.balance < requiredCredits) {
-          return NextResponse.json(
-            { error: '크레딧이 부족합니다.' },
-            { status: 402 }
-          )
-        }
-
-        console.log(`💰 YouTube 크레딧 사전 확인 완료: 잔액=${creditData.balance}, 필요=${requiredCredits}`)
       }
     }
 
@@ -190,148 +210,51 @@ export async function POST(request: NextRequest) {
 
     // 실제 결과 수 계산 (관리자/일반 사용자 공통)
     const actualResults = searchResponse.results.length
-    const actualCredits = isAdmin ? 0 : Math.floor((actualResults / 30) * 50) // 30개당 50크레딧, 관리자는 0
-
-    // 크레딧 정산 처리
-    if (!isAdmin && transactionId) {
-      // 관리자가 아닌 경우에만 크레딧 커밋 (정산)
-      try {
-        // 현재 크레딧 상태 다시 조회
-        const { data: currentCredit, error: getCurrentError } = await supabase
-          .from('credits')
-          .select('balance, reserved')
-          .eq('user_id', user.id)
-          .single()
-
-        if (getCurrentError || !currentCredit) {
-          throw new Error('크레딧 정보 조회 실패')
-        }
-
-        // 실제 차감할 크레딧 계산 (예약된 크레딧에서 차감하고, 차액은 반환)
-        const refundAmount = requiredCredits - actualCredits
-        
-        // 크레딧 정산: balance에서 실제 크레딧 차감, reserved에서 예약 크레딧 제거
-        const { error: commitError } = await supabase
-          .from('credits')
-          .update({
-            balance: currentCredit.balance - actualCredits,
-            reserved: Math.max(0, currentCredit.reserved - requiredCredits)
-          })
-          .eq('user_id', user.id)
-
-        if (commitError) {
-          throw commitError
-        }
-
-      } catch (error) {
-        console.error('❌ YouTube 크레딧 차감 실패:', error)
-      }
-    }
-    
-    // 관리자 계정 로그
-    if (isAdmin) {
-      console.log('관리자 계정 - 크레딧 처리 생략 (무료)')
-    }
 
     // ==========================================
-    // 🔄 단순화된 후처리 로직 (Response 반환 직전)
+    // 🔄 검색 완료 후 search-record 업데이트 (YouTube)
     // ==========================================
     
-    // 1. 동적 크레딧 계산 (실제 반환된 결과 수 기반)
-    const actualCreditsUsed = isAdmin ? 0 : Math.floor((actualResults || 0) / 30) * 50 // YouTube는 50크레딧
-    console.log(`💰 실제 크레딧 사용량: ${actualCreditsUsed} (결과 수: ${actualResults})`)
-    
-    // 2. A. 사용자 크레딧 차감 (credits 테이블 직접 UPDATE)
-    if (!isAdmin && actualCreditsUsed > 0) {
+    // 검색 완료 시 search-record 업데이트
+    if (searchRecordId) {
       try {
-        // 현재 크레딧 조회 후 차감
-        const { data: currentCredits } = await supabase
-          .from('credits')
-          .select('balance')
-          .eq('user_id', user.id)
-          .single()
+        console.log(`🔄 YouTube 검색 완료, 기록 업데이트: ${searchRecordId}`)
         
-                if (currentCredits) {
-          const newBalance = Math.max(0, currentCredits.balance - actualCreditsUsed)
-          
-          console.log(`💰 YouTube 크레딧 차감 세부사항:`, {
-            사용자ID: user.id,
-            현재잔액: currentCredits.balance,
-            실제사용: actualCreditsUsed,
-            새잔액: newBalance
-          })
-          
-          const { error: creditError } = await supabase
-            .from('credits')
-            .update({
-              balance: newBalance
-            })
-            .eq('user_id', user.id)
-          
-          if (creditError) {
-            console.error('❌ 크레딧 차감 실패:', creditError)
-          } else {
-            console.log(`✅ YouTube 크레딧 차감 성공 - 실제사용: ${actualCreditsUsed}, 예약해제: ${requiredCredits}`)
-          }
+        // 실제 크레딧 사용량 계산 (proration)
+        const returned = actualResults
+        const requested = searchRequest.resultsLimit
+        const actualCredits = Math.floor((returned / 30) * 50) // YouTube는 30개당 50크레딧
+        const refundAmount = Math.max(0, expectedCredits - actualCredits)
+        
+        const updatePayload = {
+          id: searchRecordId,
+          status: 'completed',
+          results_count: returned,
+          actual_credits: actualCredits,
+          refund_amount: refundAmount
         }
-      } catch (error) {
-        console.error('❌ 크레딧 차감 오류:', error)
-      }
-    }
-    
-    // 검색 기록 저장은 클라이언트의 /api/me/search-record에서 처리 (중복 방지)
-    console.log(`📝 YouTube 검색 완료 - 결과: ${actualResults}개, 크레딧: ${actualCreditsUsed} (기록은 클라이언트에서 처리)`)
-
-    // 검색 통계 업데이트 (모든 사용자)
-    
-    try {
-      const todayUtc = new Date()
-      const yyyy = todayUtc.getUTCFullYear()
-      const mm = String(todayUtc.getUTCMonth() + 1).padStart(2, '0')
-      const firstOfMonth = `${yyyy}-${mm}-01`
-      const todayStr = todayUtc.toISOString().slice(0,10)
-      
-      const { data: row } = await supabase.from('search_counters')
-        .select('month_start,month_count,today_date,today_count')
-        .eq('user_id', user.id)
-        .single()
         
-      let month_start = row?.month_start || firstOfMonth
-      let month_count = Number(row?.month_count || 0)
-      let today_date = row?.today_date || todayStr
-      let today_count = Number(row?.today_count || 0)
-      
-      // reset if month crossed
-      if (String(month_start) !== firstOfMonth) { 
-        month_start = firstOfMonth 
-        month_count = 0 
+        console.log(`🔄 YouTube 검색 기록 업데이트:`, updatePayload)
+        
+        await fetch(new URL('/api/me/search-record', request.url), {
+          method: 'PUT',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Cookie': request.headers.get('cookie') || ''
+          },
+          body: JSON.stringify(updatePayload)
+        })
+        
+        console.log(`✅ YouTube 검색 기록 업데이트 완료`)
+      } catch (error) {
+        console.warn('⚠️ YouTube 검색 기록 업데이트 실패:', error)
       }
-      // reset if day crossed
-      if (String(today_date) !== todayStr) { 
-        today_date = todayStr
-        today_count = 0 
-      }
-      
-      month_count += 1
-      today_count += 1
-      
-      const { error: counterError } = await supabase.from('search_counters').upsert({ 
-        user_id: user.id,
-        month_start, 
-        month_count, 
-        today_date, 
-        today_count, 
-        updated_at: new Date().toISOString()
-      })
-      
-      if (counterError) {
-        console.error('YouTube 검색 통계 업데이트 실패:', counterError)
-      } else {
-        console.log(`YouTube 검색 통계 업데이트 성공: 오늘 ${today_count}회, 이번달 ${month_count}회`)
-      }
-    } catch (statsError) {
-      console.error('YouTube 검색 통계 업데이트 실패:', statsError)
     }
+    
+    console.log(`📝 YouTube 검색 완료 - 결과: ${actualResults}개, 크레딧: search-record API에서 처리됨`)
+
+    // 검색 통계는 search-record API에서 처리함 (중복 제거)
+    console.log(`📝 YouTube 검색 완료 - 통계는 search-record API에서 처리됨`)
 
     return NextResponse.json({
       success: true,
@@ -339,11 +262,14 @@ export async function POST(request: NextRequest) {
       results: searchResponse?.results || [],
       totalCount: searchResponse?.totalCount || 0,
       searchType: searchResponse?.searchType || 'keyword',
-      creditsUsed: actualCreditsUsed, // 실제 사용된 크레딧 반환
+      creditsUsed: isAdmin ? 0 : Math.floor((actualResults / 30) * 50), // search-record API에서 처리됨
       metadata: searchResponse?.metadata || {}
     })
 
   } catch (error) {
+    // 검색 실패 시 search-record 업데이트는 catch 블록에서 변수에 접근할 수 없으므로 생략
+    console.log('⚠️ YouTube 검색 실패 - search-record 업데이트는 클라이언트에서 처리됨')
+
     // Zod 유효성 검사 오류 처리
     if (error instanceof z.ZodError) {
       return NextResponse.json(

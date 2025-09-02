@@ -17,9 +17,27 @@ export default function ApifyMonitoring() {
   const [usageInfo, setUsageInfo] = useState<ApifyUsageInfo | null>(null);
   const [stats, setStats] = useState<ApifyUsageStats | null>(null);
   const [loading, setLoading] = useState(true);
+  
+  // 일별 상세보기
+  const [selectedDayDetail, setSelectedDayDetail] = useState<string | null>(null);
+  const [dayDetailData, setDayDetailData] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [apifyMonitor, setApifyMonitor] = useState<ApifyMonitor | null>(null);
+
+  // 일별 상세 데이터 가져오기
+  const fetchDayDetail = async (date: string) => {
+    try {
+      console.log(`📊 ${date} 상세 데이터 조회 중...`)
+      const res = await fetch(`/api/admin/apify/day-detail?date=${date}`, { cache: 'no-store' })
+      if (!res.ok) throw new Error('일별 상세 데이터 로드 실패')
+      const data = await res.json()
+      setDayDetailData(data.details || [])
+    } catch (error) {
+      console.error('일별 상세 데이터 조회 오류:', error)
+      setDayDetailData([])
+    }
+  }
 
   const fetchData = async (showRefreshing = false) => {
     if (showRefreshing) setRefreshing(true);
@@ -329,14 +347,24 @@ export default function ApifyMonitoring() {
             <CardContent>
               {stats?.daily && stats.daily.length > 0 ? (
                 <div className="space-y-6">
+                  {/* 액터 사용내역 차트 (최근 7일) */}
                   <div className="h-64">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={stats.daily}>
+                      <BarChart data={stats.daily.slice(-7)}>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="date" />
                         <YAxis />
-                        <Tooltip />
-                        <Bar dataKey="computeUnits" name="컴퓨트 유닛" fill="#8884d8" />
+                        <Tooltip 
+                          formatter={(value, name) => [
+                            `${value}회`,
+                            name === 'actorRuns' ? '액터 실행' : name
+                          ]}
+                        />
+                        <Bar 
+                          dataKey="actorRuns" 
+                          fill="#8884d8" 
+                          name="액터 실행 횟수"
+                        />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -348,19 +376,79 @@ export default function ApifyMonitoring() {
                         <TableHead>컴퓨트 유닛</TableHead>
                         <TableHead>메모리 사용량</TableHead>
                         <TableHead>액터 실행 횟수</TableHead>
+                        <TableHead>상세보기</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {stats.daily.map((day) => (
                         <TableRow key={day.date}>
-                          <TableCell>{day.date}</TableCell>
+                          <TableCell className="font-medium">{day.date}</TableCell>
                           <TableCell>{day.computeUnits.toFixed(2)}</TableCell>
                           <TableCell>{formatMemory(day.memoryUsage)}</TableCell>
                           <TableCell>{day.actorRuns}</TableCell>
+                          <TableCell>
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => {
+                                if (selectedDayDetail === day.date) {
+                                  setSelectedDayDetail(null)
+                                } else {
+                                  setSelectedDayDetail(day.date)
+                                  fetchDayDetail(day.date)
+                                }
+                              }}
+                            >
+                              {selectedDayDetail === day.date ? '접기' : '상세보기'}
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
+                  
+                  {/* 선택된 날짜의 상세 정보 */}
+                  {selectedDayDetail && (
+                    <Card className="mt-6">
+                      <CardHeader>
+                        <CardTitle>{selectedDayDetail} 상세 사용 내역</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {dayDetailData.length > 0 ? (
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>시간</TableHead>
+                                <TableHead>사용자</TableHead>
+                                <TableHead>액터명</TableHead>
+                                <TableHead>실행 비용</TableHead>
+                                <TableHead>상태</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {dayDetailData.map((detail, index) => (
+                                <TableRow key={index}>
+                                  <TableCell>{detail.time}</TableCell>
+                                  <TableCell className="max-w-[200px] truncate">{detail.userEmail}</TableCell>
+                                  <TableCell>{detail.actorName}</TableCell>
+                                  <TableCell className="text-red-600 font-mono">
+                                    ${detail.cost.toFixed(4)}
+                                  </TableCell>
+                                  <TableCell>
+                                    <Badge variant={detail.status === 'SUCCEEDED' ? 'default' : 'destructive'}>
+                                      {detail.status}
+                                    </Badge>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        ) : (
+                          <p className="text-center py-8 text-gray-500">해당 날짜의 상세 데이터가 없습니다.</p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )}
                 </div>
               ) : (
                 <p className="text-center py-8 text-gray-500">일별 통계 데이터가 없습니다.</p>

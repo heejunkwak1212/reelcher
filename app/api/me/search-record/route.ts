@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
       console.log(`✅ 크레딧 즉시 차감 완료: ${creditData.balance} → ${creditData.balance - data.expected_credits}`)
     }
 
-    // 🚀 2단계: search_history 테이블에 기록 생성
+    // 🚀 2단계: search_history 테이블에 기록 생성 (credits_used 즉시 반영)
     const { data: searchRecord, error } = await supabase
       .from('search_history')
       .insert({
@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
         keyword: data.keyword,
         filters: JSON.stringify({}), // JSON 문자열로 저장
         results_count: 0, // 초기값
-        credits_used: 0, // 초기값 (실제 크레딧은 검색 완료 후 업데이트)
+        credits_used: data.expected_credits, // 🔥 즉시 반영 (취소되어도 통계에 반영)
         requested_count: data.requested_count, // 요청한 검색 결과 수
         status: data.status,
         created_at: new Date().toISOString()
@@ -126,6 +126,53 @@ export async function POST(request: NextRequest) {
 
     console.log(`✅ 검색 기록 생성 성공: ${searchRecord.id}`)
 
+    // 🚀 3단계: 검색통계 즉시 반영 (search_counters 업데이트)
+    try {
+      const todayUtc = new Date()
+      const yyyy = todayUtc.getUTCFullYear()
+      const mm = String(todayUtc.getUTCMonth() + 1).padStart(2, '0')
+      const firstOfMonth = `${yyyy}-${mm}-01`
+      const todayStr = todayUtc.toISOString().slice(0,10)
+      
+      const { data: row } = await supabase.from('search_counters')
+        .select('month_start,month_count,today_date,today_count')
+        .eq('user_id', user.id)
+        .single()
+        
+      let month_start = row?.month_start || firstOfMonth
+      let month_count = Number(row?.month_count || 0)
+      let today_date = row?.today_date || todayStr
+      let today_count = Number(row?.today_count || 0)
+      
+      // reset if month crossed
+      if (String(month_start) !== firstOfMonth) { 
+        month_start = firstOfMonth 
+        month_count = 0 
+      }
+      // reset if day crossed
+      if (String(today_date) !== todayStr) { 
+        today_date = todayStr
+        today_count = 0 
+      }
+      
+      month_count += 1
+      today_count += 1
+      
+      await supabase.from('search_counters').upsert({ 
+        user_id: user.id,
+        month_start, 
+        month_count, 
+        today_date, 
+        today_count, 
+        updated_at: new Date().toISOString()
+      })
+      
+      console.log(`✅ 검색통계 즉시 반영 완료: 오늘 ${today_count}회, 이번달 ${month_count}회`)
+    } catch (statsError) {
+      console.warn('⚠️ 검색통계 반영 실패:', statsError)
+      // 검색통계 실패는 전체 요청을 실패시키지 않음
+    }
+
     return NextResponse.json({
       success: true,
       id: searchRecord.id,
@@ -161,10 +208,10 @@ export async function PUT(request: NextRequest) {
 
     console.log(`🔄 검색 기록 업데이트 요청:`, data)
 
-    // 기존 기록 조회
+    // 기존 기록 조회 (expected_credits도 포함)
     const { data: existingRecord, error: fetchError } = await supabase
       .from('search_history')
-      .select('id, credits_used, platform, search_type, keyword')
+      .select('id, credits_used, platform, search_type, keyword, refund_amount')
       .eq('id', data.id)
       .eq('user_id', user.id)
       .single()
@@ -189,6 +236,15 @@ export async function PUT(request: NextRequest) {
     if (data.actual_credits !== undefined) {
       updateData.credits_used = data.actual_credits
       console.log(`💰 크레딧 사용량 업데이트: ${existingRecord.credits_used} → ${data.actual_credits}`)
+      
+      // 차액 계산 및 환불 처리
+      const originalCredits = existingRecord.credits_used // 초기 차감된 크레딧
+      const refundAmount = Math.max(0, originalCredits - data.actual_credits)
+      
+      if (refundAmount > 0) {
+        console.log(`💰 크레딧 차액 환불: ${originalCredits} - ${data.actual_credits} = ${refundAmount}`)
+        updateData.refund_amount = refundAmount
+      }
     }
 
     // 🔧 반환 크레딧 저장 (중요: refund_amount를 updateData에 포함)
@@ -214,9 +270,11 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: '검색 기록 업데이트 실패' }, { status: 500 })
     }
 
-    // 크레딧 반환 처리
-    if (data.refund_amount && data.refund_amount > 0) {
-      console.log(`💰 크레딧 반환 처리: ${data.refund_amount} 크레딧`)
+    // 크레딧 반환 처리 (updateData에서 계산된 refund_amount 또는 요청으로 받은 값 사용)
+    const finalRefundAmount = updateData.refund_amount || data.refund_amount || 0
+    
+    if (finalRefundAmount > 0) {
+      console.log(`💰 크레딧 반환 처리: ${finalRefundAmount} 크레딧`)
       
       try {
         // 현재 크레딧 조회
@@ -231,20 +289,17 @@ export async function PUT(request: NextRequest) {
           await supabase
             .from('credits')
             .update({
-              balance: creditData.balance + data.refund_amount
+              balance: creditData.balance + finalRefundAmount
             })
             .eq('user_id', user.id)
 
-          console.log(`✅ 크레딧 반환 완료: ${data.refund_amount} 크레딧`)
-          
-          // 통계 정확성을 위해 반환된 크레딧을 credits_used에서 제외
-          console.log(`📊 통계 정확성을 위해 credits_used 업데이트: ${existingRecord.credits_used} → ${data.actual_credits}`)
+          console.log(`✅ 크레딧 반환 완료: ${finalRefundAmount} 크레딧`)
         }
       } catch (refundError) {
         console.error('❌ 크레딧 반환 실패:', refundError)
       }
     } else {
-      console.log(`📊 크레딧 반환 없음, credits_used만 업데이트: ${existingRecord.credits_used} → ${data.actual_credits || existingRecord.credits_used}`)
+      console.log(`📊 크레딧 반환 없음, credits_used만 업데이트`)
     }
 
     console.log(`✅ 검색 기록 업데이트 성공: ${data.id}`)
@@ -253,7 +308,7 @@ export async function PUT(request: NextRequest) {
       success: true,
       id: data.id,
       message: '검색 기록이 업데이트되었습니다',
-      refund_amount: data.refund_amount || 0
+      refund_amount: finalRefundAmount
     })
 
   } catch (error) {

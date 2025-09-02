@@ -19,6 +19,11 @@ interface QueuedRequest {
   onSuccess?: (runId: string) => void
   onError?: (error: Error) => void
   onQueued?: (queuePosition: number) => void
+  // 대기열 완료 후 결과 저장용
+  userId?: string
+  searchRecordId?: string
+  originalApiEndpoint?: string
+  originalPayload?: Record<string, unknown>
 }
 
 interface MemoryUsageCheck {
@@ -36,6 +41,7 @@ export class MemoryQueueManager {
   private readonly RETRY_INTERVAL = 10000 // 10초마다 체크
   private readonly MAX_QUEUE_SIZE = 50
   private activeSessions = new Set<string>() // 진행 중인 검색 세션
+  private completedResults = new Map<string, any>() // 완료된 결과 저장
 
   constructor(apifyToken: string) {
     this.monitor = new ApifyMonitor(apifyToken)
@@ -211,6 +217,15 @@ export class MemoryQueueManager {
       request.onSuccess?.(result.runId)
       console.log(`✅ 대기열 요청 성공: ${request.id} -> ${result.runId}`)
 
+      // 완료된 runId를 결과로 저장 (클라이언트에서 사용)
+      this.completedResults.set(request.id, {
+        success: true,
+        runId: result.runId,
+        taskId: request.taskId,
+        completedAt: new Date().toISOString()
+      })
+      console.log(`💾 대기열 완료 결과 저장: ${request.id} -> ${result.runId}`)
+
     } catch (error: any) {
       const errorType = error?.type || 'unknown'
       
@@ -365,6 +380,61 @@ export class MemoryQueueManager {
   completeSearchSession(sessionId: string): void {
     this.activeSessions.delete(sessionId)
     console.log(`✅ 검색 세션 완료: ${sessionId} (활성 세션: ${this.activeSessions.size}개)`)
+  }
+
+  /**
+   * 원래 API 재실행 (대기열 완료 후)
+   */
+  private async executeOriginalApi(request: QueuedRequest) {
+    try {
+      const response = await fetch(`http://localhost:3000${request.originalApiEndpoint}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(request.originalPayload)
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        this.completedResults.set(request.id, {
+          success: true,
+          data: result,
+          completedAt: new Date().toISOString()
+        })
+        console.log(`✅ 대기열 완료 후 API 재실행 성공: ${request.id}`)
+      } else {
+        throw new Error(`API 재실행 실패: ${response.status}`)
+      }
+    } catch (error) {
+      console.error(`❌ 대기열 완료 후 API 재실행 실패: ${request.id}`, error)
+      this.completedResults.set(request.id, {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        completedAt: new Date().toISOString()
+      })
+    }
+  }
+
+  /**
+   * 완료된 결과 조회
+   */
+  getCompletedResult(queueId: string) {
+    return this.completedResults.get(queueId)
+  }
+
+  /**
+   * 모든 완료된 결과 조회 (디버깅용)
+   */
+  getAllCompletedResults() {
+    return Object.fromEntries(this.completedResults)
+  }
+
+  /**
+   * 완료된 결과 제거 (메모리 정리)
+   */
+  clearCompletedResult(queueId: string) {
+    this.completedResults.delete(queueId)
   }
 
   /**

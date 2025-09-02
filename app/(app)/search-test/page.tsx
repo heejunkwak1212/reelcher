@@ -967,7 +967,7 @@ function SearchTestPageContent() {
   const searchRecordIdRef = useRef<string | null>(null)
   const [baseItems, setBaseItems] = useState<SearchRow[] | null>(null)
   const [sort, setSort] = useState<'views' | 'latest' | 'oldest'>('views')
-  const [filters, setFilters] = useState<{ views?: [number, number]; followers?: [number, number]; date?: [string, string] }>({})
+  const [filters, setFilters] = useState<{ views?: [number, number]; followers?: [number, number]; date?: [string, string]; period?: string }>({})
   const [debug, setDebug] = useState<any>(null)
   const [raw, setRaw] = useState<string>('')
   const [checkAllToggle, setCheckAllToggle] = useState<number>(0)
@@ -1244,44 +1244,315 @@ function SearchTestPageContent() {
   //   setPendingSearchAction(null)
   // }
 
+  // 현재 폴링 중인 queueId 추적 (이전 폴링 중단용)
+  const currentPollingRef = useRef<string | null>(null)
+  
   // 대기열 처리 함수
-  const handleQueuedSearch = async (queueId: string, message: string) => {
-    console.log(`🔄 검색이 대기열에 추가됨: ${queueId}`)
+  const handleQueuedSearch = async (currentQueueId: string, message: string) => {
+    console.log(`🔄 검색이 대기열에 추가됨: ${currentQueueId}`)
+    console.log(`🔄 받은 queueId 확인: ${currentQueueId}`)
+    
+    // 이전 폴링 중단
+    if (currentPollingRef.current && currentPollingRef.current !== currentQueueId) {
+      console.log(`🛑 이전 폴링 중단: ${currentPollingRef.current}`)
+    }
+    currentPollingRef.current = currentQueueId
+    
     setLoading(false)
     
     // 팝업 제거 - 대기열 처리를 조용히 백그라운드에서 진행
     console.log(`📢 대기열 메시지: ${message}`)
     
-    // 대기열 상태 폴링 시작
-    const pollQueue = async () => {
-      try {
-        const statusResponse = await fetch(`/api/search/queue-status?queueId=${queueId}`)
-        const statusData = await statusResponse.json()
+    // 대기열 상태 폴링 시작 (새로운 함수로 클로저 문제 해결)
+    const createPollQueue = (queueId: string) => {
+      let pollAttempts = 0
+      const maxAttempts = 30 // 최대 30회 시도 (약 5분)
+      
+      return async function pollQueue() {
+        try {
+          pollAttempts++
+          
+          // 폴링 중단 체크
+          if (currentPollingRef.current !== queueId) {
+            console.log(`🛑 폴링 중단됨: 현재=${currentPollingRef.current}, 요청=${queueId}`)
+            return
+          }
+          
+          // 최대 시도 횟수 초과
+          if (pollAttempts > maxAttempts) {
+            console.log(`❌ 폴링 최대 시도 횟수 초과: ${pollAttempts}/${maxAttempts}`)
+            setLoading(false)
+            return
+          }
+          
+          console.log(`📡 [DEBUG] 폴링 시작 상세:`)
+          console.log(`  - 시도 횟수: ${pollAttempts}/${maxAttempts}`)
+          console.log(`  - 대기열ID: ${queueId}`)
+          console.log(`  - 시작 시간: ${new Date().toISOString()}`)
+          
+          // Queue Status API에서 직접 대기열 처리 (Cron Job 없음)
+          console.log(`🌐 [DEBUG] Queue Status API 호출 중...`)
+          const statusResponse = await fetch(`/api/search/queue-status?queueId=${queueId}`)
+          console.log(`📊 [DEBUG] API 응답 상태: ${statusResponse.status} ${statusResponse.statusText}`)
+          
+          const statusData = await statusResponse.json()
+          console.log(`🔍 [DEBUG] 대기열 상태 확인 응답 상세:`)
+          console.log(`  - 성공: ${statusData.success}`)
+          console.log(`  - 완료: ${statusData.completed}`)
+          console.log(`  - 결과 있음: ${!!statusData.result}`)
+          console.log(`  - 즉시 처리됨: ${statusData.processedInstantly || false}`)
+          console.log(`  - 전체 응답:`, statusData)
         
         if (statusResponse.ok && statusData.success) {
-          console.log(`📊 대기열 상태: ${statusData.status.position}/${statusData.status.totalQueue}, 예상 대기시간: ${statusData.status.estimatedWaitTime}분`)
+          console.log(`🔎 상태 확인: completed=${statusData.completed}, result=${!!statusData.result}`)
           
-          // 5초 후 다시 확인
-          setTimeout(pollQueue, 5000)
+          // 완료된 결과가 있는 경우
+          if (statusData.completed && statusData.result) {
+            console.log(`🎉 [DEBUG] 대기열 검색 완료!`)
+            console.log(`  - 즉시 처리: ${statusData.processedInstantly || false}`)
+            console.log(`  - 결과 타입: ${statusData.result.success ? 'SUCCESS' : 'ERROR'}`)
+            console.log(`  - RunID: ${statusData.result.runId}`)
+            console.log(`  - 아이템 수: ${statusData.result.items?.length || 0}`)
+            console.log(`  - 완료 시간: ${statusData.result.completedAt}`)
+            console.log(`  - 전체 결과:`, statusData.result)
+            
+            if (statusData.result.success) {
+              try {
+                // 대기열 완료 시 원래 API로 완전한 결과 가져오기 (일반 검색과 동일한 플로우)
+                console.log(`🔍 대기열 완료, 원래 API로 완전한 결과 가져오기: ${statusData.result.runId}`)
+                
+                const apiEndpoint = platform === 'youtube' 
+                  ? '/api/search/youtube'
+                  : platform === 'tiktok' 
+                    ? '/api/search/tiktok'
+                    : '/api/search'
+                
+                const keyword = keywords[0]?.trim() || ''
+                
+                // 플랫폼별 페이로드 구성 (대기열 재호출용)
+                let payload: any
+                if (platform === 'tiktok') {
+                  // TikTok API 형식에 맞춤
+                  const query = keyword
+                  let tiktokSearchType: 'keyword' | 'hashtag' | 'url' | 'profile' = 'hashtag'
+                  if (searchType === 'profile') {
+                    tiktokSearchType = 'profile'
+                  } else if (searchType === 'url' || query.includes('tiktok.com')) {
+                    tiktokSearchType = 'url'
+                  } else {
+                    tiktokSearchType = 'hashtag'
+                  }
+                  
+                  payload = {
+                    searchType: tiktokSearchType,
+                    query: query,
+                    resultsLimit: Number(limit),
+                    filters: {
+                      sortBy: 'trending',
+                      ...(filters.period ? { period: filters.period } : {})
+                    },
+                    queuedRunId: statusData.result.runId
+                  }
+                } else {
+                  // Instagram/YouTube 기본 형식
+                  payload = {
+                    platform,
+                    searchType,
+                    keyword: searchType === 'profile' ? (keyword.startsWith('@') ? keyword : `@${keyword}`) : keyword,
+                    limit,
+                    filters,
+                    queuedRunId: statusData.result.runId
+                  }
+                }
+                
+                const resultResponse = await fetch(apiEndpoint, {
+                  method: 'POST',
+                  headers: { 'content-type': 'application/json' },
+                  body: JSON.stringify(payload)
+                })
+                
+                if (resultResponse.ok) {
+                  const json = await resultResponse.json()
+                  console.log(`🎉 대기열 완료 후 API 응답:`, json)
+                  
+                  // 일반 검색과 동일한 방식으로 결과 처리
+                  let arr: SearchRow[]
+                  if (platform === 'youtube') {
+                    arr = Array.isArray(json.items) ? json.items.map((item: any) => ({
+                      url: item.url,
+                      username: item.channelTitle,
+                      views: item.viewCount,
+                      likes: item.likeCount,
+                      comments: item.commentCount,
+                      followers: item.subscriberCount,
+                      thumbnailUrl: item.thumbnailUrl,
+                      caption: item.title,
+                      duration: item.duration,
+                      takenDate: item.publishedAt,
+                      videoUrl: null,
+                      channelUrl: item.channelUrl
+                    })) : []
+                  } else if (platform === 'tiktok') {
+                    arr = Array.isArray(json.items) ? json.items.map((item: any) => ({
+                      url: item.webVideoUrl || `https://www.tiktok.com/@${item.username}/video/${item.videoId}`,
+                      username: item.username || 'unknown',
+                      views: item.viewCount || 0,
+                      likes: item.likeCount || 0,
+                      comments: item.commentCount || 0,
+                      followers: item.followersCount || 0,
+                      thumbnailUrl: item.thumbnailUrl || null,
+                      caption: item.title || item.description || '',
+                      duration: item.duration || 0,
+                      takenDate: item.publishedAt || new Date().toISOString(),
+                      videoUrl: item.videoUrl || item.webVideoUrl
+                    })) : []
+                  } else {
+                    // Instagram 응답 처리
+                    arr = Array.isArray(json.items) ? json.items : []
+                  }
+                  
+                  // 정렬 및 결과 설정 (일반 검색과 동일)
+                  arr.sort((a, b) => (b.views || 0) - (a.views || 0))
+                  setBaseItems(arr) // 🎯 핵심: 일반 검색과 동일한 방식!
+                  setDebug(json.debug ?? null)
+                  setRaw(JSON.stringify(json, null, 2))
+                  setLoading(false)
+                  setProgressOpen(false)
+                  
+                  console.log(`✅ 대기열 검색 결과 완료: ${arr.length}개 결과`)
+                  
+                  // 대기열 완료 후 크레딧 반환 처리
+                  try {
+                    const returned = arr.length
+                    const requested = Number(limit)
+                    let reserved = 0
+                    let actualCredits = 0
+                    
+                    if (platform === 'youtube') {
+                      if (requested === 10) {
+                        actualCredits = Math.round((returned / 10) * 30)
+                        reserved = 30
+                      } else if (requested === 30) {
+                        actualCredits = Math.round((returned / 30) * 50)
+                        reserved = 50
+                      } else if (requested === 50) {
+                        actualCredits = Math.round((returned / 50) * 70)
+                        reserved = 70
+                      }
+                    } else if (platform === 'tiktok') {
+                      actualCredits = Math.round((returned / 30) * 100)
+                      reserved = (requested / 30) * 100
+                    } else {
+                      // Instagram
+                      actualCredits = Math.round((returned / 30) * 100)
+                      reserved = (requested / 30) * 100
+                    }
+                    
+                    const refund = Math.max(0, reserved - actualCredits)
+                    
+                    if (refund > 0) {
+                      console.log(`💰 [대기열] 크레딧 반환 감지: ${refund} 크레딧 환불됨`)
+                      
+                      // 통계 재업데이트
+                      setTimeout(() => {
+                        Promise.all([loadStats(), loadCredits()]).catch(error => {
+                          console.warn('⚠️ 통계/크레딧 업데이트 실패:', error)
+                        })
+                      }, 1000)
+                      
+                      // 사용자에게 반환 안내 표시
+                      const toast = document.createElement('div')
+                      toast.className = 'fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] bg-green-600 text-white text-sm px-4 py-2 rounded shadow flex items-center gap-2'
+                      toast.innerHTML = `
+                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
+                        </svg>
+                        크레딧 반환: 결과가 적어 ${refund} 크레딧이 반환되었습니다.
+                      `
+                      document.body.appendChild(toast)
+                      setTimeout(()=>toast.remove(), 5000)
+                    }
+                  } catch (refundError) {
+                    console.warn('⚠️ 대기열 크레딧 반환 계산 실패:', refundError)
+                  }
+                  
+                  // 통계 업데이트 (일반 검색과 동일)
+                  Promise.all([loadStats(), loadCredits()]).catch(error => {
+                    console.warn('⚠️ 검색 완료 후 통계/크레딧 업데이트 실패:', error)
+                  })
+                } else {
+                  throw new Error('대기열 완료 후 API 호출 실패')
+                }
+                
+              } catch (error) {
+                console.error('❌ 대기열 완료 결과 처리 실패:', error)
+                await relcherAlert('검색 결과를 처리하는 중 오류가 발생했습니다.')
+              }
+            } else {
+              // 실패한 결과 처리
+              console.error('❌ 대기열 검색 실패:', statusData.result.error)
+              await relcherAlert('검색 중 오류가 발생했습니다. 다시 시도해주세요.')
+            }
+            
+            setLoading(false)
+            // 통계 새로고침
+            loadStats()
+            loadCredits()
+            return // 폴링 종료
+          }
+          
+          // 아직 대기 중인 경우
+          if (!statusData.completed && statusData.status) {
+            console.log(`📊 [DEBUG] 대기열 상태 (pending/processing):`)
+            console.log(`  - 대기 위치: ${statusData.status.position}/${statusData.status.totalQueue || 'N/A'}`)
+            console.log(`  - 예상 대기시간: ${statusData.status.estimatedWaitTime}분`)
+            console.log(`  - 큐 상태: ${statusData.status.queueStatus || 'unknown'}`)
+            console.log(`  - 재시도 횟수: ${statusData.status.retryCount || 0}`)
+            console.log(`  - 다음 폴링: 3초 후`)
+            
+            // 3초 후 다시 확인 (더 자주 확인)
+            setTimeout(pollQueue, 3000)
+          } else if (!statusData.completed && !statusData.status) {
+            // 대기열에도 없고 완료도 아닌 경우 - 아직 처리 중일 수 있음
+            const nextDelay = Math.min(1000 + (pollAttempts * 500), 5000) // 1초부터 5초까지 점진적 증가
+            console.log(`⏳ [DEBUG] 대기열 처리 중 (상태 없음):`)
+            console.log(`  - 대기열에서 조회 안됨 (처리 중일 가능성)`)
+            console.log(`  - 다음 재시도: ${nextDelay}ms 후`)
+            console.log(`  - 폴링 시도: ${pollAttempts}/${maxAttempts}`)
+            
+            setTimeout(pollQueue, nextDelay)
+          }
         } else {
-          // 대기열에서 제거됨 (완료 또는 실패)
-          console.log('✅ 대기열 처리 완료 또는 제거됨')
+          // 대기열에서 제거됨 (오류 또는 만료)
+          console.log('❌ 대기열 상태 확인 실패 또는 만료됨')
+          setLoading(false)
           // 통계 새로고침
           loadStats()
           loadCredits()
         }
       } catch (error) {
         console.error('대기열 상태 확인 오류:', error)
+        setLoading(false)
+      }
       }
     }
     
-    // 첫 번째 상태 확인
+    // pollQueue 함수 생성 및 실행
+    const pollQueue = createPollQueue(currentQueueId)
+    
+    // 첫 번째 상태 확인 (빠른 시작 후 점진적 지연)
     setTimeout(pollQueue, 2000)
   }
 
   const run = async () => {
     // 새 검색 시 페이지 리셋
     setCurrentPage(1)
+    
+    // 이전 폴링 중단
+    if (currentPollingRef.current) {
+      console.log(`🛑 새 검색으로 인한 이전 폴링 중단: ${currentPollingRef.current}`)
+      currentPollingRef.current = null
+    }
     
     // On first click, check 7-day opt-out
     const optKey = 'reelcher.search.confirm.optout.until'
@@ -1819,7 +2090,7 @@ function SearchTestPageContent() {
               <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                 <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
               </svg>
-              크레딧 반환: 결과가 적어 ${refund} 크레딧이 환불되었습니다.
+              크레딧 반환: 결과가 적어 ${refund} 크레딧이 반환되었습니다.
             `
             document.body.appendChild(toast)
             setTimeout(()=>toast.remove(), 5000)
@@ -1879,7 +2150,7 @@ function SearchTestPageContent() {
       try {
         // 취소된 검색도 실제로는 Apify 액터가 실행되어 비용이 발생하므로
         // actual_credits는 expected_credits와 동일하게 설정하고 환불하지 않음
-        // 플랫폼별 크레딧 계산 (getCreditCost 함수와 동일한 로직)
+        // 플랫폼별 크레딧 계산 (run 함수와 동일한 로직)
         const getExpectedCredits = () => {
           if (platform === 'instagram') {
             return { '30': 100, '60': 200, '90': 300, '120': 400, '5': 0 }[String(limit)] ?? 0

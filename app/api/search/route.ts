@@ -21,7 +21,8 @@ const instagramSearchSchema = z.object({
     minViews: z.number().min(0).optional(),
   }).optional().default({}),
   debug: z.boolean().optional(),
-  turnstileToken: z.string().optional()
+  turnstileToken: z.string().optional(),
+  queuedRunId: z.string().optional() // 대기열에서 완료된 runId
 })
 
 export async function GET() {
@@ -118,6 +119,25 @@ export async function POST(req: Request) {
       }
       console.log('Instagram API validation 성공:', input)
       console.log('Instagram API filters 확인:', JSON.stringify(input.filters, null, 2))
+      
+      // 대기열에서 완료된 runId가 있는 경우 해당 결과 사용
+      if (input.queuedRunId) {
+        console.log(`🔍 대기열 완료된 runId로 결과 가져오기: ${input.queuedRunId}`)
+        try {
+          const { waitForRunItems } = await import('@/lib/apify')
+          const token = process.env.APIFY_TOKEN!
+          const result = await waitForRunItems({ token, runId: input.queuedRunId })
+          
+          return Response.json({ 
+            items: result.items || [],
+            credits: { toCharge: 0, basis: 100, per: 30 },
+            fromQueue: true
+          })
+        } catch (error) {
+          console.error('❌ 대기열 runId 결과 가져오기 실패:', error)
+          return Response.json({ error: '대기열 결과를 가져올 수 없습니다.' }, { status: 500 })
+        }
+      }
     } catch (validationError: any) {
       console.error('Instagram API validation 실패:', {
         error: validationError,
@@ -172,36 +192,69 @@ export async function POST(req: Request) {
       console.log('관리자 계정: 모든 제한 우회')
     }
 
-    const reserveAmount = (isDev || isAdmin) ? 0 : (
-      (input.limit === '30' || input.limit === 30) ? 100 :
-      (input.limit === '60' || input.limit === 60) ? 200 :
-      (input.limit === '90' || input.limit === 90) ? 300 :
-      (input.limit === '120' || input.limit === 120) ? 400 : 0)
-    const creditsEndpoint = new URL('/api/credits/consume', req.url).toString()
-    let didReserve = false
-    if (reserveAmount > 0) {
-      const resv = await fetch(creditsEndpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ userId: user.id, reserve: reserveAmount }) })
-      if (!resv.ok) {
-        const msg = await resv.text().catch(() => '')
-        return new Response(msg || 'Insufficient credits', { status: resv.status })
+    // 관리자가 아닌 경우에만 크레딧 즉시 차감 (search-record API 방식)
+    let expectedCredits = 0
+    let searchRecordId: string | null = null
+    
+    if (!isDev && !isAdmin) {
+      // 크레딧 계산
+      expectedCredits = (
+        (input.limit === '30' || input.limit === 30) ? 100 :
+        (input.limit === '60' || input.limit === 60) ? 200 :
+        (input.limit === '90' || input.limit === 90) ? 300 :
+        (input.limit === '120' || input.limit === 120) ? 400 : 0
+      )
+
+      // 크레딧이 필요한 경우 즉시 차감 및 검색 기록 생성
+      if (expectedCredits > 0) {
+        try {
+          const keyword = input.hashtag || input.username || ''
+          const recordPayload = {
+            platform: 'instagram' as const,
+            search_type: input.searchType as 'keyword' | 'profile',
+            keyword: input.searchType === 'profile' ? (keyword.startsWith('@') ? keyword : `@${keyword}`) : keyword,
+            expected_credits: expectedCredits,
+            requested_count: Number(input.limit),
+            status: 'pending' as const
+          }
+          
+          console.log(`🚀 Instagram 검색 시작 즉시 기록 생성:`, recordPayload)
+          
+          const recordRes = await fetch(new URL('/api/me/search-record', req.url), {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Cookie': req.headers.get('cookie') || ''
+            },
+            body: JSON.stringify(recordPayload)
+          })
+          
+          if (recordRes.ok) {
+            const recordData = await recordRes.json()
+            searchRecordId = recordData.id
+            console.log(`✅ Instagram 검색 기록 생성 성공: ${searchRecordId}`)
+          } else {
+            const errorText = await recordRes.text()
+            console.error(`❌ Instagram 검색 기록 생성 실패: ${recordRes.status} ${errorText}`)
+            
+            // 크레딧 부족 또는 기타 오류 처리
+            if (recordRes.status === 402) {
+              return new Response('크레딧이 부족합니다.', { status: 402 })
+            }
+            return new Response('검색 기록 생성 실패', { status: 500 })
+          }
+        } catch (error) {
+          console.error('❌ Instagram 검색 기록 생성 오류:', error)
+          return new Response('검색 기록 생성 실패', { status: 500 })
+        }
       }
-      didReserve = true
     }
 
     // 세션 관리 변수들을 전역 스코프에 선언
     let searchSessionId: string | undefined = undefined
     let queueManager: any = undefined
     
-    let settle: null | ((finalCount: number) => Promise<number>) = null
-    settle = async (finalCount: number) => {
-      if (!didReserve || reserveAmount <= 0) return 0
-      const toCharge = Math.floor((finalCount / 30) * 100)
-      const rollback = Math.max(0, reserveAmount - toCharge)
-      const commit = Math.max(0, Math.min(reserveAmount, toCharge))
-      console.log(`💰 Instagram settle 함수 - 예약: ${reserveAmount}, 커밋: ${commit}, 롤백: ${rollback}`)
-      await fetch(creditsEndpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ userId: user.id, commit, rollback }) }).catch(() => {})
-      return commit // 실제 차감된 크레딧 반환
-    }
+    // settle 함수 제거 - search-record API 방식으로 대체
 
     const resultsLimit = Number(input.limit) as 5 | 30 | 60 | 90 | 120
     console.log('Instagram 검색 타입:', input.searchType)
@@ -209,7 +262,7 @@ export async function POST(req: Request) {
     // 검색 타입에 따른 분기
     if (input.searchType === 'profile') {
       console.log('Instagram 프로필 검색 시작')
-      return await handleProfileSearch(req, input, resultsLimit, settle, token, user.id)
+      return await handleProfileSearch(req, input, resultsLimit, token, user.id, searchRecordId, expectedCredits)
     }
     
     // 기존 키워드 검색 로직
@@ -258,12 +311,15 @@ export async function POST(req: Request) {
       Promise.all(idList.map(runId => abortRun({ token, runId }))).catch(() => {})
     }
     try { req.signal.addEventListener('abort', onAbort, { once: true }) } catch {}
+    
+    // Instagram 키워드 검색 전체를 try-catch로 감싸서 대기열 처리 에러 방지
+    try {
     const getUrl = (x: any) => {
       const sc = x?.shortCode || x?.shortcode || x?.short_code || x?.code
       return x?.url || x?.postUrl || x?.link || (sc ? `https://www.instagram.com/p/${sc}/` : undefined)
     }
     // Use Task configured for reels; override hashtags/limit only
-    const taskId = 'interesting_dingo/instagram-hashtag-scraper-task'
+    const taskId = 'bold_argument/instagram-hashtag-scraper-task'
     let hashtagItems: IHashtagItem[] = []
     const hashtagErrors: string[] = []
     // Date filter disabled in stage-1 (MVP). Keep helper stub for future use.
@@ -293,10 +349,80 @@ export async function POST(req: Request) {
         searchSessionId = `instagram_${user.id}_${Date.now()}`
         console.log(`🎯 Instagram 검색 세션 생성: ${searchSessionId}`)
         
-        const { getMemoryQueueManager } = await import('@/lib/memory-queue-manager')
-        queueManager = getMemoryQueueManager()
+        const { getDatabaseQueueManager } = await import('@/lib/db-queue-manager')
+        queueManager = getDatabaseQueueManager()
 
+        // 첫 번째 키워드로 RAM 상태 확인 (즉시 실행 시도)
+        const firstKeyword = normalizedKeywords[0]
+        const firstSlice = Math.min(30, perOversample[0])
+        
+        console.log(`🎯 Instagram 첫 번째 키워드 "${firstKeyword}" 즉시 실행 시도 - slice: ${firstSlice}`)
+        
+        const firstResult = await queueManager.executeWithSessionContinuity(
+          taskId,
+          { hashtags: [firstKeyword], resultsLimit: firstSlice, whatToScrape: 'reels', firstPageOnly: false },
+          {
+            userId: user.id,
+            priority: 'high',
+            maxRetries: 3,
+            sessionId: searchSessionId,
+            sessionStep: 1,
+            originalApiEndpoint: '/api/search',
+            originalPayload: body,
+            onQueued: (position: number) => {
+              console.log(`🔄 Instagram 키워드 검색이 대기열 ${position}번째에 추가됨`)
+            }
+          }
+        )
+        
+        // 대기열에 추가된 경우 즉시 202 응답 반환
+        if (!firstResult.success) {
+          console.log(`⏳ [STEP 1] Instagram 키워드 검색이 대기열에 추가됨: ${firstResult.message}`)
+          console.log(`🔄 [STEP 2] 인스타그램 대기열 추가 상세:`)
+          console.log(`  - 사용자: ${user.id} (${user.email})`)
+          console.log(`  - 세션ID: ${searchSessionId}`)
+          console.log(`  - 대기열ID: ${firstResult.queueId}`)
+          console.log(`  - 메시지: ${firstResult.message}`)
+          console.log(`📤 [STEP 3] 202 응답 반환 준비 중...`)
+          
+          const response202 = Response.json({
+            success: false,
+            message: `Instagram 검색이 대기열에 추가되었습니다. ${firstResult.message}`,
+            queueId: firstResult.queueId,
+            sessionId: searchSessionId,
+            debug: {
+              userId: user.id,
+              taskId,
+              sessionId: searchSessionId,
+              timestamp: new Date().toISOString()
+            }
+          }, { status: 202 })
+          
+          console.log(`✅ [STEP 4] 202 응답 생성 완료, 반환 중...`)
+          console.log(`📋 [STEP 5] 응답 내용:`, {
+            status: 202,
+            queueId: firstResult.queueId,
+            sessionId: searchSessionId,
+            timestamp: new Date().toISOString()
+          })
+          
+          return response202
+        }
+        
+        // 즉시 실행 성공 - 나머지 키워드들도 처리
+        console.log(`🚀 RAM 여유로움 - 즉시 실행 진행`)
+        
         const runs = await Promise.all(normalizedKeywords.map(async (kw, idx) => {
+          if (idx === 0) {
+            // 첫 번째 키워드는 이미 처리됨
+            const started = { runId: firstResult.runId! }
+            console.log(`Instagram Apify 액터 시작됨 - runId: ${started.runId}`)
+            apifyRunIds.add(started.runId)
+            const run = await waitForRunItems<IHashtagItem>({ token, runId: started.runId })
+            console.log(`Instagram Apify 액터 완료 - runId: ${started.runId}, items: ${run.items?.length || 0}개`)
+            return Array.isArray(run.items) ? run.items : []
+          }
+          
           const want = Math.max(1, perOversample[idx])
           const batches = Math.ceil(want / 30)
           let acc: IHashtagItem[] = []
@@ -310,10 +436,13 @@ export async function POST(req: Request) {
               taskId,
               { hashtags: [kw], resultsLimit: slice, whatToScrape: 'reels', firstPageOnly: false },
               {
-                priority: 'high', // Instagram 검색은 높은 우선순위
+                userId: user.id,
+                priority: 'high',
                 maxRetries: 3,
                 sessionId: searchSessionId,
-                sessionStep: 1, // 1단계: 해시태그 검색
+                sessionStep: 1,
+                originalApiEndpoint: '/api/search',
+                originalPayload: body,
                 onQueued: (position: number) => {
                   console.log(`🔄 Instagram 키워드 검색이 대기열 ${position}번째에 추가됨`)
                 }
@@ -321,9 +450,8 @@ export async function POST(req: Request) {
             )
             
             if (!result.success) {
-              console.log(`⏳ Instagram 키워드 검색이 대기열에 추가됨: ${result.message}`)
-              // 1단계 실패시에만 전체 실패 처리 (필수 단계)
-              throw new Error(`시스템 사용량이 높습니다. ${result.message}`)
+              console.log(`⚠️ 추가 키워드 "${kw}" 대기열 추가됨, 건너뜀`)
+              continue
             }
             
             const started = { runId: result.runId! }
@@ -366,7 +494,30 @@ export async function POST(req: Request) {
     )).slice(0, resultsLimit)
     // If fewer than or equal to 3 posts exist for the hashtag → cancel (use raw items count)
     if (hashtagItems.length <= 3) {
-      if (settle) await settle(0)
+      // 검색 실패 시 search-record 업데이트
+      if (searchRecordId) {
+        try {
+          const updatePayload = {
+            id: searchRecordId,
+            status: 'failed',
+            results_count: 0,
+            actual_credits: 0,
+            refund_amount: expectedCredits,
+            error_message: '해당 해시태그에 해당하는 게시물(릴스)이 3개 이하인 경우 검색이 불가능합니다.'
+          }
+          
+          await fetch(new URL('/api/me/search-record', req.url), {
+            method: 'PUT',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Cookie': req.headers.get('cookie') || ''
+            },
+            body: JSON.stringify(updatePayload)
+          })
+        } catch (error) {
+          console.warn('⚠️ 검색 실패 기록 업데이트 실패:', error)
+        }
+      }
       return Response.json({ error: 'TooFewResults', message: '해당 해시태그에 해당하는 게시물(릴스)이 3개 이하인 경우 검색이 불가능합니다.' }, { status: 400 })
     }
 
@@ -389,7 +540,7 @@ export async function POST(req: Request) {
     let cursorRounds = 0
     if (reelUrls.length > 0) {
       const batchSize = 30
-      const detailsTaskId = 'interesting_dingo/instagram-scraper-task'
+      const detailsTaskId = 'bold_argument/instagram-scraper-task'
       const maxIdx = Math.min(reelUrls.length, target)
       const batches: string[][] = []
       for (let i = 0; i < maxIdx; i += batchSize) {
@@ -401,10 +552,13 @@ export async function POST(req: Request) {
           detailsTaskId,
           { directUrls: batch, resultsType: 'posts', addParentData: false, resultsLimit: batch.length },
           {
+            userId: user.id,
             priority: 'normal',
             maxRetries: 3,
             sessionId: searchSessionId,
             sessionStep: 2, // 2단계: Details 수집
+            originalApiEndpoint: '/api/search',
+            originalPayload: body,
             onQueued: (position: number) => {
               console.log(`🔄 Instagram details 검색이 대기열 ${position}번째에 추가됨`)
             }
@@ -441,21 +595,23 @@ export async function POST(req: Request) {
     let profiles: IProfileSummary[] = []
     if (usernames.length) {
       const chunkSize = 30
-      const { getMemoryQueueManager } = await import('@/lib/memory-queue-manager')
-      const queueManager = getMemoryQueueManager()
+      // 기존 queueManager 재사용 (이미 DB 기반으로 설정됨)
       
       for (let i = 0; i < usernames.length; i += chunkSize) {
         const slice = usernames.slice(i, i + chunkSize)
         
         const queueResult = await queueManager.executeWithSessionContinuity(
-          'interesting_dingo/instagram-profile-scraper-task',
+          'bold_argument/instagram-profile-scraper-task',
           { usernames: slice, ...proxyOpt },
           {
+            userId: user.id,
             priority: 'low',
             maxRetries: 3,
             sessionId: searchSessionId,
             sessionStep: 3, // 3단계: Profile 수집
-            onQueued: (position) => {
+            originalApiEndpoint: '/api/search',
+            originalPayload: body,
+            onQueued: (position: number) => {
               console.log(`🔄 Instagram profile 검색이 대기열 ${position}번째에 추가됨`)
             }
           }
@@ -579,17 +735,17 @@ export async function POST(req: Request) {
       const uniqueMissing = Array.from(new Set(missingUsernames)).filter(u => !profiles.some(p => p.username === u))
       if (uniqueMissing.length === 0) break
       
-      const { getMemoryQueueManager } = await import('@/lib/memory-queue-manager')
-      const additionalQueueManager = getMemoryQueueManager()
-      
-      const queueResult = await additionalQueueManager.executeWithSessionContinuity(
-        'interesting_dingo/instagram-profile-scraper-task',
+      const queueResult = await queueManager.executeWithSessionContinuity(
+        'bold_argument/instagram-profile-scraper-task',
         { usernames: uniqueMissing.slice(0, 20), ...proxyOpt },
         {
+          userId: user.id,
           priority: 'low',
           maxRetries: 3,
           sessionId: searchSessionId,
           sessionStep: 3, // 3단계: 추가 Profile 수집
+          originalApiEndpoint: '/api/search',
+          originalPayload: body,
           onQueued: (position: number) => {
             console.log(`🔄 Instagram 추가 profile 검색이 대기열 ${position}번째에 추가됨`)
           }
@@ -682,10 +838,46 @@ export async function POST(req: Request) {
     {
       const sorted = [...finalRows].sort((a, b) => ((b.views ?? 0) - (a.views ?? 0)))
       const finalCount = sorted.length
-      const toCharge = Math.floor((finalCount / 30) * 100)
-      if (settle) {
-        actualCreditsUsed = await settle(finalCount)
-        console.log(`💰 Instagram 키워드 settle 함수 실행: ${actualCreditsUsed} 크레딧 차감`)
+      
+      // ==========================================
+      // 🔄 검색 완료 후 search-record 업데이트 (Instagram 키워드)
+      // ==========================================
+      
+      // 검색 완료 시 search-record 업데이트
+      if (searchRecordId) {
+        try {
+          console.log(`🔄 Instagram 키워드 검색 완료, 기록 업데이트: ${searchRecordId}`)
+          
+          // 실제 크레딧 사용량 계산 (proration)
+          const returned = finalCount
+          const requested = Number(input.limit)
+          const actualCredits = Math.floor((returned / 30) * 100)
+          const refundAmount = Math.max(0, expectedCredits - actualCredits)
+          
+          const updatePayload = {
+            id: searchRecordId,
+            status: 'completed',
+            results_count: returned,
+            actual_credits: actualCredits,
+            refund_amount: refundAmount
+          }
+          
+          console.log(`🔄 Instagram 키워드 검색 기록 업데이트:`, updatePayload)
+          
+          await fetch(new URL('/api/me/search-record', req.url), {
+            method: 'PUT',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Cookie': req.headers.get('cookie') || ''
+            },
+            body: JSON.stringify(updatePayload)
+          })
+          
+          actualCreditsUsed = actualCredits
+          console.log(`✅ Instagram 키워드 검색 기록 업데이트 완료: ${actualCreditsUsed} 크레딧`)
+        } catch (error) {
+          console.warn('⚠️ Instagram 키워드 검색 기록 업데이트 실패:', error)
+        }
       }
       // Log search + update counters + cleanup old logs (3 days retention)
       try {
@@ -694,7 +886,7 @@ export async function POST(req: Request) {
           keyword: plainHashtag,
           requested: Number(input.limit),
           returned: finalCount,
-          cost: toCharge,
+          cost: actualCreditsUsed,
         })
       } catch (searchLogError) {
         console.error('❌ searches 테이블 로그 저장 실패:', searchLogError)
@@ -749,9 +941,9 @@ export async function POST(req: Request) {
       // 검색 기록 저장은 클라이언트의 /api/me/search-record에서 처리 (중복 방지)
       console.log(`📝 Instagram 키워드 검색 완료 - 결과: ${sorted.length}개, 크레딧: ${actualCreditsUsed} (기록은 클라이언트에서 처리)`)
       
-      // 크레딧 차감은 settle 함수에서 처리됨 (중복 방지)
+      // 크레딧 차감은 search-record API에서 처리됨
       console.log(`💰 Instagram 키워드 검색 실제 크레딧 사용량: ${actualCreditsUsed}`)
-      console.log(`✅ 크레딧 정산은 settle 함수에서 처리됨 (중복 차감 방지)`)
+      console.log(`✅ 크레딧 정산은 search-record API에서 처리됨`)
       } catch (mainError) {
         console.error('❌ Instagram 메인 처리 블록 오류:', mainError)
         console.error('❌ 메인 처리 스택:', (mainError as Error)?.stack)
@@ -792,9 +984,9 @@ export async function POST(req: Request) {
               rowsWithFollowers: rows.filter(r => typeof r.followers === 'number').length,
               backfillRounds,
             },
-            prorationSuggestion: toCharge,
+            prorationSuggestion: actualCreditsUsed,
           },
-          credits: { toCharge, basis: 100, per: 30 },
+          credits: { toCharge: actualCreditsUsed, basis: 100, per: 30 },
         })
       } else {
         // 검색 성공 완료 - 세션 종료
@@ -802,14 +994,25 @@ export async function POST(req: Request) {
         
         return Response.json({ 
           items: sorted, 
-          credits: { toCharge, basis: 100, per: 30 } 
+          credits: { toCharge: actualCreditsUsed, basis: 100, per: 30 } 
         })
       }
     }
   } catch (e) {
-    console.error('=== Instagram API 전체 에러 발생 ===')
+    console.error('=== Instagram 키워드 검색 에러 발생 ===')
     console.error('에러 타입:', typeof e)
     console.error('에러 객체:', e)
+    
+    // 대기열 관련 에러인지 확인
+    const errorMessage = (e as Error)?.message || String(e)
+    if (errorMessage.includes('대기열') || errorMessage.includes('queue')) {
+      console.log('🔄 대기열 관련 에러 - 202 응답 반환')
+      return Response.json({
+        success: false,
+        message: errorMessage,
+        queueId: (e as any)?.queueId || 'unknown'
+      }, { status: 202 })
+    }
     console.error('에러 스택:', (e as Error)?.stack)
     
     // 에러 발생 시 세션 정리
@@ -832,6 +1035,10 @@ export async function POST(req: Request) {
     console.error('반환할 에러 페이로드:', payload)
     return Response.json(payload, { status: 400 })
   }
+  } catch (outerError) {
+    console.error('=== POST 함수 최상위 에러 ===', outerError)
+    return Response.json({ error: 'Internal Server Error' }, { status: 500 })
+  }
 }
 
 // Instagram 프로필 검색 핸들러
@@ -839,9 +1046,10 @@ async function handleProfileSearch(
   req: Request,
   input: any,
   resultsLimit: number,
-  settle: ((finalCount: number) => Promise<number>) | null,
   token: string,
-  userId: string
+  userId: string,
+  searchRecordId: string | null,
+  expectedCredits: number
 ) {
   console.log('=== Instagram 프로필 검색 시작 ===')
   
@@ -912,7 +1120,7 @@ async function handleProfileSearch(
     try { req.signal.addEventListener('abort', onAbort, { once: true }) } catch {}
     
     // Instagram Scraper 태스크 실행 (프로필 검색 전용 새 액터 사용)
-    const taskId = 'interesting_dingo/instagram-scraper-task-2'
+    const taskId = 'bold_argument/instagram-scraper-task-2'
     const profileUrl_full = `https://www.instagram.com/${username}`
     
     console.log('Instagram 프로필 스크래퍼 태스크 시작:', taskId)
@@ -935,19 +1143,19 @@ async function handleProfileSearch(
     
     console.log('Apify 태스크 입력:', JSON.stringify(taskInput, null, 2))
     
-    // 메모리 대기열 시스템을 통한 안전한 실행
-    const { getMemoryQueueManager } = await import('@/lib/memory-queue-manager')
-    const queueManager = getMemoryQueueManager()
+    // DB 대기열 시스템을 통한 안전한 실행
+    const { getDatabaseQueueManager } = await import('@/lib/db-queue-manager')
+    const queueManager = getDatabaseQueueManager()
     
     const queueResult = await queueManager.executeWithTryFirst(
       taskId,
       taskInput,
       {
+        userId: userId,
         priority: 'high', // Instagram 프로필 검색은 높은 우선순위
         maxRetries: 3,
-        onQueued: (position) => {
-          console.log(`🔄 Instagram 프로필 검색이 대기열 ${position}번째에 추가됨`)
-        }
+        originalApiEndpoint: '/api/search',
+        originalPayload: input
       }
     )
     
@@ -1022,21 +1230,47 @@ async function handleProfileSearch(
     
     console.log('최종 검색 결과 개수:', searchRows.length)
     
-    // 크레딧 정산 (settle 함수가 프로레이션 처리를 담당)
-    let actualCreditsUsed = 0
-    if (settle) {
-      actualCreditsUsed = await settle(searchRows.length)
+    // ==========================================
+    // 🔄 검색 완료 후 search-record 업데이트 (Instagram 프로필)
+    // ==========================================
+    
+    // 검색 완료 시 search-record 업데이트
+    if (searchRecordId) {
+      try {
+        console.log(`🔄 Instagram 프로필 검색 완료, 기록 업데이트: ${searchRecordId}`)
+        
+        // 실제 크레딧 사용량 계산 (proration)
+        const returned = searchRows.length
+        const requested = Number(input.limit)
+        const actualCredits = Math.floor((returned / 30) * 100)
+        const refundAmount = Math.max(0, expectedCredits - actualCredits)
+        
+        const updatePayload = {
+          id: searchRecordId,
+          status: 'completed',
+          results_count: returned,
+          actual_credits: actualCredits,
+          refund_amount: refundAmount
+        }
+        
+        console.log(`🔄 Instagram 프로필 검색 기록 업데이트:`, updatePayload)
+        
+                  await fetch(new URL('/api/me/search-record', req.url), {
+            method: 'PUT',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Cookie': req.headers.get('cookie') || ''
+            },
+            body: JSON.stringify(updatePayload)
+          })
+        
+        console.log(`✅ Instagram 프로필 검색 기록 업데이트 완료`)
+      } catch (error) {
+        console.warn('⚠️ Instagram 프로필 검색 기록 업데이트 실패:', error)
+      }
     }
     
-    // ==========================================
-    // 🔄 단순화된 후처리 로직 (Instagram 프로필)
-    // ==========================================
-    
-    console.log(`💰 Instagram 프로필 실제 크레딧 사용량: ${actualCreditsUsed} (결과 수: ${searchRows.length})`)
-    console.log(`✅ 크레딧 정산은 settle 함수에서 처리됨 (중복 차감 방지)`)
-    
-    // 검색 기록 저장은 클라이언트의 /api/me/search-record에서 처리 (중복 방지)
-    console.log(`📝 Instagram 프로필 검색 완료 - 결과: ${searchRows.length}개, 크레딧: ${actualCreditsUsed} (기록은 클라이언트에서 처리)`)
+    console.log(`📝 Instagram 프로필 검색 완료 - 결과: ${searchRows.length}개, 크레딧: search-record API에서 처리됨`)
     
     return Response.json({
       items: searchRows, // 프론트엔드가 기대하는 필드명으로 변경
@@ -1052,9 +1286,29 @@ async function handleProfileSearch(
   } catch (error) {
     console.error('Instagram 프로필 검색 에러:', error)
     
-    // 크레딧 환불
-    if (settle) {
-      await settle(0)
+    // 검색 실패 시 search-record 업데이트
+    if (searchRecordId) {
+      try {
+        const updatePayload = {
+          id: searchRecordId,
+          status: 'failed',
+          results_count: 0,
+          actual_credits: 0,
+          refund_amount: expectedCredits,
+          error_message: (error as Error)?.message || 'Unknown error'
+        }
+        
+                  await fetch(new URL('/api/me/search-record', req.url), {
+            method: 'PUT',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Cookie': req.headers.get('cookie') || ''
+            },
+            body: JSON.stringify(updatePayload)
+          })
+      } catch (updateError) {
+        console.warn('⚠️ 프로필 검색 실패 기록 업데이트 실패:', updateError)
+      }
     }
     
     return Response.json({ 

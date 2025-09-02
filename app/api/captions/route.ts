@@ -118,11 +118,16 @@ export async function POST(req: Request) {
     // Sanitize: strip query/hash to avoid actor mis-detection
     const urlObj = new URL(input.url)
     const cleanUrl = `${urlObj.origin}${urlObj.pathname}`
-    const taskId = 'interesting_dingo/tiktok-instagram-facebook-transcriber-task'
+    const taskId = 'bold_argument/tiktok-instagram-facebook-transcriber-task'
     
-    // Try-First 방식으로 자막 추출 실행
-    const { getMemoryQueueManager } = await import('@/lib/memory-queue-manager')
-    const queueManager = getMemoryQueueManager()
+    // DB 기반 Try-First 방식으로 자막 추출 실행
+    const { getDatabaseQueueManager } = await import('@/lib/db-queue-manager')
+    const queueManager = getDatabaseQueueManager()
+    
+    console.log(`🎬 [DEBUG] 자막 추출 시작:`)
+    console.log(`  - 사용자: ${user.id} (${user.email})`)
+    console.log(`  - URL: ${cleanUrl}`)
+    console.log(`  - TaskID: ${taskId}`)
     
     let started: { runId: string }
     
@@ -131,25 +136,35 @@ export async function POST(req: Request) {
         taskId,
         { start_urls: cleanUrl },
         {
+          userId: user.id,
           priority: 'normal',
           maxRetries: 3,
-          onQueued: (position) => {
-            console.log(`🔄 자막 추출이 대기열 ${position}번째에 추가됨`)
-          }
+          originalApiEndpoint: '/api/captions',
+          originalPayload: body
         }
       )
       
       if (!result.success) {
+        console.log(`🔄 [DEBUG] 자막 추출 대기열 추가:`)
+        console.log(`  - 대기열ID: ${result.queueId}`)
+        console.log(`  - 메시지: ${result.message}`)
+        
         return new Response(JSON.stringify({
           error: 'SYSTEM_BUSY',
           message: `시스템이 바쁩니다. ${result.message}`,
-          queueId: result.queueId
+          queueId: result.queueId,
+          debug: {
+            userId: user.id,
+            taskId,
+            timestamp: new Date().toISOString()
+          }
         }), { status: 202 }) // Accepted, 처리 중
       }
       
+      console.log(`✅ [DEBUG] 자막 추출 즉시 실행 성공: runId=${result.runId}`)
       started = { runId: result.runId! }
     } catch (error: any) {
-      console.error('자막 추출 실행 실패:', error)
+      console.error('❌ [DEBUG] 자막 추출 실행 실패:', error)
       return new Response(JSON.stringify({
         error: '자막 추출에 실패했습니다.',
         details: error.message

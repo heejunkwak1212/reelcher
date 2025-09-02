@@ -146,16 +146,32 @@ class ApifyMonitor {
   // 액터 ID를 사용자 친화적 이름으로 변환
   getActorDisplayName(actId: string): string {
     const actorNames: { [key: string]: string } = {
-      // Instagram 액터들
-      'upscale_jiminy~instagram-hashtag-scraper-task': 'Instagram Hashtag Scraper',
-      'upscale_jiminy~instagram-scraper-task': 'Instagram Scraper',
-      'upscale_jiminy~instagram-profile-scraper-task': 'Instagram Profile Scraper',
-      'CVQmx5Se22zxPaWc1': 'Instagram Subtitle Extractor',
+      // Instagram 액터들 (새 계정)
+      'bold_argument~instagram-hashtag-scraper-task': 'Instagram Hashtag Scraper',
+      'bold_argument~instagram-scraper-task': 'Instagram Scraper (Details)',
+      'bold_argument~instagram-scraper-task-2': 'Instagram Scraper (Profile)',
+      'bold_argument~instagram-profile-scraper-task': 'Instagram Profile Scraper',
+      'Jn0TcZARDzngD3AEV': 'Instagram Hashtag Scraper',
+      'lqbfmuw6hgEZjTKJl': 'Instagram Scraper',
+      '9nSdZ5pYWVTU1Gcau': 'Instagram Profile Scraper',
       
-      // TikTok 액터들
-      'clockworks~free-tiktok-scraper': 'TikTok Scraper (Free)',
-      'interesting_dingo~tiktok-scraper-task': 'TikTok Profile Scraper',
-      'interesting_dingo~tiktok-scraper-task-2': 'TikTok Keyword Scraper',
+      // TikTok 액터들 (새 계정)
+      'bold_argument~tiktok-scraper-task': 'TikTok Profile Scraper',
+      'bold_argument~tiktok-scraper-task-2': 'TikTok Keyword Scraper',
+      'edRdjZboRnLv1tb68': 'TikTok Profile Scraper',
+      'U1rBeH55rsgH0HS9r': 'TikTok Keyword Scraper',
+      
+      // 자막 추출 액터 (새 계정)
+      'bold_argument~tiktok-instagram-facebook-transcriber-task': 'Subtitle Extractor',
+      'BHgesiUiheIenGwOy': 'Subtitle Extractor',
+      
+      // 구 액터들 (호환성 유지)
+      'upscale_jiminy~instagram-hashtag-scraper-task': 'Instagram Hashtag Scraper (Old)',
+      'upscale_jiminy~instagram-scraper-task': 'Instagram Scraper (Old)',
+      'upscale_jiminy~instagram-profile-scraper-task': 'Instagram Profile Scraper (Old)',
+      'interesting_dingo~tiktok-scraper-task': 'TikTok Profile Scraper (Old)',
+      'interesting_dingo~tiktok-scraper-task-2': 'TikTok Keyword Scraper (Old)',
+      'interesting_dingo~tiktok-instagram-facebook-transcriber-task': 'Subtitle Extractor (Old)',
       
       // YouTube는 Google API 사용 (Apify 아님)
       'youtube-data-v3': 'YouTube Data API v3',
