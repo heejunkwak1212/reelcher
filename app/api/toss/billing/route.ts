@@ -48,8 +48,8 @@ export async function PUT(req: Request) {
       if (!s.billing_key || s.status !== 'active') continue
       const delta = planToCredits[s.plan as keyof typeof planToCredits] || 0
       if (!delta) continue
-      // 토스 공식 가이드에 따른 빌링키로 자동결제 승인
-      const planToPrices: Record<string, number> = { starter: 19000, pro: 49000, business: 119000 }
+      // 토스 공식 가이드에 따른 빌링키로 자동결제 승인 (테스트용: 스타터 100원)
+      const planToPrices: Record<string, number> = { starter: 100, pro: 49000, business: 119000 }
       const amount = planToPrices[s.plan as keyof typeof planToPrices] || 0
       
       if (amount > 0) {

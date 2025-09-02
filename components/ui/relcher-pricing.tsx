@@ -135,12 +135,12 @@ export function RelcherPricing({
       console.log('Starting billing auth with customerKey:', customerKey);
       console.log('TossPayments object:', tossPayments);
       
-      // payment 인스턴스 생성 (V2 SDK 방식)
+      // payment 인스턴스 생성 (V2 SDK 방식 - 빌링 전용)
       const payment = tossPayments.payment({
         customerKey: customerKey
       });
       
-      // 빌링키 발급 요청 (토스 공식 가이드 100% 준수)
+      // 빌링키 발급 요청 (카드 등록만, 실제 결제는 서버에서)
       await payment.requestBillingAuth({
         method: "CARD", // 자동결제(빌링)는 카드만 지원합니다
         successUrl: `${origin}/toss/billing/return?plan=${plan}&customerKey=${customerKey}`,

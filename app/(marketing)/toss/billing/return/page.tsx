@@ -31,7 +31,7 @@ function BillingReturnContent() {
         const ex = await fetch('/api/toss/billing/return', { 
           method:'POST', 
           headers: { 'content-type': 'application/json' }, 
-          body: JSON.stringify({ authKey, customerKey }) 
+          body: JSON.stringify({ authKey, customerKey, plan }) 
         })
         
         if (!ex.ok) {
@@ -39,25 +39,16 @@ function BillingReturnContent() {
           throw new Error(`빌링키 발급 실패: ${errorText}`)
         }
         
-        const { billingKey } = await ex.json()
-        console.log('Billing key received:', billingKey);
+        const response = await ex.json()
+        console.log('Billing response:', response);
         
-        setMsg('구독 설정 중...')
-        
-        // 2단계: billingKey로 구독 설정
-        const saved = await fetch('/api/toss/billing', { 
-          method:'POST', 
-          headers: { 'content-type': 'application/json' }, 
-          body: JSON.stringify({ plan, period, billingKey, customerKey }) 
-        })
-        
-        if (!saved.ok) {
-          const errorText = await saved.text()
-          throw new Error(`구독 설정 실패: ${errorText}`)
+        // 새로운 플로우: 결제 확인 페이지로 리다이렉트
+        if (response.success && response.redirectUrl) {
+          setMsg('결제 확인 페이지로 이동합니다...')
+          setTimeout(() => router.replace(response.redirectUrl), 1000)
+        } else {
+          throw new Error('빌링키 발급 응답이 올바르지 않습니다.')
         }
-        
-        setMsg('구독이 활성화되었습니다! 대시보드로 이동합니다...')
-        setTimeout(() => router.replace('/dashboard'), 1500)
         
       } catch (e: any) {
         console.error('Billing process error:', e)
