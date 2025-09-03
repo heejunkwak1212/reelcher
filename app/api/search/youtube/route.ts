@@ -153,48 +153,9 @@ export async function POST(request: NextRequest) {
       }
       expectedCredits = creditCosts[searchRequest.resultsLimit] || 0
 
-      // 크레딧이 필요한 경우 즉시 차감 및 검색 기록 생성
+      // 크레딧 필요 여부만 확인 (검색 기록은 프론트엔드에서 생성하므로 여기서는 생성하지 않음)
       if (expectedCredits > 0) {
-        try {
-          const keyword = searchRequest.query?.trim() || ''
-          const recordPayload = {
-            platform: 'youtube' as const,
-            search_type: searchRequest.searchType as 'keyword' | 'url',
-            keyword: keyword,
-            expected_credits: expectedCredits,
-            requested_count: searchRequest.resultsLimit,
-            status: 'pending' as const
-          }
-          
-          console.log(`🚀 YouTube 검색 시작 즉시 기록 생성:`, recordPayload)
-          
-          const recordRes = await fetch(new URL('/api/me/search-record', request.url), {
-            method: 'POST',
-            headers: { 
-              'Content-Type': 'application/json',
-              'Cookie': request.headers.get('cookie') || ''
-            },
-            body: JSON.stringify(recordPayload)
-          })
-          
-          if (recordRes.ok) {
-            const recordData = await recordRes.json()
-            searchRecordId = recordData.id
-            console.log(`✅ YouTube 검색 기록 생성 성공: ${searchRecordId}`)
-          } else {
-            const errorText = await recordRes.text()
-            console.error(`❌ YouTube 검색 기록 생성 실패: ${recordRes.status} ${errorText}`)
-            
-            // 크레딧 부족 또는 기타 오류 처리
-            if (recordRes.status === 402) {
-              return NextResponse.json({ error: '크레딧이 부족합니다.' }, { status: 402 })
-            }
-            return NextResponse.json({ error: '검색 기록 생성 실패' }, { status: 500 })
-          }
-        } catch (error) {
-          console.error('❌ YouTube 검색 기록 생성 오류:', error)
-          return NextResponse.json({ error: '검색 기록 생성 실패' }, { status: 500 })
-        }
+        console.log(`💰 YouTube 검색 예상 크레딧: ${expectedCredits}`)
       }
     }
 

@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import QueryProvider from '@/components/QueryProvider'
+import { Toaster } from '@/components/ui/sonner'
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -7,6 +8,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <main>
         <QueryProvider>{children}</QueryProvider>
       </main>
+      <Toaster />
     </div>
   )
 }

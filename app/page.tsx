@@ -22,7 +22,7 @@ const recommendationCards = [
       </svg>
     ),
     title: "소규모 비즈니스",
-    description: "릴처의 키워드 검색으로 고객이 반응하는 콘텐츠를 데이터로 확인하고, 리스크를 없애는 비즈니스를 시작하세요.",
+    description: "릴처의 키워드 검색으로 고객이 반응하는 콘텐츠를 데이터로 확인하고, 리스크를 최소화해보세요",
     date: "",
     titleClassName: "text-gray-900 font-bold",
     className: "[grid-area:stack] hover:-translate-y-16 before:absolute before:w-[100%] before:outline-1 before:rounded-xl before:outline-border before:h-[100%] before:content-[''] before:bg-blend-overlay before:bg-background/50 grayscale-[100%] hover:before:opacity-0 before:transition-opacity before:duration:700 hover:grayscale-0 before:left-0 before:top-0"
@@ -34,7 +34,7 @@ const recommendationCards = [
       </svg>
     ),
     title: "실무 마케터",
-    description: "원하는 모든 콘텐츠 데이터를 분석해 우리 채널에 바로 적용할 수 있는 성공 전략을 도출하세요.",
+    description: "원하는 모든 콘텐츠 데이터를 분석해 우리 채널에 바로 적용할 수 있는 성공 전략을 도출하세요",
     date: "",
     titleClassName: "text-gray-900 font-bold",
     className: "[grid-area:stack] translate-x-16 translate-y-10 hover:-translate-y-8 before:absolute before:w-[100%] before:outline-1 before:rounded-xl before:outline-border before:h-[100%] before:content-[''] before:bg-blend-overlay before:bg-background/50 grayscale-[100%] hover:before:opacity-0 before:transition-opacity before:duration:700 hover:grayscale-0 before:left-0 before:top-0"
@@ -46,7 +46,7 @@ const recommendationCards = [
       </svg>
     ),
     title: "1인 크리에이터",
-    description: "인기 콘텐츠의 제목과 조회수, 좋아요, 팔로워 데이터를 비교 분석하고, 채널을 성장시킬 다음 콘텐츠 아이디어를 얻어보세요.",
+    description: "인기 콘텐츠의 제목과 썸네일, 조회수, 좋아요 등 데이터를 비교 분석하고, 채널을 성장시킬 다음 콘텐츠 아이디어를 얻어보세요",
     date: "",
     titleClassName: "text-gray-900 font-bold",
     className: "[grid-area:stack] translate-x-32 translate-y-20 hover:translate-y-2"

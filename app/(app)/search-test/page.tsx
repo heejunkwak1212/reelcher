@@ -13,6 +13,8 @@ import { useAuthStore } from '@/store/auth'
 import { Input } from '@/components/input'
 import { Input as ShadcnInput } from '@/components/ui/input'
 import { relcherAlert, relcherConfirm } from '@/components/ui/relcher-dialog'
+import { MessageLoading } from '@/components/ui/message-loading'
+import { toast } from 'sonner'
 
 // 에러 바운더리 컴포넌트
 class ErrorBoundary extends Component<
@@ -1592,7 +1594,7 @@ function SearchTestPageContent() {
       console.log('검색 시작 팝업 7일 옵트아웃으로 인해 팝업 건너뛰기')
       // 크레딧 부족 체크
       if ((myCredits || 0) < nCredits) {
-        const creditModal = (message = '업그레이드를 통해 보다 향상된 혜택을 누려보세요!') => {
+        const creditModal = (message = '플랜 업그레이드를 통해 지금 바로 향상된 혜택을 누려보세요!') => {
           const modal = document.createElement('div')
           modal.className = 'fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4'
           modal.innerHTML = `
@@ -1608,7 +1610,7 @@ function SearchTestPageContent() {
           modal.querySelector('#cnl')?.addEventListener('click', () => modal.remove())
           modal.querySelector('#ok')?.addEventListener('click', () => { modal.remove(); window.location.href = '/pricing' })
         }
-        creditModal('업그레이드를 통해 보다 향상된 혜택을 누려보세요!')
+        creditModal('플랜 업그레이드를 통해 지금 바로 향상된 혜택을 누려보세요!')
         return
       }
     } else {
@@ -1641,7 +1643,7 @@ function SearchTestPageContent() {
           // 크레딧 부족 체크
           if ((myCredits || 0) < nCredits) {
             cleanup()
-            const creditModal = (message = '업그레이드를 통해 보다 향상된 혜택을 누려보세요!') => {
+            const creditModal = (message = '플랜 업그레이드를 통해 지금 바로 향상된 혜택을 누려보세요!') => {
               const modal = document.createElement('div')
               modal.className = 'fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4'
               modal.innerHTML = `
@@ -1657,7 +1659,7 @@ function SearchTestPageContent() {
               modal.querySelector('#cnl')?.addEventListener('click', () => modal.remove())
               modal.querySelector('#ok')?.addEventListener('click', () => { modal.remove(); window.location.href = '/pricing' })
             }
-            creditModal('업그레이드를 통해 보다 향상된 혜택을 누려보세요!')
+            creditModal('플랜 업그레이드를 통해 지금 바로 향상된 혜택을 누려보세요!')
             resolve(false)
             return
           }
@@ -1686,7 +1688,7 @@ function SearchTestPageContent() {
     abortRef.current = new AbortController()
     setDebug(null)
     setRaw('')
-    openProgress('영상을 수집하고 있어요', 5)
+    openProgress('영상을 모으고 분석하고 있어요', 5)
     tickProgress(92, 1, 500)
     
     // ==========================================
@@ -1700,7 +1702,7 @@ function SearchTestPageContent() {
     searchRecordIdRef.current = null
     try {
       const keyword = keywords[0]?.trim() || ''
-      if (keyword && !keyword.includes('http')) {
+      if (keyword && keyword.length > 0 && !keyword.includes('http')) {
         const recordPayload = {
           platform,
           search_type: searchType,
@@ -1737,6 +1739,15 @@ function SearchTestPageContent() {
     
     // 3. 검색 시작 로깅
     console.log(`🚀 검색 시작: ${expectedCredits} 크레딧 예상 사용, 기록 ID: ${searchRecordIdRef.current}`)
+    
+    // 검색어 유효성 재검증
+    const searchKeyword = keywords[0]?.trim() || ''
+    if (!searchKeyword || searchKeyword.length === 0) {
+      console.error('❌ 검색어가 비어있습니다')
+      setLoading(false)
+      setProgressOpen(false)
+      return
+    }
     
     try {
       let payload: any
@@ -2083,17 +2094,11 @@ function SearchTestPageContent() {
           })
             }, 1000)
             
-            // 사용자에게 반환 안내 표시
-            const toast = document.createElement('div')
-            toast.className = 'fixed bottom-4 left-1/2 -translate-x-1/2 z-[60] bg-green-600 text-white text-sm px-4 py-2 rounded shadow flex items-center gap-2'
-            toast.innerHTML = `
-              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"></path>
-              </svg>
-              크레딧 반환: 결과가 적어 ${refund} 크레딧이 반환되었습니다.
-            `
-            document.body.appendChild(toast)
-            setTimeout(()=>toast.remove(), 5000)
+            // 사용자에게 반환 안내 표시 (Sonner 토스트 사용)
+            toast.success(`크레딧 반환: 결과가 적어 ${refund} 크레딧이 반환되었습니다.`, {
+              duration: 5000,
+              position: 'bottom-right'
+            })
           }
         }
       } catch {
@@ -3605,15 +3610,19 @@ function SearchTestPageContent() {
                 )
               }) : (
                 <tr>
-                  <td className="p-12 text-center text-gray-500" colSpan={platform === 'youtube' ? 8 : 9}>
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center">
-                        <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                        </svg>
+                  <td colSpan={platform === 'youtube' ? 8 : 9} className="h-[400px] p-0 relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-screen flex justify-center">
+                        <div className="flex flex-col items-center gap-3 text-center" style={{marginLeft: '160px'}}>
+                          <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center">
+                            <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                          </div>
+                          <div className="text-lg font-medium text-gray-700">검색 결과가 없습니다</div>
+                          <div className="text-sm text-gray-500">상단에서 키워드를 입력하고 검색을 실행해보세요</div>
+                        </div>
                       </div>
-                      <div className="text-lg font-medium text-gray-700">검색 결과가 없습니다</div>
-                      <div className="text-sm text-gray-500">상단에서 키워드를 입력하고 검색을 실행해보세요</div>
                     </div>
                   </td>
                 </tr>
@@ -3627,9 +3636,12 @@ function SearchTestPageContent() {
         {raw}
       </pre>
       {progressOpen && (
-        <div className="fixed inset-0 bg-black/40 z-60 flex items-center justify-center p-4" onClick={() => {}}>
+        <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4" onClick={() => {}}>
           <div className="bg-white rounded shadow-lg w-full max-w-md p-5" onClick={(e)=>e.stopPropagation()}>
-            <div className="text-base font-semibold mb-3">{progressTitle}</div>
+            <div className="text-base font-semibold mb-3 flex items-center gap-1.5">
+              <span>{progressTitle}</span>
+              <MessageLoading />
+            </div>
             <div className="w-full h-3 bg-neutral-200 rounded">
               <div className="h-3 bg-black rounded" style={{ width: `${Math.max(0, Math.min(100, progressPercent))}%` }} />
             </div>
@@ -4523,7 +4535,7 @@ function SubtitleDialog({ url, platform, plan }: { url: string; platform?: strin
         console.warn(`⚠️ 자막 추출 후 크레딧 부족 예상: 현재=${availableCredits}, 사용=${requiredCredits}, 잔여예상=${availableCredits - requiredCredits}`)
         // 자막 추출은 진행하되, 추출 후 부족 안내 표시
         setTimeout(() => {
-          showCreditModal('업그레이드를 통해 보다 향상된 혜택을 누려보세요!')
+          showCreditModal('플랜 업그레이드를 통해 지금 바로 향상된 혜택을 누려보세요!')
         }, 3000) // 자막 추출 완료 후 3초 뒤 표시
       }
       console.log(`✅ 크레딧 충분: 사용가능=${availableCredits}, 필요=${requiredCredits}`)
@@ -4542,6 +4554,10 @@ function SubtitleDialog({ url, platform, plan }: { url: string; platform?: strin
       return
     }
     setLoading(true)
+    
+    // Sonner 로딩 토스트 표시
+    const loadingToastId = toast.loading('자막을 추출하고 있어요...')
+    
     // tie into page-level overlay via DOM events
     document.body.dispatchEvent(new CustomEvent('relcher:progress', { detail: { action: 'open', title: '자막을 추출하고 있습니다…' } }))
     document.body.dispatchEvent(new CustomEvent('relcher:progress', { detail: { action: 'tick', max: 92, step: 2, ms: 250 } }))
@@ -4556,10 +4572,12 @@ function SubtitleDialog({ url, platform, plan }: { url: string; platform?: strin
         try {
           const errorJson = JSON.parse(errorText)
           if (errorJson.error === 'SUBTITLE_COOLDOWN') {
+            toast.dismiss(loadingToastId)
             showCooldownModal()
             return
           }
           if (errorJson.error === 'PLAN_RESTRICTION' || res.status === 403) {
+            toast.dismiss(loadingToastId)
             showUpgradeModal(errorJson.message || '자막 추출 기능은 STARTER 플랜부터 이용 가능합니다.')
             return
           }
@@ -4575,6 +4593,9 @@ function SubtitleDialog({ url, platform, plan }: { url: string; platform?: strin
       cache.set(url, t)
       setText(t)
       setOpen(true)
+      
+      // 성공 토스트 표시
+      toast.success('자막 추출 성공!', { id: loadingToastId })
       
       // 자막 추출 후 크레딧 정보만 업데이트 (검색통계는 업데이트하지 않음)
       if (j?.credits) {
@@ -4603,7 +4624,9 @@ function SubtitleDialog({ url, platform, plan }: { url: string; platform?: strin
     } catch (e: any) {
       console.error('자막 추출 오류:', e)
       const errorMessage = e?.message || '자막 추출 실패'
-      alert(errorMessage)
+      
+      // 에러 토스트 표시
+      toast.error(errorMessage, { id: loadingToastId })
     } finally {
       setLoading(false)
       document.body.dispatchEvent(new CustomEvent('relcher:progress', { detail: { action: 'finish' } }))

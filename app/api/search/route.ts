@@ -205,48 +205,9 @@ export async function POST(req: Request) {
         (input.limit === '120' || input.limit === 120) ? 400 : 0
       )
 
-      // 크레딧이 필요한 경우 즉시 차감 및 검색 기록 생성
+      // 크레딧 필요 여부만 확인 (검색 기록은 프론트엔드에서 생성하므로 여기서는 생성하지 않음)
       if (expectedCredits > 0) {
-        try {
-          const keyword = input.hashtag || input.username || ''
-          const recordPayload = {
-            platform: 'instagram' as const,
-            search_type: input.searchType as 'keyword' | 'profile',
-            keyword: input.searchType === 'profile' ? (keyword.startsWith('@') ? keyword : `@${keyword}`) : keyword,
-            expected_credits: expectedCredits,
-            requested_count: Number(input.limit),
-            status: 'pending' as const
-          }
-          
-          console.log(`🚀 Instagram 검색 시작 즉시 기록 생성:`, recordPayload)
-          
-          const recordRes = await fetch(new URL('/api/me/search-record', req.url), {
-            method: 'POST',
-            headers: { 
-              'Content-Type': 'application/json',
-              'Cookie': req.headers.get('cookie') || ''
-            },
-            body: JSON.stringify(recordPayload)
-          })
-          
-          if (recordRes.ok) {
-            const recordData = await recordRes.json()
-            searchRecordId = recordData.id
-            console.log(`✅ Instagram 검색 기록 생성 성공: ${searchRecordId}`)
-          } else {
-            const errorText = await recordRes.text()
-            console.error(`❌ Instagram 검색 기록 생성 실패: ${recordRes.status} ${errorText}`)
-            
-            // 크레딧 부족 또는 기타 오류 처리
-            if (recordRes.status === 402) {
-              return new Response('크레딧이 부족합니다.', { status: 402 })
-            }
-            return new Response('검색 기록 생성 실패', { status: 500 })
-          }
-        } catch (error) {
-          console.error('❌ Instagram 검색 기록 생성 오류:', error)
-          return new Response('검색 기록 생성 실패', { status: 500 })
-        }
+        console.log(`💰 Instagram 검색 예상 크레딧: ${expectedCredits}`)
       }
     }
 
