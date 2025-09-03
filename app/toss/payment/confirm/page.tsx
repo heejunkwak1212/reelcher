@@ -11,7 +11,7 @@ export default function PaymentConfirmPage() {
   const router = useRouter()
   
   const billingKey = searchParams.get('billingKey')
-  const customerKey = searchParams.get('customerKey') 
+  const customerKey = searchParams.get('customerKey')
   const plan = searchParams.get('plan') || 'starter'
   
   const [isProcessing, setIsProcessing] = useState(false)
@@ -28,7 +28,7 @@ export default function PaymentConfirmPage() {
 
   useEffect(() => {
     console.log('🎯 결제 확인 페이지 로드됨:', { billingKey, customerKey, plan })
-    
+
     if (!billingKey || !customerKey) {
       console.error('❌ 결제 정보 누락:', { billingKey, customerKey })
       setError('결제 정보가 올바르지 않습니다.')
@@ -39,11 +39,12 @@ export default function PaymentConfirmPage() {
 
   const handlePaymentConfirm = async () => {
     if (!billingKey || !customerKey) return
-    
+
     setIsProcessing(true)
     setError('')
-    
+
     try {
+      // 신규 구독 결제 처리
       const response = await fetch('/api/toss/billing/confirm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -53,16 +54,16 @@ export default function PaymentConfirmPage() {
           plan
         })
       })
-      
+
       const result = await response.json()
-      
+
       if (response.ok && result.success) {
         // 결제 성공 - 대시보드로 이동
-        router.push(`/dashboard?subscription=success&plan=${plan}&amount=${currentPlan.price}&credits=${currentPlan.credits}`)
+        router.push(`/dashboard?subscription=success&plan=${plan}&action=subscribe&amount=${currentPlan.price}&credits=${currentPlan.credits}&message=구독`)
       } else {
         setError(result.message || '결제 처리 중 오류가 발생했습니다.')
       }
-      
+
     } catch (err) {
       console.error('Payment confirmation error:', err)
       setError('결제 처리 중 오류가 발생했습니다.')

@@ -13,6 +13,7 @@ import {
   Settings,
   Home,
   Server,
+  UserX,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import Link from "next/link";
@@ -240,6 +241,22 @@ export function AdminSidebar({ user, onSidebarChange }: AdminSidebarProps) {
                       <motion.li variants={variants}>
                         {!isCollapsed && (
                           <p className="ml-2 text-sm font-medium">시스템 모니터링</p>
+                        )}
+                      </motion.li>
+                    </Link>
+
+                    <Link
+                      href="/admin/cancellations"
+                      prefetch={true}
+                      className={cn(
+                        "flex h-8 w-full flex-row items-center rounded-md px-2 py-1.5 transition hover:bg-gray-100 hover:text-gray-900",
+                        pathname?.includes("cancellations") && "bg-gray-100 text-gray-900",
+                      )}
+                    >
+                      <UserX className="h-4 w-4" />
+                      <motion.li variants={variants}>
+                        {!isCollapsed && (
+                          <p className="ml-2 text-sm font-medium">취소/탈퇴</p>
                         )}
                       </motion.li>
                     </Link>

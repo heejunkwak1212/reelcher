@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/table2'
 import { FileText } from 'lucide-react'
 import { CheckIcon } from "@radix-ui/react-icons"
+import CancelSubscriptionButton from '@/components/billing/CancelSubscriptionButton'
 
 interface PaymentRecord {
   id: string
@@ -25,35 +26,8 @@ interface PaymentRecord {
   amount: string
   paymentMethod: string
   status: string
+  created_at: string
 }
-
-// 더미 결제 내역 데이터
-const paymentRecords: PaymentRecord[] = [
-  {
-    id: '1',
-    date: '2024년 1월 15일',
-    plan: 'STARTER',
-    amount: '₩9,900',
-    paymentMethod: '신용카드 (****1234)',
-    status: '완료'
-  },
-  {
-    id: '2', 
-    date: '2023년 12월 15일',
-    plan: 'STARTER',
-    amount: '₩9,900', 
-    paymentMethod: '신용카드 (****1234)',
-    status: '완료'
-  },
-  {
-    id: '3',
-    date: '2023년 11월 15일',
-    plan: 'FREE',
-    amount: '₩0',
-    paymentMethod: '-',
-    status: '완료'
-  }
-]
 
 // 플랜별 콘텐츠 정의
 const planContent = {
@@ -102,6 +76,11 @@ export default function BillingPage() {
   const [user, setUser] = useState<any>(null)
   const [profile, setProfile] = useState<any>(null)
   const [credits, setCredits] = useState<any>(null)
+  const [subscription, setSubscription] = useState<any>(null)
+  const [paymentRecords, setPaymentRecords] = useState<PaymentRecord[]>([])
+  const [paymentLoading, setPaymentLoading] = useState(true)
+  const [hasMorePayments, setHasMorePayments] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -123,9 +102,16 @@ export default function BillingPage() {
           .eq('user_id', user.id)
           .single()
 
+        const { data: sub } = await supabase
+          .from('subscriptions')
+          .select('status, plan, billing_key')
+          .eq('user_id', user.id)
+          .single()
+
         setUser(user)
         setProfile(prof)
         setCredits(cr)
+        setSubscription(sub)
       } catch (error) {
         console.error('데이터 조회 실패:', error)
       } finally {
@@ -135,6 +121,43 @@ export default function BillingPage() {
 
     fetchData()
   }, [])
+
+  // 결제 내역 조회 함수
+  const fetchPaymentHistory = async (page: number = 1, reset: boolean = false) => {
+    try {
+      setPaymentLoading(true)
+      const response = await fetch(`/api/me/payment-history?page=${page}&limit=5`)
+      
+      if (response.ok) {
+        const data = await response.json()
+        if (reset) {
+          setPaymentRecords(data.payments)
+        } else {
+          setPaymentRecords(prev => [...prev, ...data.payments])
+        }
+        setHasMorePayments(data.hasMore)
+        setCurrentPage(page)
+      }
+    } catch (error) {
+      console.error('결제 내역 조회 실패:', error)
+    } finally {
+      setPaymentLoading(false)
+    }
+  }
+
+  // 컴포넌트 마운트 시 결제 내역 조회
+  useEffect(() => {
+    if (user) {
+      fetchPaymentHistory(1, true)
+    }
+  }, [user])
+
+  // 더 보기 버튼 클릭 핸들러
+  const handleLoadMore = () => {
+    if (!paymentLoading && hasMorePayments) {
+      fetchPaymentHistory(currentPage + 1, false)
+    }
+  }
 
   if (loading) {
   return (
@@ -149,19 +172,6 @@ export default function BillingPage() {
 
   const currentPlan = profile?.plan || 'free'
   const balance = Number(credits?.balance || 0)
-
-  // 최근 12개월 결제 내역 필터링
-  const twelveMonthsAgo = new Date()
-  twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12)
-  
-  const filteredPaymentRecords = paymentRecords.filter(record => {
-    try {
-      const recordDate = new Date(record.date.replace('년', '/').replace('월', '/').replace('일', ''))
-      return recordDate >= twelveMonthsAgo
-    } catch {
-      return true // 날짜 파싱 실패 시 포함
-    }
-  })
 
   // 현재 플랜의 콘텐츠 가져오기
   const currentPlanContent = planContent[currentPlan as keyof typeof planContent] || planContent.free
@@ -212,15 +222,14 @@ export default function BillingPage() {
           </div>
           
           {/* 유료 플랜 사용자용 구독 취소 버튼 */}
-          {currentPlan !== 'free' && (
+          {currentPlan !== 'free' && subscription?.status === 'active' && (
             <div className="flex justify-end mt-4">
-              <Button 
-                variant="outline" 
-                size="sm"
-                className="text-sm text-gray-600 border-gray-300 hover:bg-gray-50"
-              >
-                구독 취소
-              </Button>
+              <CancelSubscriptionButton 
+                onCancelled={() => {
+                  // 구독 취소 후 데이터 새로고침
+                  window.location.reload();
+                }}
+              />
             </div>
           )}
         </CardContent>
@@ -240,46 +249,71 @@ export default function BillingPage() {
           </div>
         </CardHeader>
         <CardContent>
-            {currentPlan === 'free' && filteredPaymentRecords.length === 0 ? (
+            {paymentRecords.length === 0 && !paymentLoading ? (
               <div className="text-center py-12">
                 <FileText className="w-8 h-8 text-gray-400 mx-auto mb-4" />
                 <h3 className="text-sm font-medium text-gray-800 mb-2">결제 내역이 없습니다</h3>
-                <p className="text-sm font-medium text-gray-600">FREE 플랜은 무료로 제공됩니다</p>
+                <p className="text-sm font-medium text-gray-600">
+                  {currentPlan === 'free' ? 'FREE 플랜은 무료로 제공됩니다' : '아직 결제 내역이 없습니다'}
+                </p>
               </div>
             ) : (
-              <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-1/5 text-sm font-medium text-gray-700">날짜</TableHead>
-                  <TableHead className="w-1/5 text-sm font-medium text-gray-700">구독 플랜</TableHead>
-                  <TableHead className="w-1/5 text-sm font-medium text-gray-700">금액</TableHead>
-                  <TableHead className="w-1/5 text-sm font-medium text-gray-700">결제 수단</TableHead>
-                  <TableHead className="w-1/5 text-sm font-medium text-gray-700">상태</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredPaymentRecords.map((record) => (
-                  <TableRow key={record.id}>
-                    <TableCell className="w-1/5 text-sm font-medium text-gray-800">{record.date}</TableCell>
-                    <TableCell className="w-1/5 text-sm font-medium text-gray-600">{record.plan}</TableCell>
-                    <TableCell className="w-1/5 text-sm font-semibold text-gray-800 tabular-nums">{record.amount}</TableCell>
-                    <TableCell className="w-1/5 text-sm font-medium text-gray-600">{record.paymentMethod}</TableCell>
-                    <TableCell className="w-1/5">
-                      <Badge 
-                        variant="outline" 
-                        className={
-                          record.status === '완료' 
-                            ? 'text-green-700 border-green-200 bg-green-50' 
-                            : 'text-gray-700 border-gray-200 bg-gray-50'
-                        }
-                      >
-                        {record.status}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-              </Table>
+              <>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-1/5 text-sm font-medium text-gray-700">날짜</TableHead>
+                      <TableHead className="w-1/5 text-sm font-medium text-gray-700">구독 플랜</TableHead>
+                      <TableHead className="w-1/5 text-sm font-medium text-gray-700">금액</TableHead>
+                      <TableHead className="w-1/5 text-sm font-medium text-gray-700">결제 수단</TableHead>
+                      <TableHead className="w-1/5 text-sm font-medium text-gray-700">상태</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {paymentRecords.map((record) => (
+                      <TableRow key={record.id}>
+                        <TableCell className="w-1/5 text-sm font-medium text-gray-800">{record.date}</TableCell>
+                        <TableCell className="w-1/5 text-sm font-medium text-gray-600">{record.plan}</TableCell>
+                        <TableCell className="w-1/5 text-sm font-semibold text-gray-800 tabular-nums">{record.amount}</TableCell>
+                        <TableCell className="w-1/5 text-sm font-medium text-gray-600">{record.paymentMethod}</TableCell>
+                        <TableCell className="w-1/5">
+                          <Badge 
+                            variant="outline" 
+                            className={
+                              record.status === '완료' 
+                                ? 'text-green-700 border-green-200 bg-green-50' 
+                                : 'text-gray-700 border-gray-200 bg-gray-50'
+                            }
+                          >
+                            {record.status}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    
+                    {/* 로딩 상태 */}
+                    {paymentLoading && (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center py-4">
+                          <div className="flex items-center justify-center">
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600"></div>
+                            <span className="ml-2 text-sm text-gray-600">로딩 중...</span>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+                
+                {/* 더 보기 버튼 */}
+                {hasMorePayments && !paymentLoading && (
+                  <div className="flex justify-center mt-4">
+                    <Button variant="outline" onClick={handleLoadMore}>
+                      더 보기
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
         </CardContent>
       </Card>

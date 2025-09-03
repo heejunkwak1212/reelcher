@@ -96,9 +96,28 @@ export async function POST(req: Request) {
       }
       
       console.log('구독 활성화 및 크레딧 지급 완료:', creditResult)
-      
-      return Response.json({ 
-        success: true, 
+
+      // 결제 로그 기록
+      await supabase
+        .from('billing_webhook_logs')
+        .insert({
+          event_type: 'PAYMENT',
+          payment_key: paymentResult.paymentKey,
+          order_id: orderId,
+          billing_key: billingKey,
+          customer_key: customerKey,
+          status: 'DONE',
+          amount: amount,
+          payment_method: 'CARD',
+          raw_payload: paymentResult,
+          processed: true,
+          processed_at: new Date().toISOString(),
+        })
+
+      console.log('결제 로그 기록 완료')
+
+      return Response.json({
+        success: true,
         message: '결제가 완료되었습니다!',
         payment: paymentResult,
         credits: creditAmount,

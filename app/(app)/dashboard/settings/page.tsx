@@ -8,11 +8,13 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { LogOut, Settings as SettingsIcon } from 'lucide-react'
 import { supabaseBrowser } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { relcherAlert, relcherConfirm } from '@/components/ui/relcher-dialog'
+import { relcherAlert } from '@/components/ui/relcher-dialog'
+import DeleteAccountButton from '@/components/auth/DeleteAccountButton'
 
 export default function SettingsPage() {
   const [user, setUser] = useState<any>(null)
   const [profile, setProfile] = useState<any>(null)
+  const [subscription, setSubscription] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
 
@@ -32,8 +34,15 @@ export default function SettingsPage() {
           .eq('user_id', user.id)
           .single()
 
+        const { data: sub } = await supabase
+          .from('subscriptions')
+          .select('status, plan, billing_key')
+          .eq('user_id', user.id)
+          .single()
+
         setUser(user)
         setProfile(prof)
+        setSubscription(sub)
       } catch (error) {
         console.error('데이터 조회 실패:', error)
       } finally {
@@ -56,15 +65,7 @@ export default function SettingsPage() {
     }
   }
 
-  const handleWithdrawal = async () => {
-    const confirmed = await relcherConfirm(
-      '정말로 회원 탈퇴하시겠습니까? 이 작업은 되돌릴 수 없습니다.',
-      '회원 탈퇴 확인'
-    )
-    if (confirmed) {
-      await relcherAlert('회원 탈퇴 기능은 준비 중입니다. 고객센터로 문의해 주세요.')
-    }
-  }
+  const hasActiveSubscription = subscription?.status === 'active'
 
   const getPlanInfo = (plan: string) => {
     switch (plan) {
@@ -176,14 +177,7 @@ export default function SettingsPage() {
           <LogOut className="w-4 h-4 mr-1" />
           로그아웃
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="text-sm text-red-600 border-red-300 hover:bg-red-50"
-          onClick={handleWithdrawal}
-        >
-          회원탈퇴
-        </Button>
+        <DeleteAccountButton hasActiveSubscription={hasActiveSubscription} />
       </div>
     </div>
   )

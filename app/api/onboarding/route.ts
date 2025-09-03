@@ -1,8 +1,6 @@
 import { z } from 'zod'
-import { db } from '@/db'
-import { profiles, users, credits } from '@/db/schema'
-import { eq } from 'drizzle-orm'
 import { supabaseServer } from '@/lib/supabase/server'
+import { supabaseService } from '@/lib/supabase/service'
 
 export const runtime = 'nodejs'
 
@@ -10,54 +8,95 @@ const bodySchema = z.object({
   displayName: z.string().trim().min(1),
   howFound: z.string().trim().optional().default(''),
   role: z.literal('user'),
+  phoneNumber: z.string().trim().optional(), // 전화번호 추가
 })
 
 export async function POST(req: Request) {
   try {
     const input = bodySchema.parse(await req.json())
     const supabase = await supabaseServer()
+    const supabaseAdmin = supabaseService()
+    
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
-    // Ensure users row exists (id/email)
-    const uid = user.id as unknown as string
-    const email = user.email || null
-    const existingUser = await db.select().from(users).where(eq(users.id, uid as any))
-    if (!existingUser.length) {
-      await db.insert(users).values({ id: uid, email })
+    // 전화번호가 있는 경우 이전 탈퇴 기록 확인
+    let previousCreditBalance = 0
+    if (input.phoneNumber) {
+      try {
+        const { data: previousBalance, error: checkError } = await supabaseAdmin.rpc('check_previous_credit_balance', {
+          p_phone_number: input.phoneNumber
+        })
+        
+        if (!checkError && previousBalance !== null) {
+          previousCreditBalance = previousBalance
+          console.log(`이전 탈퇴 기록 발견: 전화번호 ${input.phoneNumber}, 이전 잔액: ${previousBalance}`)
+        }
+      } catch (error) {
+        console.error('이전 크레딧 잔액 확인 중 오류:', error)
+        // 에러가 있어도 온보딩은 계속 진행
+      }
     }
 
-    // 닉네임 중복 체크 제거 - 이메일만 고유하면 가입 가능
-
-    // Upsert profile (role forced to 'user')
-    const existingProfile = await db.select().from(profiles).where(eq(profiles.userId, uid as any))
-    if (!existingProfile.length) {
-      await db.insert(profiles).values({ userId: uid, displayName: input.displayName, howFound: input.howFound, role: 'user', onboardingCompleted: true })
-    } else {
-      await db.update(profiles).set({ displayName: input.displayName, howFound: input.howFound, role: 'user', onboardingCompleted: true }).where(eq(profiles.userId, uid))
-    }
-
-    // Ensure credits row exists with 30-day cycle setup
-    const existingCredits = await db.select().from(credits).where(eq(credits.userId, uid as any))
-    if (!existingCredits.length) {
-      const today = new Date()
-      const cycleStartDate = today.toISOString().split('T')[0] // YYYY-MM-DD
-      const nextGrantDate = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-      
-      await db.insert(credits).values({ 
-        userId: uid, 
-        balance: 250, 
-        reserved: 0, 
-        monthlyGrant: 250, 
-        lastGrantAt: new Date() as any,
-        cycleStartDate: cycleStartDate,
-        nextGrantDate: nextGrantDate
+    // 프로필 업서트 (role은 'user'로 강제)
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .upsert({
+        user_id: user.id,
+        display_name: input.displayName,
+        how_found: input.howFound,
+        role: 'user',
+        phone_number: input.phoneNumber || null,
+        onboarding_completed: true,
+        created_at: new Date().toISOString()
+      }, {
+        onConflict: 'user_id'
       })
+
+    if (profileError) {
+      console.error('프로필 생성/업데이트 실패:', profileError)
+      return Response.json({ error: 'Profile creation failed' }, { status: 500 })
     }
 
-    return Response.json({ ok: true })
+    // 크레딧 초기화 (이전 탈퇴 기록이 있으면 해당 잔액으로 설정)
+    const today = new Date()
+    const cycleStartDate = today.toISOString().split('T')[0] // YYYY-MM-DD
+    const nextGrantDate = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    
+    // 이전 탈퇴 기록이 있으면 해당 잔액으로, 없으면 250 크레딧으로 시작
+    const initialBalance = previousCreditBalance > 0 ? previousCreditBalance : 250
+
+    const { error: creditsError } = await supabase
+      .from('credits')
+      .upsert({
+        user_id: user.id,
+        balance: initialBalance,
+        reserved: 0,
+        monthly_grant: 250,
+        last_grant_at: today.toISOString(),
+        cycle_start_date: cycleStartDate,
+        next_grant_date: nextGrantDate
+      }, {
+        onConflict: 'user_id'
+      })
+
+    if (creditsError) {
+      console.error('크레딧 생성/업데이트 실패:', creditsError)
+      return Response.json({ error: 'Credits creation failed' }, { status: 500 })
+    }
+
+    // 이전 탈퇴 기록이 있었다면 로그 출력
+    if (previousCreditBalance > 0) {
+      console.log(`재가입 사용자 크레딧 복구 방지: ${input.phoneNumber} - 이전 잔액 ${previousCreditBalance}로 설정`)
+    }
+
+    return Response.json({ 
+      ok: true,
+      restoredCredits: previousCreditBalance > 0 ? previousCreditBalance : null
+    })
   } catch (e) {
     const err: any = e
+    console.error('온보딩 처리 중 오류:', err)
     if (Array.isArray(err?.issues)) return Response.json({ error: 'ValidationError', issues: err.issues }, { status: 400 })
     return Response.json({ error: err?.message || 'BadRequest' }, { status: 400 })
   }

@@ -19,4 +19,20 @@ const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
 )
 Input.displayName = "Input"
 
-export { Input }
+const Textarea = React.forwardRef<HTMLTextAreaElement, React.ComponentProps<"textarea">>(
+  ({ className, ...props }, ref) => {
+    return (
+      <textarea
+        className={cn(
+          "flex min-h-[60px] w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium shadow-sm transition-all duration-150 placeholder:text-gray-500 placeholder:opacity-70 hover:border-gray-400 hover:shadow-md focus-visible:outline-none focus-visible:border-blue-500 focus-visible:ring-1 focus-visible:ring-blue-500/20 focus-visible:shadow-md disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-gray-100 resize-none",
+          className
+        )}
+        ref={ref}
+        {...props}
+      />
+    )
+  }
+)
+Textarea.displayName = "Textarea"
+
+export { Input, Textarea }

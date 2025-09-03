@@ -35,11 +35,15 @@ export function RelcherPricing({
 }: RelcherPricingProps) {
   const [isMonthly, setIsMonthly] = useState(true);
   
-  // 로그인 상태 관리
+  // 로그인 및 구독 상태 관리
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [pendingPlan, setPendingPlan] = useState<'starter' | 'pro' | 'business' | null>(null);
+  const [confirmAction, setConfirmAction] = useState<'cancel' | 'upgrade' | 'downgrade' | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [currentPlan, setCurrentPlan] = useState<string>('free');
+  const [hasActiveSubscription, setHasActiveSubscription] = useState(false);
 
   // 로그인 및 Admin 상태 확인
   useEffect(() => {
@@ -48,52 +52,190 @@ export function RelcherPricing({
 
   const checkAuthStatus = async () => {
     try {
-      const supabase = supabaseBrowser();
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (user) {
-        setIsLoggedIn(true);
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('user_id', user.id)
-          .single();
+      const response = await fetch('/api/me/subscription-status');
+      if (response.ok) {
+        const data = await response.json();
+        setIsLoggedIn(data.isLoggedIn);
+        setCurrentPlan(data.currentPlan);
+        setHasActiveSubscription(data.hasActiveSubscription);
         
-        setIsAdmin(profile?.role === 'admin');
+        // Admin 체크는 별도로 수행
+        if (data.isLoggedIn) {
+          const supabase = supabaseBrowser();
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('user_id', (await supabase.auth.getUser()).data.user?.id)
+            .single();
+          setIsAdmin(profile?.role === 'admin');
+        }
       } else {
         setIsLoggedIn(false);
+        setCurrentPlan('free');
+        setHasActiveSubscription(false);
         setIsAdmin(false);
       }
     } catch (error) {
       console.error('Error checking auth status:', error);
       setIsLoggedIn(false);
+      setCurrentPlan('free');
+      setHasActiveSubscription(false);
       setIsAdmin(false);
     }
   };
 
-  // 로그인 확인 후 토스페이 호출 함수
-  const checkLoginAndOpenToss = (plan: 'starter' | 'pro' | 'business') => {
-    // 로그인되지 않은 경우 로그인 필요 안내 모달 표시
+  // 플랜 선택 핸들러
+  const handlePlanSelection = (selectedPlan: 'free' | 'starter' | 'pro' | 'business') => {
+    // 무료 플랜인 경우
+    if (selectedPlan === 'free') {
+      if (currentPlan === 'free') {
+        // 이미 무료 플랜인 경우 로그인/회원가입으로 이동
+        if (!isLoggedIn) {
+          window.location.href = '/sign-in';
+        } else {
+          window.location.href = '/search';
+        }
+        return;
+      } else {
+        // 유료 플랜에서 무료 플랜으로 변경 시 구독 취소 확인
+        setPendingPlan('free' as any);
+        setConfirmAction('cancel');
+        setShowConfirmModal(true);
+        return;
+      }
+    }
+
+    // 로그인되지 않은 경우
     if (!isLoggedIn) {
-      setPendingPlan(plan);
+      setPendingPlan(selectedPlan);
       setShowLoginModal(true);
       return;
     }
 
-    // 로그인된 경우 바로 결제창 호출
-    openToss(plan);
+    // 현재 플랜과 동일한 플랜 선택 시
+    if (currentPlan === selectedPlan) {
+      return; // 아무것도 하지 않음
+    }
+
+    // 무료 플랜에서 유료 플랜으로 전환 시 토스 카드 등록창 호출
+    if (currentPlan === 'free' && selectedPlan !== 'free') {
+      openToss(selectedPlan);
+      return;
+    }
+
+    // 플랜 비교를 위한 레벨 정의
+    const planLevels = { free: 0, starter: 1, pro: 2, business: 3 };
+    const currentLevel = planLevels[currentPlan as keyof typeof planLevels] || 0;
+    const selectedLevel = planLevels[selectedPlan as keyof typeof planLevels];
+
+    if (selectedLevel > currentLevel) {
+      // 업그레이드
+      setPendingPlan(selectedPlan);
+      setConfirmAction('upgrade');
+      setShowConfirmModal(true);
+    } else if (selectedLevel < currentLevel) {
+      // 다운그레이드
+      setPendingPlan(selectedPlan);
+      setConfirmAction('downgrade');
+      setShowConfirmModal(true);
+    }
   };
 
-  // 로그인 모달 닫기 함수
+  // 모달 닫기 함수들
   const handleLoginModalClose = () => {
     setShowLoginModal(false);
     setPendingPlan(null);
+  };
+
+  const handleConfirmModalClose = () => {
+    setShowConfirmModal(false);
+    setPendingPlan(null);
+    setConfirmAction(null);
   };
 
   // 로그인 페이지로 이동
   const handleLoginRedirect = () => {
     setShowLoginModal(false);
     window.location.href = '/sign-in';
+  };
+
+  // 확인 모달에서 확인 버튼 클릭 시
+  const handleConfirmAction = async () => {
+    if (confirmAction === 'cancel') {
+      // 구독 취소 - billing 페이지로 이동
+      setShowConfirmModal(false);
+      window.location.href = '/dashboard/billing';
+    } else if ((confirmAction === 'upgrade' || confirmAction === 'downgrade') && pendingPlan) {
+      // 업그레이드/다운그레이드 처리
+      setShowConfirmModal(false);
+
+      if (hasActiveSubscription) {
+        // 기존 구독이 있는 경우 - 빌링키 재사용하여 즉시 플랜 변경
+        try {
+          const response = await fetch('/api/subscriptions/upgrade', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              newPlan: pendingPlan,
+            }),
+          });
+
+          const result = await response.json();
+
+          if (response.ok) {
+            alert(`${pendingPlan.toUpperCase()} 플랜으로 성공적으로 변경되었습니다! ${result.newCredits} 크레딧이 지급되었어요.`);
+            window.location.reload();
+          } else {
+            throw new Error(result.error || '플랜 변경에 실패했습니다');
+          }
+        } catch (error) {
+          console.error('플랜 변경 오류:', error);
+          alert(error instanceof Error ? error.message : '플랜 변경 중 오류가 발생했습니다');
+        }
+      } else {
+        // 구독이 없는 경우 - 새로 빌링키 생성 후 결제
+        openToss(pendingPlan);
+      }
+    }
+  };
+
+  // 버튼 텍스트 결정 함수
+  const getButtonText = (planName: string) => {
+    if (!isLoggedIn) {
+      return planName === 'FREE' ? '무료로 시작하기' : `${planName} 시작하기`;
+    }
+
+    if (currentPlan === planName.toLowerCase()) {
+      return '현재 적용 중인 플랜';
+    }
+
+    const planLevels = { free: 0, starter: 1, pro: 2, business: 3 };
+    const currentLevel = planLevels[currentPlan as keyof typeof planLevels] || 0;
+    const targetLevel = planLevels[planName.toLowerCase() as keyof typeof planLevels];
+
+    // 무료 플랜 사용중인 경우
+    if (currentPlan === 'free') {
+      if (planName === 'FREE') {
+        return '무료로 시작하기';
+      } else {
+        return `${planName} 시작하기`;
+      }
+    }
+
+    // 유료 플랜 사용중인 경우
+    if (planName === 'FREE') {
+      return '구독 취소하기';
+    }
+
+    if (targetLevel > currentLevel) {
+      return `${planName} 업그레이드`;
+    } else if (targetLevel < currentLevel) {
+      return `${planName} 전환`;
+    }
+
+    return `${planName} 시작하기`;
   };
 
   // 토스페이 호출 함수 - 본인정보 입력을 포함한 빌링키 발급
@@ -350,33 +492,23 @@ export function RelcherPricing({
               </ul>
 
               <div className="mt-auto pt-4">
-                {plan.name === "FREE" ? (
-                  <Link
-                    href="/sign-in"
-                    className={cn(
-                      buttonVariants({ variant: "outline" }),
-                      "w-full group-hover:scale-105 transition-transform duration-200",
-                      "transform-gpu ring-offset-current transition-all duration-300 ease-out hover:ring-2 hover:ring-primary hover:ring-offset-1",
-                      "bg-background text-foreground hover:bg-primary hover:text-primary-foreground"
-                    )}
-                  >
-                    {plan.buttonText}
-                  </Link>
-                ) : (
-                  <button
-                    onClick={() => checkLoginAndOpenToss(plan.name.toLowerCase() as 'starter' | 'pro' | 'business')}
-                    className={cn(
-                      buttonVariants({ variant: "outline" }),
-                      "w-full group-hover:scale-105 transition-transform duration-200",
-                      "transform-gpu ring-offset-current transition-all duration-300 ease-out hover:ring-2 hover:ring-primary hover:ring-offset-1",
-                      plan.isPopular
+                <button
+                  onClick={() => handlePlanSelection(plan.name.toLowerCase() as 'free' | 'starter' | 'pro' | 'business')}
+                  disabled={isLoggedIn && currentPlan === plan.name.toLowerCase()}
+                  className={cn(
+                    buttonVariants({ variant: "outline" }),
+                    "w-full group-hover:scale-105 transition-transform duration-200",
+                    "transform-gpu ring-offset-current transition-all duration-300 ease-out hover:ring-2 hover:ring-primary hover:ring-offset-1",
+                    // 현재 플랜인 경우 스타일 변경
+                    isLoggedIn && currentPlan === plan.name.toLowerCase()
+                      ? "bg-gray-100 text-gray-600 border-gray-300 cursor-not-allowed hover:bg-gray-100 hover:text-gray-600"
+                      : plan.isPopular
                         ? "bg-primary text-primary-foreground border-primary hover:bg-primary/90"
                         : "bg-background text-foreground border-border hover:bg-primary hover:text-primary-foreground hover:border-primary"
-                    )}
-                  >
-                    {plan.buttonText}
-                  </button>
-                )}
+                  )}
+                >
+                  {getButtonText(plan.name)}
+                </button>
                 
                 <p className="mt-3 text-xs leading-5 text-muted-foreground">
                   {plan.description}
@@ -412,6 +544,103 @@ export function RelcherPricing({
                 로그인
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* 플랜 변경 확인 모달 */}
+      <Dialog open={showConfirmModal} onOpenChange={handleConfirmModalClose}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-center">
+              {confirmAction === 'cancel' && '구독 취소'}
+              {confirmAction === 'upgrade' && '플랜 업그레이드'}
+              {confirmAction === 'downgrade' && '플랜 전환'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {confirmAction === 'cancel' && (
+              <>
+                <p className="text-center text-gray-600">
+                  현재 <span className="font-medium">{currentPlan.toUpperCase()}</span> 플랜을 구독 중이에요. 구독을 취소하시겠어요?
+                </p>
+                <div className="flex gap-3">
+                  <Button 
+                    variant="outline" 
+                    onClick={handleConfirmModalClose}
+                    className="flex-1"
+                  >
+                    취소
+                  </Button>
+                  <Button 
+                    onClick={handleConfirmAction}
+                    className="flex-1"
+                  >
+                    구독 취소하기
+                  </Button>
+                </div>
+              </>
+            )}
+            
+            {confirmAction === 'upgrade' && pendingPlan && (
+              <>
+                <p className="text-center text-gray-600">
+                  현재 <span className="font-medium">{currentPlan.toUpperCase()}</span> 플랜을 구독 중이에요. <span className="font-medium">{pendingPlan.toUpperCase()}</span> 플랜으로 업그레이드하시겠어요?
+                </p>
+                <p className="text-center text-sm text-gray-500">
+                  총 {
+                    pendingPlan === 'starter' ? '2,000' :
+                    pendingPlan === 'pro' ? '7,000' :
+                    pendingPlan === 'business' ? '20,000' : ''
+                  } 크레딧이 즉시 새로 지급돼요.
+                </p>
+                <div className="flex gap-3">
+                  <Button 
+                    variant="outline" 
+                    onClick={handleConfirmModalClose}
+                    className="flex-1"
+                  >
+                    취소
+                  </Button>
+                  <Button 
+                    onClick={handleConfirmAction}
+                    className="flex-1"
+                  >
+                    업그레이드
+                  </Button>
+                </div>
+              </>
+            )}
+
+            {confirmAction === 'downgrade' && pendingPlan && (
+              <>
+                <p className="text-center text-gray-600">
+                  현재 <span className="font-medium">{currentPlan.toUpperCase()}</span> 플랜을 구독 중이에요. <span className="font-medium">{pendingPlan.toUpperCase()}</span> 플랜으로 전환하시겠어요?
+                </p>
+                <p className="text-center text-sm text-gray-500">
+                  총 {
+                    pendingPlan === 'starter' ? '2,000' :
+                    pendingPlan === 'pro' ? '7,000' :
+                    pendingPlan === 'business' ? '20,000' : ''
+                  } 크레딧이 즉시 새로 지급돼요.
+                </p>
+                <div className="flex gap-3">
+                  <Button 
+                    variant="outline" 
+                    onClick={handleConfirmModalClose}
+                    className="flex-1"
+                  >
+                    취소
+                  </Button>
+                  <Button 
+                    onClick={handleConfirmAction}
+                    className="flex-1"
+                  >
+                    확인
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         </DialogContent>
       </Dialog>

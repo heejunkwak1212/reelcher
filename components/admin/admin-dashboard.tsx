@@ -16,7 +16,16 @@ export default function AdminDashboard() {
     }
   })
 
-  if (isLoading) {
+  const { data: revenueData, isLoading: revenueLoading } = useQuery({
+    queryKey: ['admin-revenue'],
+    queryFn: async () => {
+      const res = await fetch('/api/admin/revenue-stats', { cache: 'no-store' })
+      if (!res.ok) throw new Error('수익 데이터 로드 실패')
+      return res.json()
+    }
+  })
+
+  if (isLoading || revenueLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-gray-500">로딩 중...</div>
@@ -26,11 +35,63 @@ export default function AdminDashboard() {
 
   const stats = dashboardData?.stats || {}
   const mrrData = dashboardData?.mrrData || []
+  const revenue = revenueData || {}
 
   return (
     <div className="max-w-7xl mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-gray-900">관리자 대시보드</h1>
+      </div>
+
+      {/* 수익 통계 */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-gray-600">월간 반복 수익 (MRR)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-semibold text-gray-900">₩{revenue.mrr?.toLocaleString() || 0}</div>
+            <div className="text-xs text-gray-500 mt-1">
+              활성 구독: {revenue.activeSubscriptions || 0}개
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-gray-600">총 수익</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-semibold text-gray-900">₩{revenue.totalRevenue?.toLocaleString() || 0}</div>
+            <div className="text-xs text-gray-500 mt-1">
+              누적 결제 금액
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-gray-600">이번 달 수익</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-semibold text-gray-900">₩{revenue.thisMonthRevenue?.toLocaleString() || 0}</div>
+            <div className="text-xs text-gray-500 mt-1">
+              {revenue.monthOverMonthGrowth > 0 ? '+' : ''}{revenue.monthOverMonthGrowth?.toFixed(1) || 0}% 전월 대비
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-gray-600">사용자당 평균 수익</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-semibold text-gray-900">₩{revenue.averageRevenuePerUser?.toLocaleString() || 0}</div>
+            <div className="text-xs text-gray-500 mt-1">
+              ARPU (월간)
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* 시스템 통계 */}
@@ -91,27 +152,27 @@ export default function AdminDashboard() {
         </CardContent>
       </Card>
 
-      {/* MRR 차트 */}
+      {/* 수익 트렌드 차트 */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold text-gray-900">월간 반복 수익 (MRR)</CardTitle>
+          <CardTitle className="text-lg font-semibold text-gray-900">월별 수익 트렌드</CardTitle>
         </CardHeader>
         <CardContent>
-          {mrrData.length > 0 ? (
+          {revenue.monthlyTrends && revenue.monthlyTrends.length > 0 ? (
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={mrrData}>
+                <LineChart data={revenue.monthlyTrends}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis dataKey="month" stroke="#6b7280" />
                   <YAxis stroke="#6b7280" />
                   <Tooltip 
-                    formatter={(value) => [`${Number(value).toLocaleString()}원`, 'MRR']}
+                    formatter={(value) => [`₩${Number(value).toLocaleString()}`, '수익']}
                     labelStyle={{ color: '#374151' }}
                     contentStyle={{ backgroundColor: '#f9fafb', border: '1px solid #e5e7eb' }}
                   />
                   <Line 
                     type="monotone" 
-                    dataKey="mrr" 
+                    dataKey="revenue" 
                     stroke="#6366f1" 
                     strokeWidth={2}
                     dot={{ fill: '#6366f1', strokeWidth: 2, r: 4 }}
@@ -120,13 +181,86 @@ export default function AdminDashboard() {
               </ResponsiveContainer>
             </div>
           ) : (
-            <div className="text-center py-8 text-gray-500">MRR 데이터가 없습니다.</div>
+            <div className="text-center py-8 text-gray-500">수익 데이터가 없습니다.</div>
           )}
         </CardContent>
       </Card>
 
+      {/* 플랜별 구독 현황 */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold text-gray-900">활성 구독 플랜 분포</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {Object.entries(revenue.planDistribution || {}).map(([plan, count]) => (
+                <div key={plan} className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-gray-700">
+                      {plan.toUpperCase()}
+                    </Badge>
+                    <span className="text-sm text-gray-600">{count}개 구독</span>
+                  </div>
+                  <span className="text-sm font-medium text-gray-900">
+                    ₩{((count * ({ starter: 9900, pro: 29900, business: 99900 }[plan] || 0)) || 0).toLocaleString()}
+                  </span>
+                </div>
+              ))}
+            </div>
+            {(!revenue.planDistribution || Object.keys(revenue.planDistribution).length === 0) && (
+              <div className="text-center py-4 text-gray-500">활성 구독이 없습니다.</div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg font-semibold text-gray-900">수익 세부 정보</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <div className="flex justify-between">
+                <span className="text-sm text-gray-600">지난 달 수익</span>
+                <span className="text-sm font-medium">₩{revenue.lastMonthRevenue?.toLocaleString() || 0}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-gray-600">이번 달 수익</span>
+                <span className="text-sm font-medium">₩{revenue.thisMonthRevenue?.toLocaleString() || 0}</span>
+              </div>
+              <div className="flex justify-between border-t pt-2">
+                <span className="text-sm text-gray-600">월간 성장률</span>
+                <span className={`text-sm font-medium ${
+                  revenue.monthOverMonthGrowth > 0 ? 'text-green-600' : 
+                  revenue.monthOverMonthGrowth < 0 ? 'text-red-600' : 'text-gray-600'
+                }`}>
+                  {revenue.monthOverMonthGrowth > 0 ? '+' : ''}{revenue.monthOverMonthGrowth?.toFixed(1) || 0}%
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-gray-600">평균 구독료</span>
+                <span className="text-sm font-medium">
+                  ₩{revenue.activeSubscriptions > 0 ? Math.round(revenue.mrr / revenue.activeSubscriptions).toLocaleString() : 0}
+                </span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* 빠른 링크 */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Link href="/admin/cancellations">
+          <Card className="hover:shadow-md transition-shadow cursor-pointer">
+            <CardHeader>
+              <CardTitle className="text-lg font-semibold text-gray-900">취소/탈퇴 관리</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-gray-600">구독 취소 및 회원탈퇴 현황 분석</p>
+            </CardContent>
+          </Card>
+        </Link>
+
         <Link href="/admin/searches">
           <Card className="hover:shadow-md transition-shadow cursor-pointer">
             <CardHeader>
@@ -148,18 +282,6 @@ export default function AdminDashboard() {
             </CardContent>
           </Card>
         </Link>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold text-gray-900">시스템 상태</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-              <span className="text-sm text-gray-600">정상 운영 중</span>
-            </div>
-          </CardContent>
-        </Card>
       </div>
     </div>
   )
