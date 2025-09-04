@@ -1,12 +1,6 @@
 import { IYouTubeVideo, IYouTubeSearchRequest, IYouTubeSearchResponse, IYouTubeContributionData } from '@/types'
 
-interface YouTubeAPIResponse {
-  items: any[]
-  nextPageToken?: string
-  pageInfo?: {
-    totalResults: number
-  }
-}
+// YouTubeAPIResponse 인터페이스 제거 (사용되지 않음)
 
 interface YouTubeVideoSnippet {
   videoId: string
@@ -40,9 +34,7 @@ interface YouTubeVideoStatus {
   license: 'youtube' | 'creativeCommon'
 }
 
-interface YouTubeChannelStatistics {
-  subscriberCount: string
-}
+// YouTubeChannelStatistics 인터페이스는 더 이상 사용하지 않음 (인라인 타입으로 대체)
 
 class YouTubeAPIError extends Error {
   constructor(
@@ -169,13 +161,29 @@ export class YouTubeClient {
   /**
    * HTTP 요청 헬퍼
    */
-  private async makeRequest(endpoint: string, params: Record<string, any>): Promise<any> {
+  private async makeRequest(endpoint: string, params: Record<string, string | number | boolean | undefined>): Promise<{
+    items?: Array<{
+      id?: string
+      snippet?: YouTubeVideoSnippet
+      statistics?: YouTubeVideoStatistics
+      contentDetails?: YouTubeVideoContentDetails
+      status?: YouTubeVideoStatus
+      topicDetails?: { relevantTopicIds?: string[] }
+    }>
+    nextPageToken?: string
+    pageInfo?: { totalResults: number }
+    id?: string
+    snippet?: YouTubeVideoSnippet
+    statistics?: YouTubeVideoStatistics
+    contentDetails?: YouTubeVideoContentDetails
+    topicDetails?: { relevantTopicIds?: string[] }
+  }> {
     const url = new URL(`${this.baseURL}/${endpoint}`)
     url.searchParams.set('key', this.apiKey)
 
     // null/undefined 값 제거
     Object.entries(params).forEach(([key, value]) => {
-      if (value !== null && value !== undefined) {
+      if (value !== null && value !== undefined && value !== '') {
         url.searchParams.set(key, value.toString())
       }
     })
@@ -260,7 +268,7 @@ export class YouTubeClient {
         const commentCount = parseInt(statistics.commentCount || '0')
 
         allVideos.push({
-          videoId: item.id,
+          videoId: item.id || '',
           title: snippet.title,
           description: snippet.description,
           channelId: snippet.channelId,
@@ -291,7 +299,7 @@ export class YouTubeClient {
   private async getChannelSubscribers(channelIds: string[]): Promise<Record<string, number>> {
     if (channelIds.length === 0) return {}
 
-    const uniqueChannelIds = [...new Set(channelIds)]
+    const uniqueChannelIds = Array.from(new Set(channelIds))
     const batchSize = 50
     const batches = []
     
@@ -308,8 +316,10 @@ export class YouTubeClient {
       })
 
       for (const item of response.items || []) {
-        const statistics = item.statistics as YouTubeChannelStatistics
-        subscriberCounts[item.id] = parseInt(statistics.subscriberCount || '0')
+        const statistics = item.statistics as unknown as { subscriberCount: string }
+        if (item.id) {
+          subscriberCounts[item.id] = parseInt(statistics.subscriberCount || '0')
+        }
       }
     }
 
@@ -331,7 +341,7 @@ export class YouTubeClient {
     let nextPageToken: string | undefined
 
     // 검색 파라미터 구성
-    const searchParams: Record<string, any> = {
+    const searchParams: Record<string, string | number> = {
       part: 'snippet',
       type: 'video',
       q: query,
@@ -360,9 +370,11 @@ export class YouTubeClient {
 
       const response = await this.makeRequest('search', searchParams)
       
-      const videoIds = response.items
-        ?.filter((item: any) => item.id?.videoId)
-        ?.map((item: any) => item.id.videoId) || []
+      const videoIds = (response.items as Array<{
+        id?: { videoId?: string }
+      }>)
+        ?.filter((item) => item.id?.videoId)
+        ?.map((item) => item.id!.videoId!) || []
 
       allVideoIds.push(...videoIds)
       nextPageToken = response.nextPageToken
@@ -371,7 +383,7 @@ export class YouTubeClient {
     }
 
     // 중복 제거 및 제한
-    allVideoIds = [...new Set(allVideoIds)].slice(0, fetchLimit)
+    allVideoIds = Array.from(new Set(allVideoIds)).slice(0, fetchLimit)
 
     // 비디오 상세 정보 가져오기
     let videos = await this.getVideoDetails(allVideoIds)
@@ -451,12 +463,14 @@ export class YouTubeClient {
       throw new Error('Original video not found')
     }
 
-    const originalVideo = originalVideoResponse.items[0]
+    const originalVideo = originalVideoResponse.items?.[0]
+    if (!originalVideo) {
+      throw new Error('Original video data not found')
+    }
     const snippet = originalVideo.snippet as YouTubeVideoSnippet
     const topicDetails = originalVideo.topicDetails || {}
 
-    // 검색 시점 고정
-    const searchTime = new Date()
+    // 검색 시점 고정 (사용하지 않는 변수 제거)
     const publishedAfter = filters.period ? this.getPublishedAfterDate(filters.period) : null
 
     // 언어 감지 및 지역 설정
@@ -495,7 +509,7 @@ export class YouTubeClient {
       ...(originalTitle.match(/#(\w+)/g) || []),
       ...(originalDescription.match(/#(\w+)/g) || [])
     ]
-    const originalHashtags = [...new Set(hashtagMatches.map(tag => tag.substring(1)))]
+    const originalHashtags = Array.from(new Set(hashtagMatches.map(tag => tag.substring(1))))
     
     const searchStrategies = [
       // 1차: 채널 우선 검색 (40개) - main.py와 동일하게 채널을 우선으로
@@ -519,7 +533,7 @@ export class YouTubeClient {
         maxResults: 15
       }] : []),
       // 5차: 주제/카테고리 검색 (15개)
-      ...(topicDetails.relevantTopicIds?.length > 0 ? [{
+      ...(topicDetails && topicDetails.relevantTopicIds && topicDetails.relevantTopicIds.length > 0 ? [{
         topicId: topicDetails.relevantTopicIds[0],
         maxResults: 15
       }] : snippet.categoryId ? [{
@@ -528,10 +542,10 @@ export class YouTubeClient {
       }] : [])
     ]
 
-    let candidateVideoIds = new Set<string>()
+    const candidateVideoIds = new Set<string>()
 
     // 공통 파라미터
-    const commonParams: Record<string, any> = {
+    const commonParams: Record<string, string | number | boolean> = {
       part: 'snippet',
       type: 'video',
       order: 'relevance',
@@ -554,29 +568,33 @@ export class YouTubeClient {
       if (candidateVideoIds.size >= targetCandidates) break
 
       try {
-        const params = { ...commonParams, ...strategy }
-        // null 값 제거
+        const params: Record<string, string | number | boolean | undefined> = { ...commonParams, ...strategy }
+        // null/undefined 값 제거
         Object.keys(params).forEach(key => {
-          if ((params as any)[key] === null || (params as any)[key] === undefined) {
-            delete (params as any)[key]
+          if (params[key] === null || params[key] === undefined || params[key] === '') {
+            delete params[key]
           }
         })
 
         const response = await this.makeRequest('search', params)
         
-        for (const item of response.items || []) {
+        for (const item of (response.items as Array<{
+          id?: { videoId?: string }
+        }> || [])) {
           if (item.id?.videoId && item.id.videoId !== videoId) { // 원본 영상 제외
             candidateVideoIds.add(item.id.videoId)
           }
         }
-        
+
         // 각 전략에서 더 많은 결과 수집을 위해 페이지네이션 고려
         if (response.nextPageToken && candidateVideoIds.size < targetCandidates) {
           try {
             const nextPageParams = { ...params, pageToken: response.nextPageToken }
             const nextResponse = await this.makeRequest('search', nextPageParams)
-            
-            for (const item of nextResponse.items || []) {
+
+            for (const item of (nextResponse.items as Array<{
+              id?: { videoId?: string }
+            }> || [])) {
               if (item.id?.videoId && item.id.videoId !== videoId) {
                 candidateVideoIds.add(item.id.videoId)
               }
@@ -623,6 +641,9 @@ export class YouTubeClient {
       originalTitle.split(' ').filter(word => word.length > 2)
     )
 
+    // 유사도 점수가 포함된 비디오 타입 정의
+    type VideoWithSimilarity = IYouTubeVideo & { similarityScore: number }
+
     videos = videos.map(video => {
       let score = 0
 
@@ -644,14 +665,14 @@ export class YouTubeClient {
           ...(video.title.match(/#(\w+)/g) || []),
           ...(videoDescription.match(/#(\w+)/g) || [])
         ].map(tag => tag.substring(1))
-        
+
         const commonHashtags = originalHashtags.filter(tag => videoHashtags.includes(tag))
         score += commonHashtags.length * 8
       }
 
       // 4. 제목 키워드 일치 보너스 (main.py와 동일)
       const videoTitle = video.title.toLowerCase()
-      for (const keyword of titleKeywords) {
+      for (const keyword of Array.from(titleKeywords)) {
         if (videoTitle.includes(keyword.toLowerCase())) {
           score += 5
         }
@@ -662,18 +683,22 @@ export class YouTubeClient {
         score += 2 // 다른 채널에게 약간의 가점
       }
 
-      return { ...video, similarityScore: score }
+      return { ...video, similarityScore: score } as VideoWithSimilarity
     })
 
     // main.py 스타일 채널 다양성 확보를 위한 정렬 - 결과 개수 최적화
     // 1차: 유사도 점수로 정렬
-    videos.sort((a: any, b: any) => b.similarityScore - a.similarityScore)
+    videos.sort((a, b) => {
+      const aScore = (a as VideoWithSimilarity).similarityScore
+      const bScore = (b as VideoWithSimilarity).similarityScore
+      return bScore - aScore
+    })
 
     // 2차: 적응형 채널 다양성 확보 (결과 개수에 맞춰 유연하게 조정)
     const targetResults = Math.min(resultsLimit, videos.length)
     const channelCounts = new Map<string, number>()
-    const diversifiedVideos: any[] = []
-    const reservedVideos: any[] = [] // 다양성 제한에 걸린 영상들
+    const diversifiedVideos: VideoWithSimilarity[] = []
+    const reservedVideos: VideoWithSimilarity[] = [] // 다양성 제한에 걸린 영상들
 
     // 첫 번째 패스: 엄격한 다양성 적용
     for (const video of videos) {
@@ -683,10 +708,10 @@ export class YouTubeClient {
       const maxForChannel = video.channelId === snippet.channelId ? 5 : 3
 
       if (channelCount < maxForChannel) {
-        diversifiedVideos.push(video)
+        diversifiedVideos.push(video as VideoWithSimilarity)
         channelCounts.set(video.channelId, channelCount + 1)
       } else {
-        reservedVideos.push(video)
+        reservedVideos.push(video as VideoWithSimilarity)
       }
 
       // 목표 개수의 80%에 도달하면 첫 번째 패스 종료
@@ -697,8 +722,6 @@ export class YouTubeClient {
 
     // 두 번째 패스: 목표 개수에 못 미치면 제한 완화
     if (diversifiedVideos.length < targetResults) {
-      const needed = targetResults - diversifiedVideos.length
-
       // 채널당 제한을 2개씩 더 늘려서 추가
       for (const video of reservedVideos) {
         if (diversifiedVideos.length >= targetResults) break
@@ -716,8 +739,8 @@ export class YouTubeClient {
     // 세 번째 패스: 여전히 부족하면 제한 없이 추가
     if (diversifiedVideos.length < targetResults) {
       const stillNeeded = targetResults - diversifiedVideos.length
-      const remainingVideos = videos.filter(v => !diversifiedVideos.includes(v))
-      diversifiedVideos.push(...remainingVideos.slice(0, stillNeeded))
+      const remainingVideos = videos.filter(v => !diversifiedVideos.includes(v as VideoWithSimilarity))
+      diversifiedVideos.push(...remainingVideos.slice(0, stillNeeded).map(v => v as VideoWithSimilarity))
     }
 
     videos = diversifiedVideos
@@ -752,8 +775,15 @@ export class YouTubeClient {
       }
     }
 
+    // similarityScore 제거하고 IYouTubeVideo 타입으로 변환
+    const finalResults: IYouTubeVideo[] = videos.slice(0, resultsLimit).map(video => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { similarityScore, ...result } = video as VideoWithSimilarity
+      return result
+    })
+
     return {
-      results: videos.slice(0, resultsLimit),
+      results: finalResults,
       totalCount: videos.length,
       searchType: 'url',
       metadata: {
@@ -783,8 +813,10 @@ export class YouTubeClient {
         maxResults: 50
       })
 
-      const recentVideoIds = searchResponse.items
-        ?.map((item: any) => item.id?.videoId)
+      const recentVideoIds = (searchResponse.items as Array<{
+        id?: { videoId?: string }
+      }>)
+        ?.map((item) => item.id?.videoId)
         ?.filter(Boolean) || []
 
       if (recentVideoIds.length === 0) {
@@ -804,7 +836,7 @@ export class YouTubeClient {
 
       const viewCounts: number[] = []
       for (const item of videosResponse.items || []) {
-        const statistics = item.statistics as YouTubeVideoStatistics
+        const statistics = item.statistics as { viewCount: string }
         const views = parseInt(statistics.viewCount || '0')
         viewCounts.push(views)
       }

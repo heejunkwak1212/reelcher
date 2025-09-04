@@ -1,7 +1,7 @@
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-  experimental: { 
+  experimental: {
     serverActions: { allowedOrigins: ['localhost:3000', 'localhost:3001'] },
     // Optimize Supabase imports to reduce bundle size
     optimizePackageImports: ['@supabase/supabase-js'],
@@ -10,6 +10,7 @@ const nextConfig: NextConfig = {
     // Enable parallel route prefetching
     parallelServerBuildTraces: true,
   },
+  // webpack 설정 제거 (Transformers.js 관련 설정 삭제)
   // Enable compression for faster loading
   compress: true,
   // Optimize images for better performance

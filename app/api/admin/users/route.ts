@@ -170,7 +170,7 @@ export async function PUT(request: NextRequest) {
     // 요청 본문 파싱
     const { email, creditDelta } = await request.json()
 
-    if (!email || !creditDelta) {
+    if (!email || creditDelta === undefined || creditDelta === null) {
       return NextResponse.json(
         { error: '이메일과 크레딧 금액이 필요합니다.' },
         { status: 400 }

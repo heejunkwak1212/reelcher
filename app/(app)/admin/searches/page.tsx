@@ -27,6 +27,7 @@ interface SearchRecord {
 }
 
 interface UserDetailData {
+  userId: string
   email: string
   plan: string
   totalSearches: number
@@ -138,6 +139,8 @@ export default function AdminSearches() {
   }
 
   // 실제 결제 기반 수익 계산 (유료 플랜 + 실제 결제 완료된 경우만)
+  // 주의: 이 함수는 개별 결제 기록에 접근할 수 없으므로 현재 플랜 기준으로 계산
+  // 정확한 수익 계산은 사용자 상세 모달에서 billing_webhook_logs를 참조
   const calculateRevenue = (record: SearchRecord): number => {
     const plan = record.user_plan
     const hasValidPayment = record.last_payment_date && new Date(record.last_payment_date) > new Date('2024-01-01')
@@ -147,14 +150,16 @@ export default function AdminSearches() {
       return 0
     }
     
-    // 플랜별 월 구독료 (실제 결제된 금액)
+    // 플랜별 월 구독료 (현재 플랜 기준 - 플랜 변경 시 부정확할 수 있음)
+    // 정확한 계산을 위해서는 billing_webhook_logs의 실제 결제 금액 참조 필요
     const planRevenue = {
-      starter: 19000,  // STARTER 플랜 월 구독료
+      starter: 29000,  // 수정된 STARTER 플랜 월 구독료
       pro: 49000,      // PRO 플랜 월 구독료  
       business: 99000, // BUSINESS 플랜 월 구독료
     }
 
     // 결제한 구독료 전액이 기본 수익 (사용량과 무관)
+    // TODO: 플랜 변경 시 정확한 수익 계산을 위해 실제 결제 기록 참조 필요
     return planRevenue[plan as keyof typeof planRevenue] || 0
   }
 
@@ -233,6 +238,7 @@ export default function AdminSearches() {
   // 사용자별 통계 계산
   const userStats = useMemo(() => {
     const stats = new Map<string, {
+      userId: string
       email: string
       plan: string
       searchCount: number
@@ -251,6 +257,7 @@ export default function AdminSearches() {
       const userId = record.user_id
       if (!stats.has(userId)) {
         stats.set(userId, {
+          userId: userId,
           email: record.user_email,
           plan: record.user_plan,
           searchCount: 0,
@@ -338,7 +345,7 @@ export default function AdminSearches() {
     queryFn: async () => {
       if (!selectedUser) return null
       console.log('사용자 상세 정보 요청:', selectedUser)
-      const res = await fetch(`/api/admin/users/${encodeURIComponent(selectedUser)}`, { 
+      const res = await fetch(`/api/admin/users/${selectedUser}`, { 
         cache: 'no-store'
       })
       if (!res.ok) {
@@ -471,7 +478,7 @@ export default function AdminSearches() {
                   <TableCell 
                     className="font-medium cursor-pointer hover:text-blue-600 hover:underline"
                     onClick={() => {
-                      setSelectedUser(user.email)
+                      setSelectedUser(user.userId)
                       setUserModalOpen(true)
                     }}
                   >
