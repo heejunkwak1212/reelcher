@@ -17,7 +17,9 @@ export default function AdminDashboard() {
       const res = await fetch('/api/admin/dashboard', { cache: 'no-store' })
       if (!res.ok) throw new Error('대시보드 데이터 로드 실패')
       return res.json()
-    }
+    },
+    staleTime: 5 * 60 * 1000, // 5분간 fresh
+    refetchOnWindowFocus: false
   })
 
   if (isLoading) {
@@ -28,7 +30,18 @@ export default function AdminDashboard() {
     )
   }
 
-  const stats = dashboardData?.stats || {}
+  const stats = dashboardData?.stats || {
+    totalUserCount: 0,
+    weeklySearches: 0,
+    monthlySearches: 0,
+    planCounts: {},
+    totalRevenue: 0,
+    currentMonthRevenue: 0,
+    currentMonthApifyCost: 0,
+    currentMonthNetProfit: 0,
+    totalApifyCost: 0,
+    averageRevenuePerUser: 0
+  }
   const mrrData = dashboardData?.mrrData || []
   const weeklyMrrData = dashboardData?.weeklyMrrData || []
 
@@ -41,6 +54,15 @@ export default function AdminDashboard() {
   // 현재 차트 데이터 선택
   const currentChartData = chartPeriod === 'monthly' ? (mrrData || []) : (weeklyMrrData || [])
   const currentDataKey = chartPeriod === 'monthly' ? 'month' : 'week'
+  
+  // 디버깅용 로그
+  console.log('차트 데이터 디버깅:', {
+    chartPeriod,
+    mrrData,
+    weeklyMrrData,
+    currentChartData,
+    currentDataLength: currentChartData.length
+  })
 
   return (
     <div className="max-w-7xl mx-auto p-6 space-y-6">
@@ -67,7 +89,7 @@ export default function AdminDashboard() {
             <CardTitle className="text-sm font-medium text-gray-600">총 수익</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-semibold text-gray-900">{stats.totalRevenue?.toLocaleString() || 0}원</div>
+            <div className="text-2xl font-semibold text-gray-900">{Math.round(stats.totalRevenue || 0).toLocaleString()}원</div>
             <div className="text-xs text-gray-500 mt-1">
               누적 결제 금액
             </div>
@@ -79,9 +101,9 @@ export default function AdminDashboard() {
             <CardTitle className="text-sm font-medium text-gray-600">이번 달 순수익</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-semibold text-gray-900">{stats.currentMonthNetProfit?.toLocaleString() || 0}원</div>
+            <div className="text-2xl font-semibold text-gray-900">{Math.round(stats.currentMonthNetProfit || 0).toLocaleString()}원</div>
             <div className="text-xs text-gray-500 mt-1">
-              수익 {stats.currentMonthRevenue?.toLocaleString() || 0}원 - 원가 {stats.currentMonthApifyCost?.toLocaleString() || 0}원
+              수익 {Math.round(stats.currentMonthRevenue || 0).toLocaleString()}원 - 원가 {Math.round(stats.currentMonthApifyCost || 0).toLocaleString()}원
             </div>
           </CardContent>
         </Card>
@@ -91,7 +113,7 @@ export default function AdminDashboard() {
             <CardTitle className="text-sm font-medium text-gray-600">사용자당 평균 수익</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-semibold text-gray-900">{stats.averageRevenuePerUser?.toLocaleString() || 0}원</div>
+            <div className="text-2xl font-semibold text-gray-900">{Math.round(stats.averageRevenuePerUser || 0).toLocaleString()}원</div>
             <div className="text-xs text-gray-500 mt-1">
               ARPU (원가 차감 후)
             </div>
@@ -165,12 +187,17 @@ export default function AdminDashboard() {
       </div>
 
       {/* 수익 트렌드 차트 */}
-      <Card>
+      <Card className="shadow-lg">
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle className="text-lg font-semibold text-gray-900">
-              {chartPeriod === 'monthly' ? '월별' : '주간'} 수익 트렌드
-            </CardTitle>
+            <div>
+              <CardTitle className="text-xl font-semibold text-gray-900">
+                {chartPeriod === 'monthly' ? '월간' : '주간'} 수익 트렌드
+              </CardTitle>
+              <p className="text-sm text-gray-600 mt-1">
+                2025년 9월부터 {chartPeriod === 'monthly' ? '12개월간' : '12주간'} 수익 추이 (환불 반영)
+              </p>
+            </div>
             <div className="flex gap-2">
               <Button
                 variant={chartPeriod === 'monthly' ? 'default' : 'outline'}
@@ -190,47 +217,90 @@ export default function AdminDashboard() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="h-64 relative">
-            {currentChartData.length === 0 ? (
+          <div className="h-80 relative">
+            {!currentChartData || currentChartData.length === 0 ? (
               <div className="flex items-center justify-center h-full">
-                <div className="text-gray-500 text-sm">
-                  {chartPeriod === 'monthly' ? '월별' : '주간'} 수익 데이터가 없습니다.
+                <div className="text-center">
+                  <div className="text-gray-500 text-lg font-medium mb-2">
+                    {chartPeriod === 'monthly' ? '월간' : '주간'} 수익 데이터가 없습니다
+                  </div>
+                  <div className="text-gray-400 text-sm">
+                    결제가 발생하면 차트에 표시됩니다
+                  </div>
                 </div>
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={currentChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey={currentDataKey} stroke="#6b7280" />
-                  <YAxis
-                    stroke="#6b7280"
-                    domain={['dataMin - 1000', 'dataMax + 1000']}
-                    tickFormatter={(value) => `${value.toLocaleString()}원`}
-                  />
-                  <Tooltip
-                    formatter={(value, name, props: any) => {
-                      const current = Number(value)
-                      const currentIndex = currentChartData.findIndex((item: any) => item[currentDataKey] === props.label)
-                      const previous = currentIndex > 0 ? Number(currentChartData[currentIndex - 1].mrr) : 0
-                      const growthRate = calculateGrowthRate(current, previous)
+              <div>
+                {/* 요약 통계 */}
+                <div className="grid grid-cols-3 gap-4 mb-6 p-4 bg-gray-50 rounded-lg">
+                  <div className="text-center">
+                    <div className="text-xs text-gray-500">평균 수익</div>
+                    <div className="text-lg font-semibold text-blue-600">
+                      {Math.round(currentChartData.reduce((sum: number, item: any) => sum + item.mrr, 0) / currentChartData.length).toLocaleString()}원
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-xs text-gray-500">최고 수익</div>
+                    <div className="text-lg font-semibold text-green-600">
+                      {Math.max(...currentChartData.map((item: any) => item.mrr)).toLocaleString()}원
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-xs text-gray-500">총 수익</div>
+                    <div className="text-lg font-semibold text-gray-900">
+                      {currentChartData.reduce((sum: number, item: any) => sum + item.mrr, 0).toLocaleString()}원
+                    </div>
+                  </div>
+                </div>
 
-                      return [
-                        `${current.toLocaleString()}원`,
-                        `수익 (${growthRate > 0 ? '+' : ''}${growthRate}% ${chartPeriod === 'monthly' ? '전월 대비' : '전주 대비'})`
-                      ]
-                    }}
-                    labelStyle={{ color: '#374151' }}
-                    contentStyle={{ backgroundColor: '#f9fafb', border: '1px solid #e5e7eb' }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="mrr"
-                    stroke="#6366f1"
-                    strokeWidth={2}
-                    dot={{ fill: '#6366f1', strokeWidth: 2, r: 4 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart data={currentChartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis 
+                      dataKey={currentDataKey} 
+                      stroke="#6b7280" 
+                      fontSize={12}
+                      angle={chartPeriod === 'monthly' ? 0 : -45}
+                      textAnchor={chartPeriod === 'monthly' ? 'middle' : 'end'}
+                      height={chartPeriod === 'monthly' ? 30 : 60}
+                    />
+                    <YAxis
+                      stroke="#6b7280"
+                      domain={['dataMin - 5000', 'dataMax + 5000']}
+                      tickFormatter={(value) => `${(value / 1000).toFixed(0)}K원`}
+                      fontSize={12}
+                    />
+                    <Tooltip
+                      formatter={(value: number, name: string, props: any) => {
+                        const current = Number(value)
+                        const currentIndex = currentChartData.findIndex((item: any) => item[currentDataKey] === props.label)
+                        const previous = currentIndex > 0 ? Number(currentChartData[currentIndex - 1].mrr) : 0
+                        const growthRate = calculateGrowthRate(current, previous)
+
+                        return [
+                          `${current.toLocaleString()}원`,
+                          `순수익 (${growthRate > 0 ? '+' : ''}${growthRate}% ${chartPeriod === 'monthly' ? '전월 대비' : '전주 대비'})`
+                        ]
+                      }}
+                      labelStyle={{ color: '#374151', fontWeight: 'bold' }}
+                      contentStyle={{ 
+                        backgroundColor: '#ffffff', 
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '8px',
+                        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                      }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="mrr"
+                      stroke="#6366f1"
+                      strokeWidth={3}
+                      dot={{ fill: '#6366f1', strokeWidth: 2, r: 5 }}
+                      activeDot={{ r: 7, stroke: '#6366f1', strokeWidth: 2, fill: '#ffffff' }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
             )}
           </div>
         </CardContent>

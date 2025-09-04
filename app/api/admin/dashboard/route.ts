@@ -1,5 +1,6 @@
 import { supabaseServer } from '@/lib/supabase/server'
-import { format, startOfMonth, endOfMonth, subMonths, startOfWeek } from 'date-fns'
+import { supabaseService } from '@/lib/supabase/service'
+import { format, startOfMonth, endOfMonth, subMonths, addMonths, startOfWeek, endOfWeek, subWeeks } from 'date-fns'
 
 // 실제 Apify 액터별 비용 (2024년 기준, 환율: 1,350원/$)
 const APIFY_COSTS = {
@@ -35,7 +36,26 @@ function calculateApifyCost(platform: string, searchType: string, resultsCount: 
 
 export async function GET() {
   try {
-    const supabase = await supabaseServer()
+    const ssr = await supabaseServer()
+    
+    // 관리자 권한 확인
+    const { data: { user }, error: authError } = await ssr.auth.getUser()
+    if (authError || !user) {
+      return Response.json({ error: '인증 실패' }, { status: 401 })
+    }
+
+    const { data: profile } = await ssr
+      .from('profiles')
+      .select('role')
+      .eq('user_id', user.id)
+      .single()
+
+    if (profile?.role !== 'admin') {
+      return Response.json({ error: '관리자 권한 필요' }, { status: 403 })
+    }
+
+    // 서비스 역할로 모든 데이터 조회 (RLS 우회)
+    const supabase = supabaseService()
     
     // 시간 범위 계산
     const now = new Date()
@@ -44,24 +64,29 @@ export async function GET() {
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
     
     // ===========================================
-    // 1. 기본 통계 (활성 사용자 수만 포함)
+    // 1. 기본 통계 (모든 사용자 수 포함)
     // ===========================================
     const { count: totalUserCount } = await supabase
       .from('profiles')
       .select('*', { count: 'exact', head: true })
     
     // ===========================================
-    // 2. 플랜별 사용자 현황 (정확한 집계)
+    // 2. 플랜별 사용자 현황 (서비스 역할로 모든 데이터 조회)
     // ===========================================
     const { data: planStats } = await supabase
       .from('profiles')
       .select('plan')
+      .limit(10000) // 충분한 수의 레코드 조회
+    
+    console.log('planStats 조회 결과:', planStats) // 디버깅용 로그
     
     const planCounts = planStats?.reduce((acc: Record<string, number>, user) => {
       const plan = user.plan || 'free'
       acc[plan] = (acc[plan] || 0) + 1
       return acc
     }, {}) || {}
+    
+    console.log('planCounts 계산 결과:', planCounts) // 디버깅용 로그
 
     // ===========================================
     // 3. 주간/월간 검색 수 (자막추출 제외, 정확한 기간)
@@ -93,7 +118,7 @@ export async function GET() {
       .from('billing_webhook_logs')
       .select('amount')
       .eq('event_type', 'PAYMENT')
-      .not('payment_key', 'is', null)
+      .eq('status', 'DONE') // payment_key 조건 제거하고 status만 체크
       .eq('processed', true)
 
     const totalPayments = allPayments?.reduce((sum, payment) => sum + (payment.amount || 0), 0) || 0
@@ -116,7 +141,7 @@ export async function GET() {
       .from('billing_webhook_logs')
       .select('amount')
       .eq('event_type', 'PAYMENT')
-      .not('payment_key', 'is', null)
+      .eq('status', 'DONE') // payment_key 조건 제거하고 status만 체크 (MRR 계산과 동일)
       .eq('processed', true)
       .gte('created_at', currentMonthStart.toISOString())
       .lte('created_at', currentMonthEnd.toISOString())
@@ -188,26 +213,29 @@ export async function GET() {
     const averageRevenuePerUser = (totalUserCount || 0) > 0 ? Math.round(netRevenue / (totalUserCount || 1)) : 0
 
     // ===========================================
-    // 10. MRR 계산 (2025년 9월부터, 월 1일-말일 기준)
+    // 10. 새로운 수익 트렌드 계산 (2025년 9월부터 12개월)
     // ===========================================
     const mrrData = []
     const serviceStartDate = new Date('2025-09-01') // 서비스 시작일
     
-    // 현재 월부터 최대 6개월 전까지 (하지만 서비스 시작일 이후만)
-    for (let i = 0; i < 6; i++) {
-      const monthStart = startOfMonth(subMonths(now, i))
+    // 2025년 9월부터 현재까지 + 미래 몇 개월 (최대 12개월)
+    for (let i = 0; i < 12; i++) {
+      const monthStart = startOfMonth(addMonths(serviceStartDate, i)) // 9월부터 시작
       const monthEnd = endOfMonth(monthStart)
       
-      // 2025년 9월 이전 데이터는 제외
-      if (monthStart < serviceStartDate) break
+      // 미래 월은 제외 (현재 월까지만)
+      if (monthStart > now) break
+      
       const monthKey = format(monthStart, 'yyyy-MM')
+      
+      console.log(`${monthKey} 처리 중... 범위: ${monthStart.toISOString()} ~ ${monthEnd.toISOString()}`)
 
-      // 해당 월의 실제 순수익 (결제 - 환불)
+      // 해당 월의 실제 순수익 (결제 - 환불) - 모든 성공한 결제 포함
       const { data: monthPayments } = await supabase
         .from('billing_webhook_logs')
         .select('amount')
         .eq('event_type', 'PAYMENT')
-        .not('payment_key', 'is', null)
+        .eq('status', 'DONE')
         .eq('processed', true)
         .gte('created_at', monthStart.toISOString())
         .lte('created_at', monthEnd.toISOString())
@@ -227,30 +255,44 @@ export async function GET() {
       // 해당 월의 실제 순수익
       const monthRevenue = monthPaymentTotal - monthRefundTotal
 
-      mrrData.unshift({ // unshift로 최신 데이터가 뒤에 오도록
-        month: format(monthStart, 'MM월'),
-        mrr: monthRevenue,
-        period: monthKey
+      console.log(`${monthKey} MRR 계산 완료:`, { 
+        monthPaymentTotal, 
+        monthRefundTotal, 
+        monthRevenue,
+        paymentCount: monthPayments?.length || 0,
+        refundCount: monthRefunds?.length || 0
       })
+
+      // 데이터가 있는 월만 추가 (0원이라도 결제나 환불이 있으면 추가)
+      if (monthPaymentTotal > 0 || monthRefundTotal > 0) {
+        mrrData.push({ // push로 시간순 정렬 (9월이 첫 번째)
+          month: format(monthStart, 'MM월'),
+          mrr: monthRevenue,
+          period: monthKey
+        })
+      }
     }
 
     // ===========================================
-    // 11. 주간 MRR 계산 (최근 8주)
+    // 11. 주간 수익 트렌드 계산 (최근 12주)
     // ===========================================
     const weeklyMrrData = []
-    for (let i = 7; i >= 0; i--) {
-      const weekStart = new Date(now.getTime() - (i * 7 * 24 * 60 * 60 * 1000))
-      const weekEnd = new Date(weekStart.getTime() + (6 * 24 * 60 * 60 * 1000))
+    
+    for (let i = 0; i < 12; i++) {
+      const weekStart = startOfWeek(subWeeks(now, i), { weekStartsOn: 1 }) // 월요일 시작
+      const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 })
       
-      // 2025년 9월 이전 데이터는 제외
-      if (weekStart < serviceStartDate) continue
+      // 2025년 9월 이전 주는 제외
+      if (weekEnd < serviceStartDate) continue
+
+      console.log(`주간 ${i}: ${format(weekStart, 'yyyy-MM-dd')} ~ ${format(weekEnd, 'yyyy-MM-dd')}`)
 
       // 해당 주의 실제 순수익 (결제 - 환불)
       const { data: weekPayments } = await supabase
         .from('billing_webhook_logs')
         .select('amount')
         .eq('event_type', 'PAYMENT')
-        .not('payment_key', 'is', null)
+        .eq('status', 'DONE')
         .eq('processed', true)
         .gte('created_at', weekStart.toISOString())
         .lte('created_at', weekEnd.toISOString())
@@ -270,11 +312,20 @@ export async function GET() {
       // 해당 주의 실제 순수익
       const weekRevenue = weekPaymentTotal - weekRefundTotal
 
-      weeklyMrrData.unshift({ // unshift로 최신 데이터가 뒤에 오도록
-        week: format(weekStart, 'MM/dd'),
-        mrr: weekRevenue,
-        period: format(weekStart, 'yyyy-MM-dd')
+      console.log(`주간 ${format(weekStart, 'MM/dd')} 수익:`, {
+        weekPaymentTotal,
+        weekRefundTotal, 
+        weekRevenue
       })
+
+      // 데이터가 있는 주만 추가
+      if (weekPaymentTotal > 0 || weekRefundTotal > 0) {
+        weeklyMrrData.unshift({ // unshift로 최신 주가 뒤에 오도록
+          week: `${format(weekStart, 'MM/dd')}-${format(weekEnd, 'MM/dd')}`,
+          mrr: weekRevenue,
+          period: format(weekStart, 'yyyy-MM-dd')
+        })
+      }
     }
 
     return Response.json({

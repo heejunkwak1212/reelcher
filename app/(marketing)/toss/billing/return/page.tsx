@@ -25,7 +25,7 @@ function BillingReturnContent() {
     
     ;(async () => {
       try {
-        setMsg('빌링키 발급 중...')
+        setMsg('카드 등록이 완료됐어요! 결제 페이지로 이동할게요')
         
         // 1단계: authKey로 billingKey 발급
         const ex = await fetch('/api/toss/billing/return', { 
@@ -44,7 +44,7 @@ function BillingReturnContent() {
         
         // 새로운 플로우: 결제 확인 페이지로 리다이렉트
         if (response.success && response.redirectUrl) {
-          setMsg('결제 확인 페이지로 이동합니다...')
+          setMsg('결제 페이지로 이동 중...')
           setTimeout(() => router.replace(response.redirectUrl), 1000)
         } else {
           throw new Error('빌링키 발급 응답이 올바르지 않습니다.')

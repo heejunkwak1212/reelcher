@@ -10,6 +10,7 @@ export default function AdminUsers() {
   const [email, setEmail] = useState('')
   const [promoting, setPromoting] = useState(false)
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null)
+  const [roleChangingUserId, setRoleChangingUserId] = useState<string | null>(null)
   const queryClient = useQueryClient()
   
   const q = useQuery({
@@ -58,11 +59,53 @@ export default function AdminUsers() {
       setDeletingUserId(null)
     }
   })
+
+  // Change role mutation
+  const changeRoleMutation = useMutation({
+    mutationFn: async ({ userId, newRole }: { userId: string; newRole: 'admin' | 'user' }) => {
+      const res = await fetch(`/api/admin/users/${userId}/role`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: newRole })
+      })
+      if (!res.ok) {
+        const error = await res.json()
+        throw new Error(error.error || 'Failed to change role')
+      }
+      return res.json()
+    },
+    onSuccess: (_, { newRole }) => {
+      toast({
+        title: '권한 변경 완료',
+        description: `사용자 권한이 ${newRole === 'admin' ? '관리자' : '일반 사용자'}로 변경되었습니다.`,
+      })
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] })
+      setRoleChangingUserId(null)
+    },
+    onError: (error: Error) => {
+      toast({
+        title: '권한 변경 실패',
+        description: error.message,
+        variant: 'destructive',
+      })
+      setRoleChangingUserId(null)
+    }
+  })
   
   const handleDeleteUser = (userId: string, userEmail: string) => {
     if (confirm(`정말로 사용자 "${userEmail}"를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.`)) {
       setDeletingUserId(userId)
       deleteUserMutation.mutate(userId)
+    }
+  }
+
+  const handleRoleChange = (userId: string, currentRole: string, userEmail: string) => {
+    const newRole = currentRole === 'admin' ? 'user' : 'admin'
+    const actionText = newRole === 'admin' ? '관리자로 승격' : '일반 사용자로 강등'
+    
+    if (confirm(`정말로 "${userEmail}"를 ${actionText}시키겠습니까?`)) {
+      setRoleChangingUserId(userId)
+      changeRoleMutation.mutate({ userId, newRole })
     }
   }
 
@@ -122,11 +165,32 @@ export default function AdminUsers() {
                     <td className="p-3">
                       <div className="flex items-center gap-1">
                         <Phone className="h-3 w-3 text-gray-400" />
-                        <span className="text-xs text-gray-600">-</span>
+                        <span className="text-xs text-gray-600">{u.phone_number || '-'}</span>
                       </div>
                     </td>
                     <td className="p-3 text-center">
-                      <Shield className="h-4 w-4 text-gray-400 mx-auto" />
+                      <button
+                        onClick={() => handleRoleChange(u.user_id, u.role, u.email)}
+                        disabled={roleChangingUserId === u.user_id}
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md transition-colors disabled:opacity-50"
+                        style={{
+                          backgroundColor: u.role === 'admin' ? '#fee2e2' : '#f3f4f6',
+                          color: u.role === 'admin' ? '#dc2626' : '#6b7280',
+                          border: `1px solid ${u.role === 'admin' ? '#fecaca' : '#d1d5db'}`
+                        }}
+                      >
+                        {u.role === 'admin' ? (
+                          <>
+                            <ShieldCheck className="h-3 w-3" />
+                            관리자
+                          </>
+                        ) : (
+                          <>
+                            <Shield className="h-3 w-3" />
+                            일반
+                          </>
+                        )}
+                      </button>
                     </td>
                     <td className="p-3 text-right text-xs text-gray-600">
                       {(u.credits_balance || 0).toLocaleString()}

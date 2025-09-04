@@ -26,6 +26,18 @@ interface SearchRecord {
   last_payment_date?: string
 }
 
+interface UserDetailData {
+  email: string
+  plan: string
+  totalSearches: number
+  totalSubtitles: number
+  monthlyStats?: any[]
+  billingCycles?: any[]
+  platformRecords?: Record<string, any[]>
+  userProfile?: any
+  subscription?: any
+}
+
 export default function AdminSearches() {
   const [page, setPage] = useState(1)
   const [from, setFrom] = useState('')
@@ -135,21 +147,15 @@ export default function AdminSearches() {
       return 0
     }
     
-    // 유료 플랜이지만 실제 결제 확인이 되지 않은 경우도 수익 없음
-    // TODO: 실제 토스 결제 연동 완료 후 payment 테이블 확인 로직 추가
-    // 현재는 last_payment_date가 있는 경우만 실제 결제로 간주
-    
-    const creditsUsed = record.credits_used || 0
-    
-    // 플랜별 크레딧 가격 (실제 결제된 경우만 적용)
-    const creditPrices = {
-      starter: 1.0,   // ₩2,000 / 2,000 크레딧 = ₩1/크레딧
-      pro: 1.0,       // ₩7,000 / 7,000 크레딧 = ₩1/크레딧  
-      business: 0.83, // ₩12,500 / 15,000 크레딧 = ₩0.83/크레딧
+    // 플랜별 월 구독료 (실제 결제된 금액)
+    const planRevenue = {
+      starter: 19000,  // STARTER 플랜 월 구독료
+      pro: 49000,      // PRO 플랜 월 구독료  
+      business: 99000, // BUSINESS 플랜 월 구독료
     }
 
-    const pricePerCredit = creditPrices[plan as keyof typeof creditPrices] || 0
-    return creditsUsed * pricePerCredit
+    // 결제한 구독료 전액이 기본 수익 (사용량과 무관)
+    return planRevenue[plan as keyof typeof planRevenue] || 0
   }
 
   // 플랜별 총 크레딧 계산
@@ -168,12 +174,55 @@ export default function AdminSearches() {
     const userRecords = records.filter(r => r.user_id === userId)
     if (userRecords.length === 0) return []
     
+    const userPlan = userRecords[0].user_plan
     const lastPaymentDate = userRecords[0].last_payment_date
-    if (!lastPaymentDate) return userRecords // 무료 사용자는 모든 기록
+    const subscriptionStartDate = userRecords[0].subscription_start_date
     
-    const cycleStart = new Date(lastPaymentDate)
-    const cycleEnd = new Date(cycleStart)
-    cycleEnd.setDate(cycleEnd.getDate() + 30) // 30일 주기
+    let cycleStart: Date
+    let cycleEnd: Date
+    
+    if (userPlan === 'free') {
+      // Free 플랜: 가입일 기준 30일 단위로 현재 주기 계산
+      if (!subscriptionStartDate) return userRecords // 가입일이 없으면 모든 기록
+      
+      const signupDate = new Date(subscriptionStartDate)
+      const now = new Date()
+      const daysSinceSignup = Math.floor((now.getTime() - signupDate.getTime()) / (1000 * 60 * 60 * 24))
+      const currentCycle = Math.floor(daysSinceSignup / 30)
+      
+      cycleStart = new Date(signupDate.getTime() + (currentCycle * 30 * 24 * 60 * 60 * 1000))
+      cycleEnd = new Date(cycleStart.getTime() + (30 * 24 * 60 * 60 * 1000) - 1)
+    } else {
+      // 유료 플랜: 첫 주기는 가입일 기준, 이후는 결제일 기준
+      if (!subscriptionStartDate) return [] // 가입일이 없으면 빈 배열
+      
+      const signupDate = new Date(subscriptionStartDate)
+      const now = new Date()
+      
+      if (!lastPaymentDate) {
+        // 결제 기록이 없는 경우 가입일 기준
+        const daysSinceSignup = Math.floor((now.getTime() - signupDate.getTime()) / (1000 * 60 * 60 * 24))
+        const currentCycle = Math.floor(daysSinceSignup / 30)
+        cycleStart = new Date(signupDate.getTime() + (currentCycle * 30 * 24 * 60 * 60 * 1000))
+        cycleEnd = new Date(cycleStart.getTime() + (30 * 24 * 60 * 60 * 1000) - 1)
+      } else {
+        // 결제 기록이 있는 경우
+        const paymentDate = new Date(lastPaymentDate)
+        const firstCycleEnd = new Date(signupDate.getTime() + 30 * 24 * 60 * 60 * 1000)
+        
+        if (now <= firstCycleEnd) {
+          // 현재 시점이 첫 번째 주기 내: 가입일 기준
+          cycleStart = signupDate
+          cycleEnd = new Date(firstCycleEnd.getTime() - 1)
+        } else {
+          // 두 번째 주기부터: 결제일 기준 30일 단위
+          const daysSincePayment = Math.floor((now.getTime() - paymentDate.getTime()) / (1000 * 60 * 60 * 24))
+          const currentCycle = Math.floor(daysSincePayment / 30)
+          cycleStart = new Date(paymentDate.getTime() + (currentCycle * 30 * 24 * 60 * 60 * 1000))
+          cycleEnd = new Date(cycleStart.getTime() + (30 * 24 * 60 * 60 * 1000) - 1)
+        }
+      }
+    }
     
     return userRecords.filter(record => {
       const recordDate = new Date(record.created_at)
@@ -252,17 +301,19 @@ export default function AdminSearches() {
 
   const totalUserPages = Math.ceil(userStats.length / USERS_PER_PAGE)
 
-  // 상세 검색 기록을 일자별로 그룹핑
+  // 상세 검색 기록을 일자별로 그룹핑 (실제 검색 기록만)
   const dailyRecords = useMemo(() => {
     const grouped = new Map<string, SearchRecord[]>()
     
-    records.forEach(record => {
-      const date = format(new Date(record.created_at), 'yyyy-MM-dd')
-      if (!grouped.has(date)) {
-        grouped.set(date, [])
-      }
-      grouped.get(date)!.push(record)
-    })
+    records
+      .filter(record => record.status !== 'no_search_history') // 더미 레코드 제외
+      .forEach(record => {
+        const date = format(new Date(record.created_at), 'yyyy-MM-dd')
+        if (!grouped.has(date)) {
+          grouped.set(date, [])
+        }
+        grouped.get(date)!.push(record)
+      })
     
     // 날짜별로 정렬 (최신순)
     return Array.from(grouped.entries())
@@ -282,15 +333,25 @@ export default function AdminSearches() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
 
   // 선택된 사용자의 전체 기록 조회
-  const { data: userDetailData } = useQuery({
+  const { data: userDetailData, error: userDetailError } = useQuery<UserDetailData>({
     queryKey: ['user-detail', selectedUser],
     queryFn: async () => {
       if (!selectedUser) return null
-      const res = await fetch(`/api/admin/users/${encodeURIComponent(selectedUser)}`, { cache: 'no-store' })
-      if (!res.ok) throw new Error('사용자 상세 정보 로드 실패')
-      return res.json()
+      console.log('사용자 상세 정보 요청:', selectedUser)
+      const res = await fetch(`/api/admin/users/${encodeURIComponent(selectedUser)}`, { 
+        cache: 'no-store'
+      })
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}))
+        console.error('사용자 상세 정보 로드 실패:', errorData)
+        throw new Error(`사용자 상세 정보 로드 실패: ${res.status}`)
+      }
+      const data = await res.json()
+      console.log('사용자 상세 정보 응답:', data)
+      return data
     },
-    enabled: !!selectedUser && userModalOpen
+    enabled: !!selectedUser && userModalOpen,
+    staleTime: 2 * 60 * 1000 // 2분간 fresh
   })
 
   // 전체 통계
@@ -316,7 +377,11 @@ export default function AdminSearches() {
     return `${Math.round(amount).toLocaleString()}원`
   }
 
-  const getPlatformBadge = (platform: string) => {
+  const getPlatformBadge = (platform: string | null) => {
+    if (!platform) {
+      return <Badge className="bg-gray-100 text-gray-600">미사용</Badge>
+    }
+    
     const colors = {
       youtube: 'bg-red-100 text-red-800',
       instagram: 'bg-pink-100 text-pink-800', 
@@ -375,49 +440,6 @@ export default function AdminSearches() {
         </div>
       </div>
 
-      {/* 전체 통계 요약 */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">총 원가</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-xl font-semibold text-gray-900">
-              {formatKRW(totalStats.totalApifyCost)}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">총 수익</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-xl font-semibold text-gray-900">
-              {formatKRW(totalStats.totalRevenue)}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">총 순이익</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className={`text-xl font-semibold ${totalStats.totalNetProfit >= 0 ? 'text-gray-900' : 'text-gray-700'}`}>
-              {formatKRW(totalStats.totalNetProfit)}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">평균 순이익</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className={`text-xl font-semibold ${totalStats.avgNetProfit >= 0 ? 'text-gray-900' : 'text-gray-700'}`}>
-              {formatKRW(totalStats.avgNetProfit)}
-      </div>
-          </CardContent>
-        </Card>
-      </div>
 
       {/* 사용자별 통계 */}
       <Card>
@@ -609,6 +631,7 @@ export default function AdminSearches() {
               <TableBody>
                 {dailyRecords
                   .find(([date]) => date === selectedDate)?.[1]
+                  ?.filter(record => record.status !== 'no_search_history') // 실제 검색 기록만 표시
                   ?.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
                   .map((record) => (
                     <TableRow key={record.id}>
@@ -638,107 +661,168 @@ export default function AdminSearches() {
 
       {/* 사용자 상세 모달 */}
       <Dialog open={userModalOpen} onOpenChange={setUserModalOpen}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{selectedUser} 사용자 상세 분석</DialogTitle>
+        <DialogContent className="max-w-[95vw] w-[95vw] min-h-[90vh] max-h-[95vh] overflow-y-auto overflow-x-auto p-6">
+          <DialogHeader className="mb-6">
+            <DialogTitle className="text-2xl font-bold text-gray-900">{selectedUser} 사용자 상세 분석</DialogTitle>
           </DialogHeader>
           
+          {userDetailError && (
+            <div className="text-red-600 p-4 bg-red-50 rounded-lg">
+              <p className="font-semibold">데이터 로드 실패</p>
+              <p className="text-sm mt-1">사용자 정보를 불러올 수 없습니다. 이메일이 올바른지 확인해주세요.</p>
+              <p className="text-xs mt-2 text-gray-600">오류: {userDetailError.message}</p>
+            </div>
+          )}
+          
           {userDetailData && (
-            <div className="space-y-6">
+            <div className="space-y-8">
               {/* 사용자 기본 정보 */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">기본 정보</CardTitle>
+              <Card className="shadow-lg">
+                <CardHeader className="pb-4">
+                  <CardTitle className="text-xl font-semibold text-gray-800">기본 정보</CardTitle>
                 </CardHeader>
-                <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div>
-                    <div className="text-sm text-gray-500">이메일</div>
-                    <div className="font-medium">{userDetailData.email}</div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-gray-500">현재 플랜</div>
-                    <div>{getPlanBadge(userDetailData.plan)}</div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-gray-500">총 검색</div>
-                    <div className="font-medium">{userDetailData.totalSearches}회</div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-gray-500">총 자막 추출</div>
-                    <div className="font-medium">{userDetailData.totalSubtitles}회</div>
+                <CardContent>
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium text-gray-500">이메일</div>
+                      <div className="font-semibold text-gray-900 break-all">{userDetailData.email}</div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium text-gray-500">현재 플랜</div>
+                      <div className="flex items-center">{getPlanBadge(userDetailData.plan)}</div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium text-gray-500">총 검색</div>
+                      <div className="text-xl font-bold text-blue-600">{userDetailData.totalSearches}회</div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium text-gray-500">총 자막 추출</div>
+                      <div className="text-xl font-bold text-purple-600">{userDetailData.totalSubtitles}회</div>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
 
               {/* 월별 사용 내역 */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">월별 사용 내역 및 수익성</CardTitle>
+              <Card className="shadow-lg">
+                <CardHeader className="pb-4">
+                  <CardTitle className="text-xl font-semibold text-gray-800">월별 사용 내역 및 수익성</CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>월</TableHead>
-                        <TableHead>검색</TableHead>
-                        <TableHead>자막</TableHead>
-                        <TableHead>크레딧 사용</TableHead>
-                        <TableHead>원가</TableHead>
-                        <TableHead>수익</TableHead>
-                        <TableHead>순이익</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {userDetailData.monthlyStats?.map((month: any) => (
-                        <TableRow key={month.month}>
-                          <TableCell className="font-medium">{month.month}</TableCell>
-                          <TableCell>{month.searchCount}회</TableCell>
-                          <TableCell>{month.subtitleCount}회</TableCell>
-                          <TableCell>{month.creditsUsed.toLocaleString()}</TableCell>
-                          <TableCell className="text-red-600">{formatKRW(month.cost)}</TableCell>
-                          <TableCell className="text-blue-600">{formatKRW(month.revenue)}</TableCell>
-                          <TableCell className={month.netProfit >= 0 ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'}>
-                            {formatKRW(month.netProfit)}
-                          </TableCell>
+                                  <CardContent>
+                    <div className="overflow-x-auto">
+                      <Table>
+                      <TableHeader>
+                        <TableRow className="bg-gray-50">
+                          <TableHead className="font-semibold text-gray-700 py-3">월</TableHead>
+                          <TableHead className="font-semibold text-gray-700 py-3">검색</TableHead>
+                          <TableHead className="font-semibold text-gray-700 py-3">자막</TableHead>
+                          <TableHead className="font-semibold text-gray-700 py-3">크레딧 사용</TableHead>
+                          <TableHead className="font-semibold text-gray-700 py-3">원가</TableHead>
+                          <TableHead className="font-semibold text-gray-700 py-3">수익</TableHead>
+                          <TableHead className="font-semibold text-gray-700 py-3">순이익</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {userDetailData.monthlyStats?.map((month: any) => (
+                          <TableRow key={month.month} className="hover:bg-gray-50">
+                            <TableCell className="font-medium py-4">{month.month}</TableCell>
+                            <TableCell className="py-4">{month.searchCount}회</TableCell>
+                            <TableCell className="py-4">{month.subtitleCount}회</TableCell>
+                            <TableCell className="py-4 font-mono">{month.creditsUsed.toLocaleString()}</TableCell>
+                            <TableCell className="text-red-600 py-4 font-semibold">{formatKRW(month.cost)}</TableCell>
+                            <TableCell className="text-blue-600 py-4 font-semibold">{formatKRW(month.revenue)}</TableCell>
+                            <TableCell className={`py-4 font-bold ${month.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              {formatKRW(month.netProfit)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </CardContent>
               </Card>
 
+              {/* 결제 주기별 분석 */}
+              {userDetailData.billingCycles && userDetailData.billingCycles.length > 0 && (
+                <Card className="shadow-lg">
+                  <CardHeader className="pb-4">
+                    <CardTitle className="text-xl font-semibold text-gray-800">결제 주기별 분석</CardTitle>
+                    <div className="text-sm text-gray-600 mt-2">
+                      첫 결제부터 각 주기마다의 구독 플랜, 결제금액, 사용원가, 순수익 분석
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-gray-50">
+                            <TableHead className="font-semibold text-gray-700 py-3 min-w-[140px]">결제 월</TableHead>
+                            <TableHead className="font-semibold text-gray-700 py-3">구독 플랜</TableHead>
+                            <TableHead className="font-semibold text-gray-700 py-3">결제 금액</TableHead>
+                            <TableHead className="font-semibold text-gray-700 py-3">사용 원가</TableHead>
+                            <TableHead className="font-semibold text-gray-700 py-3">순수익</TableHead>
+                            <TableHead className="font-semibold text-gray-700 py-3 min-w-[140px]">결제일시</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {userDetailData.billingCycles.map((cycle: any, index: number) => (
+                            <TableRow key={index} className="hover:bg-gray-50">
+                              <TableCell className="font-medium py-4">{cycle.monthDisplay}</TableCell>
+                              <TableCell className="py-4">
+                                <Badge variant="outline" className="px-3 py-1">
+                                  {cycle.plan?.toUpperCase() || 'UNKNOWN'}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="text-blue-600 py-4 font-bold">{cycle.amount.toLocaleString()}원</TableCell>
+                              <TableCell className="text-red-600 py-4 font-bold">{cycle.usageCost.toFixed(0)}원</TableCell>
+                              <TableCell className={`py-4 font-bold ${cycle.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                {cycle.netProfit.toFixed(0)}원
+                              </TableCell>
+                              <TableCell className="text-sm text-gray-600 py-4 font-mono">
+                                {format(new Date(cycle.paymentDate), 'yyyy-MM-dd HH:mm')}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               {/* 최근 3개월 검색 기록 상세 */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">최근 3개월 검색 기록 상세</CardTitle>
-                  <div className="text-sm text-gray-500">
+              <Card className="shadow-lg">
+                <CardHeader className="pb-4">
+                  <CardTitle className="text-xl font-semibold text-gray-800">최근 3개월 검색 기록 상세</CardTitle>
+                  <div className="text-sm text-gray-600 mt-2">
                     날짜, 시간, 플랫폼, 키워드, 원가를 포함한 상세 기록
                   </div>
                 </CardHeader>
                 <CardContent>
                   <Tabs defaultValue="all" className="w-full">
-                    <TabsList className="grid w-full grid-cols-4">
-                      <TabsTrigger value="all">전체</TabsTrigger>
-                      <TabsTrigger value="youtube">YouTube</TabsTrigger>
-                      <TabsTrigger value="instagram">Instagram</TabsTrigger>
-                      <TabsTrigger value="tiktok">TikTok</TabsTrigger>
+                    <TabsList className="grid w-full grid-cols-4 mb-6">
+                      <TabsTrigger value="all" className="text-sm">전체</TabsTrigger>
+                      <TabsTrigger value="youtube" className="text-sm">YouTube</TabsTrigger>
+                      <TabsTrigger value="instagram" className="text-sm">Instagram</TabsTrigger>
+                      <TabsTrigger value="tiktok" className="text-sm">TikTok</TabsTrigger>
                     </TabsList>
                     
                     <TabsContent value="all">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>날짜/시간</TableHead>
-                            <TableHead>플랫폼</TableHead>
-                            <TableHead>유형</TableHead>
-                            <TableHead>키워드</TableHead>
-                            <TableHead>요청수</TableHead>
-                            <TableHead>결과수</TableHead>
-                            <TableHead>크레딧</TableHead>
-                            <TableHead>원가</TableHead>
-                            <TableHead>상태</TableHead>
-                          </TableRow>
-                        </TableHeader>
+                      <div className="overflow-x-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow className="bg-gray-50">
+                              <TableHead className="font-semibold text-gray-700 py-3 min-w-[120px]">날짜/시간</TableHead>
+                              <TableHead className="font-semibold text-gray-700 py-3">플랫폼</TableHead>
+                              <TableHead className="font-semibold text-gray-700 py-3">유형</TableHead>
+                              <TableHead className="font-semibold text-gray-700 py-3 min-w-[150px]">키워드</TableHead>
+                              <TableHead className="font-semibold text-gray-700 py-3">요청수</TableHead>
+                              <TableHead className="font-semibold text-gray-700 py-3">결과수</TableHead>
+                              <TableHead className="font-semibold text-gray-700 py-3">크레딧</TableHead>
+                              <TableHead className="font-semibold text-gray-700 py-3 min-w-[100px]">원가</TableHead>
+                              <TableHead className="font-semibold text-gray-700 py-3">상태</TableHead>
+                            </TableRow>
+                          </TableHeader>
                         <TableBody>
                           {(() => {
                             // 모든 플랫폼의 기록을 합쳐서 날짜순으로 정렬
@@ -749,81 +833,88 @@ export default function AdminSearches() {
                             ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
                             
                             return allRecords.map((record: any) => (
-                              <TableRow key={record.id}>
-                                <TableCell className="font-mono text-sm">
-                                  <div>{format(new Date(record.created_at), 'MM/dd')}</div>
+                              <TableRow key={record.id} className="hover:bg-gray-50">
+                                <TableCell className="font-mono text-sm py-4">
+                                  <div className="font-medium">{format(new Date(record.created_at), 'MM/dd')}</div>
                                   <div className="text-xs text-gray-500">
                                     {format(new Date(record.created_at), 'HH:mm')}
                                   </div>
                                 </TableCell>
-                                <TableCell>{getPlatformBadge(record.platform)}</TableCell>
-                                <TableCell>
-                                  <Badge variant="outline">
+                                <TableCell className="py-4">{getPlatformBadge(record.platform)}</TableCell>
+                                <TableCell className="py-4">
+                                  <Badge variant="outline" className="px-3 py-1">
                                     {record.search_type === 'subtitle_extraction' ? '자막' : '검색'}
                                   </Badge>
                                 </TableCell>
-                                <TableCell className="max-w-[150px] truncate">{record.keyword || '-'}</TableCell>
-                                <TableCell>{record.requested_count || '-'}</TableCell>
-                                <TableCell>{record.results_count || '-'}</TableCell>
-                                <TableCell>{record.credits_used || '-'}</TableCell>
-                                <TableCell className="text-red-600 font-mono text-xs">
+                                <TableCell className="max-w-[150px] truncate py-4" title={record.keyword || '-'}>
+                                  {record.keyword || '-'}
+                                </TableCell>
+                                <TableCell className="py-4 text-center">{record.requested_count || '-'}</TableCell>
+                                <TableCell className="py-4 text-center">{record.results_count || '-'}</TableCell>
+                                <TableCell className="py-4 font-mono text-center">{record.credits_used || '-'}</TableCell>
+                                <TableCell className="text-red-600 font-mono text-sm py-4 font-semibold">
                                   {record.platform === 'youtube' && record.search_type !== 'subtitle_extraction' 
                                     ? '₩0 (무료)' 
                                     : formatKRW(calculateApifyCost(record) * 1340)
                                   }
                                 </TableCell>
-                                <TableCell>{getStatusBadge(record.status)}</TableCell>
+                                <TableCell className="py-4">{getStatusBadge(record.status)}</TableCell>
                               </TableRow>
                             ))
                           })()}
                         </TableBody>
                       </Table>
-                    </TabsContent>
+                    </div>
+                  </TabsContent>
                     
                     {['youtube', 'instagram', 'tiktok'].map(platform => (
                       <TabsContent key={platform} value={platform}>
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>날짜/시간</TableHead>
-                              <TableHead>유형</TableHead>
-                              <TableHead>키워드</TableHead>
-                              <TableHead>요청수</TableHead>
-                              <TableHead>결과수</TableHead>
-                              <TableHead>크레딧</TableHead>
-                              <TableHead>원가</TableHead>
-                              <TableHead>상태</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {userDetailData.platformRecords?.[platform]?.map((record: any) => (
-                              <TableRow key={record.id}>
-                                <TableCell className="font-mono text-sm">
-                                  <div>{format(new Date(record.created_at), 'MM/dd')}</div>
-                                  <div className="text-xs text-gray-500">
-                                    {format(new Date(record.created_at), 'HH:mm')}
-                                  </div>
-                                </TableCell>
-                                <TableCell>
-                                  <Badge variant="outline">
-                                    {record.search_type === 'subtitle_extraction' ? '자막' : '검색'}
-                                  </Badge>
-                                </TableCell>
-                                <TableCell className="max-w-[150px] truncate">{record.keyword || '-'}</TableCell>
-                                <TableCell>{record.requested_count || '-'}</TableCell>
-                                <TableCell>{record.results_count || '-'}</TableCell>
-                                <TableCell>{record.credits_used || '-'}</TableCell>
-                                <TableCell className="text-red-600 font-mono text-xs">
-                                  {platform === 'youtube' && record.search_type !== 'subtitle_extraction' 
-                                    ? '₩0 (무료)' 
-                                    : formatKRW(calculateApifyCost(record) * 1340)
-                                  }
-                                </TableCell>
-                                <TableCell>{getStatusBadge(record.status)}</TableCell>
+                        <div className="overflow-x-auto">
+                          <Table>
+                            <TableHeader>
+                              <TableRow className="bg-gray-50">
+                                <TableHead className="font-semibold text-gray-700 py-3 min-w-[120px]">날짜/시간</TableHead>
+                                <TableHead className="font-semibold text-gray-700 py-3">유형</TableHead>
+                                <TableHead className="font-semibold text-gray-700 py-3 min-w-[150px]">키워드</TableHead>
+                                <TableHead className="font-semibold text-gray-700 py-3">요청수</TableHead>
+                                <TableHead className="font-semibold text-gray-700 py-3">결과수</TableHead>
+                                <TableHead className="font-semibold text-gray-700 py-3">크레딧</TableHead>
+                                <TableHead className="font-semibold text-gray-700 py-3 min-w-[100px]">원가</TableHead>
+                                <TableHead className="font-semibold text-gray-700 py-3">상태</TableHead>
                               </TableRow>
-                            )) || []}
-                          </TableBody>
-                        </Table>
+                            </TableHeader>
+                            <TableBody>
+                              {userDetailData.platformRecords?.[platform]?.map((record: any) => (
+                                <TableRow key={record.id} className="hover:bg-gray-50">
+                                  <TableCell className="font-mono text-sm py-4">
+                                    <div className="font-medium">{format(new Date(record.created_at), 'MM/dd')}</div>
+                                    <div className="text-xs text-gray-500">
+                                      {format(new Date(record.created_at), 'HH:mm')}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="py-4">
+                                    <Badge variant="outline" className="px-3 py-1">
+                                      {record.search_type === 'subtitle_extraction' ? '자막' : '검색'}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell className="max-w-[150px] truncate py-4" title={record.keyword || '-'}>
+                                    {record.keyword || '-'}
+                                  </TableCell>
+                                  <TableCell className="py-4 text-center">{record.requested_count || '-'}</TableCell>
+                                  <TableCell className="py-4 text-center">{record.results_count || '-'}</TableCell>
+                                  <TableCell className="py-4 font-mono text-center">{record.credits_used || '-'}</TableCell>
+                                  <TableCell className="text-red-600 font-mono text-sm py-4 font-semibold">
+                                    {platform === 'youtube' && record.search_type !== 'subtitle_extraction' 
+                                      ? '₩0 (무료)' 
+                                      : formatKRW(calculateApifyCost(record) * 1340)
+                                    }
+                                  </TableCell>
+                                  <TableCell className="py-4">{getStatusBadge(record.status)}</TableCell>
+                                </TableRow>
+                              )) || []}
+                            </TableBody>
+                          </Table>
+                        </div>
                       </TabsContent>
                     ))}
                   </Tabs>

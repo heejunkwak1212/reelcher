@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
       const [profileRes, creditsRes, countersRes] = await Promise.all([
         svc
           .from('profiles')
-          .select('display_name, role, plan')
+          .select('display_name, role, plan, phone_number')
           .eq('user_id', authUser.id)
           .single(),
         svc
@@ -71,6 +71,7 @@ export async function GET(request: NextRequest) {
         display_name: profileRes.data?.display_name || null,
         role: profileRes.data?.role || 'user',
         plan: profileRes.data?.plan || 'free',
+        phone_number: profileRes.data?.phone_number || null,
         credits: creditsRes.data || { balance: 0, reserved: 0 },
         search_counters: countersRes.data || { today_count: 0, month_count: 0 }
       }
@@ -115,6 +116,7 @@ export async function GET(request: NextRequest) {
         display_name: user.display_name,
         role: user.role,
         plan: user.plan,
+        phone_number: user.phone_number,
         created_at: user.created_at,
         credits_balance: user.credits?.balance || 0,
         credits_reserved: user.credits?.reserved || 0,

@@ -46,7 +46,7 @@ export async function GET(req: Request) {
     }
 
     // 빌링키 발급 성공 → 결제 확인 페이지로 이동
-    console.log('빌링키 발급 성공, 결제 확인 페이지로 이동:', { billingKey, customerKey, plan })
+    console.log('결제 확인 페이지로 이동:', { billingKey, customerKey, plan })
     
     // 구독 정보만 먼저 저장 (결제는 아직 안 함)
     try {

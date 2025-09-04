@@ -268,7 +268,6 @@ export class YouTubeClient {
           publishedAt: snippet.publishedAt,
           thumbnails: snippet.thumbnails,
           duration: this.formatDuration(contentDetails.duration),
-          durationSeconds: this.parseDurationToSeconds(contentDetails.duration),
           viewCount,
           likeCount,
           commentCount,
@@ -322,7 +321,7 @@ export class YouTubeClient {
    */
   async searchByKeyword(request: IYouTubeSearchRequest): Promise<IYouTubeSearchResponse> {
     const { query, resultsLimit, filters } = request
-    
+
     // 필터가 있으면 더 많은 결과를 가져와서 필터링
     const hasFilters = filters.minViews || filters.maxSubscribers
     const fetchLimit = hasFilters ? Math.max(resultsLimit * 3, 150) : resultsLimit
@@ -558,8 +557,8 @@ export class YouTubeClient {
         const params = { ...commonParams, ...strategy }
         // null 값 제거
         Object.keys(params).forEach(key => {
-          if (params[key] === null || params[key] === undefined) {
-            delete params[key]
+          if ((params as any)[key] === null || (params as any)[key] === undefined) {
+            delete (params as any)[key]
           }
         })
 
@@ -669,58 +668,58 @@ export class YouTubeClient {
     // main.py 스타일 채널 다양성 확보를 위한 정렬 - 결과 개수 최적화
     // 1차: 유사도 점수로 정렬
     videos.sort((a: any, b: any) => b.similarityScore - a.similarityScore)
-    
+
     // 2차: 적응형 채널 다양성 확보 (결과 개수에 맞춰 유연하게 조정)
     const targetResults = Math.min(resultsLimit, videos.length)
     const channelCounts = new Map<string, number>()
     const diversifiedVideos: any[] = []
     const reservedVideos: any[] = [] // 다양성 제한에 걸린 영상들
-    
+
     // 첫 번째 패스: 엄격한 다양성 적용
     for (const video of videos) {
       const channelCount = channelCounts.get(video.channelId) || 0
-      
+
       // 원본 채널: 최대 5개, 다른 채널: 최대 3개 (기존보다 완화)
       const maxForChannel = video.channelId === snippet.channelId ? 5 : 3
-      
+
       if (channelCount < maxForChannel) {
         diversifiedVideos.push(video)
         channelCounts.set(video.channelId, channelCount + 1)
       } else {
         reservedVideos.push(video)
       }
-      
+
       // 목표 개수의 80%에 도달하면 첫 번째 패스 종료
       if (diversifiedVideos.length >= Math.floor(targetResults * 0.8)) {
         break
       }
     }
-    
+
     // 두 번째 패스: 목표 개수에 못 미치면 제한 완화
     if (diversifiedVideos.length < targetResults) {
       const needed = targetResults - diversifiedVideos.length
-      
+
       // 채널당 제한을 2개씩 더 늘려서 추가
       for (const video of reservedVideos) {
         if (diversifiedVideos.length >= targetResults) break
-        
+
         const channelCount = channelCounts.get(video.channelId) || 0
         const relaxedMaxForChannel = video.channelId === snippet.channelId ? 8 : 5
-        
+
         if (channelCount < relaxedMaxForChannel) {
           diversifiedVideos.push(video)
           channelCounts.set(video.channelId, channelCount + 1)
         }
       }
     }
-    
+
     // 세 번째 패스: 여전히 부족하면 제한 없이 추가
     if (diversifiedVideos.length < targetResults) {
       const stillNeeded = targetResults - diversifiedVideos.length
       const remainingVideos = videos.filter(v => !diversifiedVideos.includes(v))
       diversifiedVideos.push(...remainingVideos.slice(0, stillNeeded))
     }
-    
+
     videos = diversifiedVideos
 
     // 필터 적용
@@ -764,6 +763,7 @@ export class YouTubeClient {
       }
     }
   }
+
 
   /**
    * 채널 기여도 분석 (주문형)
