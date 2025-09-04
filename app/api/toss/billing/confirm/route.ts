@@ -62,11 +62,13 @@ export async function POST(req: Request) {
       const userId = customerKey.replace('user_', '')
       const supabase = await supabaseServer()
       
-      // 구독 상태를 active로 변경
+      // 구독 상태를 active로 변경 + 빌링키 저장
       await supabase
         .from('subscriptions')
         .update({
           status: 'active',
+          billing_key: billingKey, // ✅ 빌링키 저장
+          toss_customer_key: customerKey, // ✅ 고객키 저장
           renewed_at: new Date().toISOString(),
           next_charge_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30일 후
           updated_at: new Date().toISOString()

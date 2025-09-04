@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
           )
         }
       } else {
-        // URL 검색: 15/30/50
+        // URL 검색: FREE → 15개, STARTER → 30개, PRO부터 → 50개
         if (userPlan === 'free' && ![5, 15].includes(resultsLimit)) {
           return NextResponse.json(
             { error: 'FREE 플랜은 15개까지만 가능합니다.' },
@@ -129,9 +129,9 @@ export async function POST(request: NextRequest) {
             { status: 403 }
           )
         }
-        if (userPlan === 'pro' && ![5, 15, 30, 50].includes(resultsLimit)) {
+        if (['pro', 'business'].includes(userPlan) && ![5, 15, 30, 50].includes(resultsLimit)) {
           return NextResponse.json(
-            { error: 'PRO 플랜은 50개까지만 가능합니다.' },
+            { error: 'PRO 플랜 이상은 50개까지만 가능합니다.' },
             { status: 403 }
           )
         }

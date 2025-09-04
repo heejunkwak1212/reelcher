@@ -63,40 +63,98 @@ export async function POST(request: NextRequest) {
 
     // 환불 조건을 만족하는 경우 즉시 환불 처리
     if (isEligibleForRefund) {
-      // 최근 결제 정보 조회 (billing_webhook_logs에서)
+      console.log('🔄 환불 조건 만족 - 환불 처리 시작');
+      
+      // 최근 빌링 결제 정보 조회 (payment_key가 있는 실제 결제만)
       const { data: recentPayment, error: paymentError } = await supabaseAdmin
         .from('billing_webhook_logs')
         .select('*')
-        .like('order_id', `%${subscription.user_id}%`) // user_id가 order_id에 포함된 형태로 저장
+        .eq('customer_key', `user_${user.id}`)
+        .eq('event_type', 'PAYMENT')
+        .not('payment_key', 'is', null) // payment_key가 있는 실제 결제만
         .eq('status', 'DONE')
         .order('created_at', { ascending: false })
         .limit(1);
 
+      if (paymentError) {
+        console.error('❌ 결제 내역 조회 실패:', paymentError);
+      }
+
       if (recentPayment && recentPayment.length > 0) {
         const payment = recentPayment[0];
+        console.log(`🔍 환불 대상 결제 찾음: paymentKey=${payment.payment_key}, amount=${payment.amount}`);
         
         try {
-          // 토스페이먼츠 환불 API 호출
-          const refundResponse = await fetch(`https://api.tosspayments.com/v1/payments/${payment.payment_key}/cancel`, {
-            method: 'POST',
+          // 1단계: 결제 상태 확인 (토스페이먼츠 공식 문서 권장)
+          const statusCheckResponse = await fetch(`https://api.tosspayments.com/v1/payments/${payment.payment_key}`, {
+            method: 'GET',
             headers: {
               'Authorization': `Basic ${Buffer.from(process.env.TOSS_SECRET_KEY + ':').toString('base64')}`,
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-              cancelReason: `구독 취소 - ${reason}`,
-            }),
           });
 
-          if (refundResponse.ok) {
-            refundResult = await refundResponse.json();
-            console.log('환불 성공:', refundResult);
+          if (statusCheckResponse.ok) {
+            const paymentStatus = await statusCheckResponse.json();
+            console.log(`💡 현재 결제 상태: status=${paymentStatus.status}, balanceAmount=${paymentStatus.balanceAmount}`);
+            
+            // 취소 가능한 상태인지 확인
+            if (paymentStatus.status !== 'DONE' || paymentStatus.balanceAmount <= 0) {
+              console.log('⚠️ 이미 취소되었거나 취소할 수 없는 결제입니다.');
+              refundResult = {
+                status: 'ALREADY_CANCELED',
+                totalAmount: payment.amount,
+                message: '이미 취소된 결제 또는 취소 불가능한 상태'
+              };
+            } else {
+              // 2단계: 실제 환불 요청 (멱등키 사용)
+              const idempotencyKey = `refund_${user.id}_${payment.payment_key}_${Date.now()}`;
+              
+              const refundResponse = await fetch(`https://api.tosspayments.com/v1/payments/${payment.payment_key}/cancel`, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Basic ${Buffer.from(process.env.TOSS_SECRET_KEY + ':').toString('base64')}`,
+                  'Content-Type': 'application/json',
+                  'Idempotency-Key': idempotencyKey, // 멱등키 추가 (중복 요청 방지)
+                },
+                body: JSON.stringify({
+                  cancelReason: `48시간 이내 구독 취소로 인한 전액 환불 - ${reason}`,
+                }),
+              });
+
+              if (refundResponse.ok) {
+                refundResult = await refundResponse.json();
+                console.log('✅ 빌링 결제 환불 성공:', refundResult);
+              } else {
+                const errorText = await refundResponse.text();
+                console.error('❌ 빌링 결제 환불 실패:', errorText);
+                
+                try {
+                  const errorData = JSON.parse(errorText);
+                  if (errorData.code === 'ALREADY_CANCELED_PAYMENT') {
+                    console.log('⚠️ 이미 취소된 결제입니다. 환불 처리를 건너뜁니다.');
+                    // 이미 취소된 결제라면 환불 성공으로 처리
+                    refundResult = {
+                      status: 'CANCELED',
+                      totalAmount: payment.amount,
+                      message: '이미 취소된 결제'
+                    };
+                  } else {
+                    console.error(`❌ 환불 실패 - 에러 코드: ${errorData.code}, 메시지: ${errorData.message}`);
+                  }
+                } catch (parseError) {
+                  console.error('환불 응답 파싱 실패:', parseError);
+                }
+              }
+            }
           } else {
-            console.error('환불 실패:', await refundResponse.text());
+            console.error('❌ 결제 상태 조회 실패:', await statusCheckResponse.text());
           }
         } catch (error) {
-          console.error('환불 처리 중 오류:', error);
+          console.error('빌링 결제 환불 처리 중 오류:', error);
         }
+      } else {
+        console.log('⚠️ 환불할 결제 내역을 찾을 수 없습니다.');
       }
     }
 

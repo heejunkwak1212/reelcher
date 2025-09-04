@@ -29,46 +29,49 @@ interface PaymentRecord {
   created_at: string
 }
 
-// 플랜별 콘텐츠 정의
-const planContent = {
-  free: {
-    title: '플랜 업그레이드를 통해 콘텐츠 생산성을 크게 높여보세요!',
-    features: [
-      '릴처의 모든 기능 지원',
-      '더욱 다양한 검색 결과', 
-      '최대 80배의 더 많은 사용량'
-    ],
-    buttonText: '지금 바로 시작하기'
-  },
-  starter: {
-    title: '',
-    features: [
-      '월 2,000 크레딧',
-      'FREE 플랜의 모든 기능',
-      '최대 60개 검색 결과',
-    ],
-    buttonText: '모든 플랜 보기'
-  },
-  pro: {
-    title: '',
-    features: [
-      '월 7,000 크레딧',
-      'STARTER 플랜의 모든 기능',
-      '최대 90개 검색 결과',
-      '28배의 더 많은 사용량'
-    ],
-    buttonText: '모든 플랜 보기'
-  },
-  business: {
-    title: '',
-    features: [
-      '월 20,000 크레딧',
-      'PRO 플랜의 모든 기능',
-      '최대 120개 검색 결과',
-      '80배의 가장 많은 사용량',
-      '최우선 지원'
-    ],
-    buttonText: '모든 플랜 보기'
+// 플랜별 콘텐츠 정의 (현재 플랜에 따라 버튼 텍스트 동적 변경)
+const getPlanContent = (currentPlan: string) => {
+  return {
+    free: {
+      title: '플랜 업그레이드를 통해 콘텐츠 생산성을 크게 높여보세요!',
+      features: [
+        '릴처의 모든 기능 지원',
+        '더욱 다양한 검색 결과',
+        '최대 80배의 더 많은 사용량'
+      ],
+      buttonText: '지금 바로 시작하기'
+    },
+    starter: {
+      title: '',
+      features: [
+        '월 2,000 크레딧',
+        'FREE 플랜의 모든 기능',
+        '최대 60개 검색 결과',
+        '자막 추출 기능',
+      ],
+      buttonText: currentPlan === 'business' ? '모든 플랜 보기' : '업그레이드'
+    },
+    pro: {
+      title: '',
+      features: [
+        '월 7,000 크레딧',
+        'STARTER 플랜의 모든 기능',
+        '최대 90개 검색 결과',
+        '28배의 더 많은 사용량'
+      ],
+      buttonText: currentPlan === 'business' ? '모든 플랜 보기' : '업그레이드'
+    },
+    business: {
+      title: '',
+      features: [
+        '월 20,000 크레딧',
+        'PRO 플랜의 모든 기능',
+        '최대 120개 검색 결과',
+        '80배의 가장 많은 사용량',
+        '최우선 지원'
+      ],
+      buttonText: '모든 플랜 보기' // ✅ 비즈니스 플랜에서는 항상 "모든 플랜 보기"
+    }
   }
 }
 
@@ -130,6 +133,8 @@ export default function BillingPage() {
       
       if (response.ok) {
         const data = await response.json()
+        console.log(`💳 결제 내역 로드 완료: ${data.payments?.length || 0}개 항목`, data)
+
         if (reset) {
           setPaymentRecords(data.payments)
         } else {
@@ -173,7 +178,8 @@ export default function BillingPage() {
   const currentPlan = profile?.plan || 'free'
   const balance = Number(credits?.balance || 0)
 
-  // 현재 플랜의 콘텐츠 가져오기
+  // 현재 플랜의 콘텐츠 가져오기 (동적 생성)
+  const planContent = getPlanContent(currentPlan)
   const currentPlanContent = planContent[currentPlan as keyof typeof planContent] || planContent.free
 
   return (

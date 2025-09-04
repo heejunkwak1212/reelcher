@@ -5,6 +5,9 @@ import { z } from 'zod';
 
 const upgradeSubscriptionSchema = z.object({
   newPlan: z.enum(['starter', 'pro', 'business']),
+  upgrade: z.boolean().optional(),
+  billingKey: z.string().optional(),
+  customerKey: z.string().optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -20,7 +23,7 @@ export async function POST(request: NextRequest) {
 
     // 요청 본문 파싱 및 검증
     const body = await request.json();
-    const { newPlan } = upgradeSubscriptionSchema.parse(body);
+    const { newPlan, upgrade, billingKey: requestBillingKey, customerKey: requestCustomerKey } = upgradeSubscriptionSchema.parse(body);
 
     // 플랜별 가격 정의
     const planPrices: Record<string, number> = {
@@ -65,19 +68,134 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '구독 정보를 찾을 수 없습니다' }, { status: 404 });
     }
 
-    if (!subscription.billing_key) {
-      return NextResponse.json({ error: '빌링키가 없습니다. 새로 구독해주세요.' }, { status: 400 });
-    }
-
     // 현재 플랜과 동일한 플랜으로 변경 시도하는 경우
     if (profile.plan === newPlan) {
       return NextResponse.json({ error: '이미 해당 플랜을 사용 중입니다' }, { status: 400 });
     }
 
+    // 업그레이드 모드일 경우 실제 결제 처리
+    if (upgrade) {
+      if (!subscription.billing_key) {
+        return NextResponse.json({ error: '빌링키가 없습니다. 새로 구독해주세요.' }, { status: 400 });
+      }
+
+      // 토스페이먼츠로 실제 결제 요청
+      const orderId = `upgrade_${newPlan}_${user.id}_${Date.now()}`;
+      const auth = Buffer.from(`${process.env.TOSS_SECRET_KEY}:`).toString('base64');
+
+      try {
+        console.log(`🚀 플랜 업그레이드 결제 시작: ${profile.plan} -> ${newPlan}, 금액: ${newPrice}원`);
+
+        const paymentResponse = await fetch(`https://api.tosspayments.com/v1/billing/${subscription.billing_key}`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Basic ${auth}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            customerKey: `user_${user.id}`,
+            amount: newPrice,
+            orderId: orderId,
+            orderName: `릴처 ${newPlan.toUpperCase()} 플랜 월 구독료`,
+          })
+        });
+
+        const paymentResult = await paymentResponse.json();
+
+        if (!paymentResponse.ok || paymentResult.status !== 'DONE') {
+          console.error('결제 실패:', paymentResult);
+          return NextResponse.json({
+            error: paymentResult.message || '결제 처리에 실패했습니다'
+          }, { status: 400 });
+        }
+
+        console.log('✅ 플랜 업그레이드 결제 성공:', paymentResult);
+
+        // 결제 성공 시 플랜 변경 및 크레딧 업데이트
+        const now = new Date();
+
+        // 구독 정보 업데이트
+        const { error: subscriptionUpdateError } = await supabaseAdmin
+          .from('subscriptions')
+          .update({
+            plan: newPlan,
+            updated_at: now.toISOString(),
+          })
+          .eq('user_id', user.id);
+
+        if (subscriptionUpdateError) {
+          console.error('구독 정보 업데이트 실패:', subscriptionUpdateError);
+          return NextResponse.json({ error: '구독 업데이트 중 오류가 발생했습니다' }, { status: 500 });
+        }
+
+        // 사용자 프로필의 플랜 업데이트
+        const { error: profileUpdateError } = await supabaseAdmin
+          .from('profiles')
+          .update({ plan: newPlan })
+          .eq('user_id', user.id);
+
+        if (profileUpdateError) {
+          console.error('프로필 업데이트 실패:', profileUpdateError);
+        }
+
+        // 크레딧 초기화 및 새 플랜 크레딧 지급
+        const { error: creditUpdateError } = await supabaseAdmin
+          .from('credits')
+          .update({
+            balance: newCredits,
+            monthly_grant: newCredits,
+            last_grant_at: now.toISOString(),
+            plan_updated_at: now.toISOString(),
+          })
+          .eq('user_id', user.id);
+
+        if (creditUpdateError) {
+          console.error('크레딧 업데이트 실패:', creditUpdateError);
+        }
+
+        // 결제 로그 기록
+        const { error: paymentLogError } = await supabaseAdmin
+          .from('billing_webhook_logs')
+          .insert({
+            event_type: 'PAYMENT',
+            payment_key: paymentResult.paymentKey,
+            order_id: orderId,
+            billing_key: subscription.billing_key,
+            customer_key: `user_${user.id}`,
+            status: 'DONE',
+            amount: newPrice,
+            payment_method: 'CARD',
+            raw_payload: paymentResult,
+            processed: true,
+            processed_at: now.toISOString(),
+          });
+
+        if (paymentLogError) {
+          console.error('결제 로그 기록 실패:', paymentLogError);
+        }
+
+        return NextResponse.json({
+          success: true,
+          message: `${newPlan.toUpperCase()} 플랜으로 성공적으로 변경되었습니다`,
+          newPlan,
+          newCredits,
+          paymentResult,
+        });
+
+      } catch (paymentError) {
+        console.error('토스 결제 요청 실패:', paymentError);
+        return NextResponse.json({ error: '결제 처리 중 오류가 발생했습니다' }, { status: 500 });
+      }
+    }
+
+    // 기존 즉시 변경 로직 (업그레이드 모드가 아닐 때)
+    if (!subscription.billing_key) {
+      return NextResponse.json({ error: '빌링키가 없습니다. 새로 구독해주세요.' }, { status: 400 });
+    }
+
     // 플랜 변경은 즉시 적용하고, 다음 결제일에 새 금액으로 결제
-    // (기존 결제는 환불하지 않고, 새 플랜의 이용 기간은 다음 결제일까지 유지)
     const orderId = `upgrade_${newPlan}_${user.id}_${Date.now()}`;
-    
+
     console.log(`플랜 변경: ${profile.plan} -> ${newPlan}, 다음 결제일부터 적용`);
     
     // 결제는 다음 주기에 이루어지므로 여기서는 결제 로그만 기록

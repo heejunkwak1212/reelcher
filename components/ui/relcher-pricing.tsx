@@ -61,13 +61,18 @@ export function RelcherPricing({
         
         // Admin 체크는 별도로 수행
         if (data.isLoggedIn) {
-          const supabase = supabaseBrowser();
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('role')
-            .eq('user_id', (await supabase.auth.getUser()).data.user?.id)
-            .single();
-          setIsAdmin(profile?.role === 'admin');
+          try {
+            const supabase = supabaseBrowser();
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('role')
+              .eq('user_id', (await supabase.auth.getUser()).data.user?.id)
+              .single();
+            setIsAdmin(profile?.role === 'admin');
+          } catch (adminError) {
+            console.warn('Admin 체크 실패:', adminError);
+            setIsAdmin(false);
+          }
         }
       } else {
         setIsLoggedIn(false);
@@ -118,7 +123,7 @@ export function RelcherPricing({
     }
 
     // 무료 플랜에서 유료 플랜으로 전환 시 토스 카드 등록창 호출
-    if (currentPlan === 'free' && selectedPlan !== 'free') {
+    if (currentPlan === 'free') {
       openToss(selectedPlan);
       return;
     }
@@ -166,36 +171,32 @@ export function RelcherPricing({
       setShowConfirmModal(false);
       window.location.href = '/dashboard/billing';
     } else if ((confirmAction === 'upgrade' || confirmAction === 'downgrade') && pendingPlan) {
-      // 업그레이드/다운그레이드 처리
+      // 업그레이드/다운그레이드 처리 - 결제 확인 페이지로 이동
       setShowConfirmModal(false);
 
+      // 유료 플랜에서 다른 유료 플랜으로 변경할 때는 결제 확인 페이지로 이동
       if (hasActiveSubscription) {
-        // 기존 구독이 있는 경우 - 빌링키 재사용하여 즉시 플랜 변경
+        // 사용자의 구독 정보를 조회하여 빌링키와 고객키를 가져옴
         try {
-          const response = await fetch('/api/subscriptions/upgrade', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              newPlan: pendingPlan,
-            }),
-          });
+          const subscriptionResponse = await fetch('/api/me/subscription-status');
+          if (subscriptionResponse.ok) {
+            const subscriptionData = await subscriptionResponse.json();
 
-          const result = await response.json();
-
-          if (response.ok) {
-            alert(`${pendingPlan.toUpperCase()} 플랜으로 성공적으로 변경되었습니다! ${result.newCredits} 크레딧이 지급되었어요.`);
-            window.location.reload();
+            if (subscriptionData.subscription?.billingKey && subscriptionData.subscription?.customerKey) {
+              // 결제 확인 페이지로 이동 (빌링키와 고객키 포함)
+              window.location.href = `/toss/payment/confirm?upgrade=true&plan=${pendingPlan}&billingKey=${subscriptionData.subscription.billingKey}&customerKey=${subscriptionData.subscription.customerKey}`;
+            } else {
+              throw new Error('빌링키 정보를 찾을 수 없습니다');
+            }
           } else {
-            throw new Error(result.error || '플랜 변경에 실패했습니다');
+            throw new Error('구독 정보를 가져올 수 없습니다');
           }
         } catch (error) {
-          console.error('플랜 변경 오류:', error);
-          alert(error instanceof Error ? error.message : '플랜 변경 중 오류가 발생했습니다');
+          console.error('구독 정보 조회 실패:', error);
+          alert('구독 정보를 확인하는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
         }
       } else {
-        // 구독이 없는 경우 - 새로 빌링키 생성 후 결제
+        // 구독이 없는 경우 - 새로 카드등록 후 결제
         openToss(pendingPlan);
       }
     }
@@ -324,6 +325,7 @@ export function RelcherPricing({
         "월 2,000 크레딧",
         "FREE 플랜의 모든 기능", // 기능 1 - PRD.MD 기준
         "최대 60개 검색 결과", // 기능 2
+        "자막 추출 기능",
       ],
       description: "소규모 비즈니스를 위한 완벽한 시작", // 설명
       buttonText: "STARTER 시작하기", // 버튼 텍스트

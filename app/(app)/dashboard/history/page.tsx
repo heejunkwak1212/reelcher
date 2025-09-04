@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabaseBrowser } from '@/lib/supabase/client'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -24,35 +24,35 @@ export default function HistoryPage() {
   const [loading, setLoading] = useState(true)
   const ITEMS_PER_PAGE = 30
   
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true)
       const supabase = supabaseBrowser()
       const { data: { user } } = await supabase.auth.getUser()
-      
+
       console.log('🔍 History - 사용자 정보:', user)
-      
+
       if (!user) {
         console.log('❌ History - 사용자 없음')
         return
       }
-      
+
       // 최근 30일 이내 이력 조회
       const thirtyDaysAgo = new Date()
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
-      
+
       console.log('📅 History - 조회 기간:', thirtyDaysAgo.toISOString(), '~', new Date().toISOString())
       console.log('👤 History - 사용자 ID:', user.id)
-      
+
       // 전체 개수 조회
       const { count, error: countError } = await supabase
         .from('search_history')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', user.id)
         .gte('created_at', thirtyDaysAgo.toISOString())
-      
+
       console.log('📊 History - 전체 개수 결과:', { count, countError })
-      
+
       // 페이지네이션된 데이터 조회
       const { data: searches, error: searchError } = await supabase
         .from('search_history')
@@ -61,9 +61,9 @@ export default function HistoryPage() {
         .gte('created_at', thirtyDaysAgo.toISOString())
         .order('created_at', { ascending: false })
         .range((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE - 1)
-      
+
       console.log('📋 History - 검색 결과:', { searches, searchError, length: searches?.length })
-      
+
       setSearches(searches || [])
       setTotalCount(count || 0)
     } catch (error) {
@@ -71,11 +71,11 @@ export default function HistoryPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [currentPage, ITEMS_PER_PAGE])
   
   useEffect(() => {
     fetchData()
-  }, [currentPage])
+  }, [fetchData, currentPage])
   
   const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE)
   

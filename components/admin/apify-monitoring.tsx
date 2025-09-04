@@ -1,7 +1,7 @@
 // components/admin/apify-monitoring.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -39,9 +39,9 @@ export default function ApifyMonitoring() {
     }
   }
 
-  const fetchData = async (showRefreshing = false) => {
+  const fetchData = useCallback(async (showRefreshing = false) => {
     if (showRefreshing) setRefreshing(true);
-    
+
     try {
       const [usageResponse, statsResponse] = await Promise.all([
         fetch('/api/admin/apify/usage'),
@@ -59,7 +59,7 @@ export default function ApifyMonitoring() {
       }
 
       setLastUpdated(new Date());
-      
+
       // ApifyMonitor 인스턴스 생성 (클라이언트 사이드에서는 토큰 없이)
       if (!apifyMonitor) {
         setApifyMonitor(new ApifyMonitor(''));
@@ -70,7 +70,7 @@ export default function ApifyMonitoring() {
       setLoading(false);
       if (showRefreshing) setRefreshing(false);
     }
-  };
+  }, [apifyMonitor]);
 
   // RAM 사용률 경고
   const getRAMWarning = () => {
@@ -89,11 +89,11 @@ export default function ApifyMonitoring() {
 
   useEffect(() => {
     fetchData();
-    
+
     // 실시간 모니터링을 위해 10초마다 자동 새로고침
     const interval = setInterval(() => fetchData(), 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchData]);
 
   const getUsageColor = (percentage: number) => {
     if (percentage >= 90) return 'text-red-600';

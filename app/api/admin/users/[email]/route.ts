@@ -25,11 +25,15 @@ export async function GET(
       return Response.json({ error: '사용자를 찾을 수 없습니다.' }, { status: 404 })
     }
 
-    // 사용자의 모든 검색 기록 조회
+    // 최근 3개월간의 검색 기록 조회
+    const threeMonthsAgo = new Date()
+    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3)
+    
     const { data: searchRecords, error: recordsError } = await supabase
       .from('search_history')
       .select('*')
       .eq('user_id', userProfile.user_id)
+      .gte('created_at', threeMonthsAgo.toISOString())
       .order('created_at', { ascending: false })
 
     if (recordsError) {
@@ -146,12 +150,13 @@ function calculateApifyCost(record: any): number {
   // 일반 검색 비용
   if (platform === 'instagram') {
     if (searchType === 'profile' || record.keyword?.startsWith('@')) {
-      return effectiveCount * 0.0026
+      return effectiveCount * 0.0023  // 프로필 검색: 1개 결과당 $0.0023
     } else {
-      return effectiveCount * 0.0076
+      // 키워드 검색 (3단계 실행: Hashtag + Scraper + Profile)
+      return effectiveCount * (0.002 + 0.0023 + 0.0023)  // 1개 결과당 $0.0066
     }
   } else if (platform === 'tiktok') {
-    return effectiveCount * 0.005
+    return effectiveCount * 0.003  // 1개 결과당 $0.003
   } else if (platform === 'youtube') {
     return 0
   }

@@ -1431,15 +1431,33 @@ function SearchTestPageContent() {
                     let actualCredits = 0
                     
                     if (platform === 'youtube') {
-                      if (requested === 10) {
-                        actualCredits = Math.round((returned / 10) * 30)
-                        reserved = 30
-                      } else if (requested === 30) {
-                        actualCredits = Math.round((returned / 30) * 50)
-                        reserved = 50
-                      } else if (requested === 50) {
-                        actualCredits = Math.round((returned / 50) * 70)
-                        reserved = 70
+                      if (searchType === 'keyword') {
+                        // YouTube 키워드 검색
+                        if (requested === 30) {
+                          actualCredits = Math.round((returned / 30) * 50)
+                          reserved = 50
+                        } else if (requested === 60) {
+                          actualCredits = Math.round((returned / 60) * 100)
+                          reserved = 100
+                        } else if (requested === 90) {
+                          actualCredits = Math.round((returned / 90) * 150)
+                          reserved = 150
+                        } else if (requested === 120) {
+                          actualCredits = Math.round((returned / 120) * 200)
+                          reserved = 200
+                        }
+                      } else {
+                        // YouTube URL 검색
+                        if (requested === 15) {
+                          actualCredits = Math.round((returned / 15) * 25)
+                          reserved = 25
+                        } else if (requested === 30) {
+                          actualCredits = Math.round((returned / 30) * 50)
+                          reserved = 50
+                        } else if (requested === 50) {
+                          actualCredits = Math.round((returned / 50) * 70)
+                          reserved = 70
+                        }
                       }
                     } else if (platform === 'tiktok') {
                       actualCredits = Math.round((returned / 30) * 100)
@@ -2692,7 +2710,7 @@ function SearchTestPageContent() {
                           <div class="bg-white rounded shadow-lg w-full max-w-md p-5">
                             <div class="text-base font-semibold mb-3">유사 영상 검색 안내</div>
                             <div class="text-sm text-neutral-700 space-y-2 mb-4">
-                              <p>• 유튜브 링크 기반 검색은 <strong>최대 50개 결과</strong>만 제공됩니다.</p>
+                              <p>• 유튜브 링크 기반 검색은 <strong>FREE 15개, STARTER 30개, PRO 이상 50개</strong>까지 제공됩니다.</p>
                               <p>• 일반 키워드 검색에 비해 <strong>API 사용량이 많습니다</strong>.</p>
                             </div>
                             <div class="flex items-center gap-2 mb-4">
@@ -3027,8 +3045,8 @@ function SearchTestPageContent() {
                         if (plan==='starter' && (v==='90'||v==='120')) { showUpgradeModal('STARTER 플랜은 60개까지만 가능합니다'); return }
                         if (plan==='pro' && v==='120') { showUpgradeModal('PRO 플랜은 90개까지만 가능합니다'); return }
                       } else {
-                        // YouTube URL: 15/30/50
-                        if (plan==='free' && (v==='30'||v==='50')) { showUpgradeModal('FREE 플랜은 15개만 가능합니다'); return }
+                        // YouTube URL: FREE → 15개, STARTER → 30개, PRO부터 → 50개
+                        if (plan==='free' && (v==='30'||v==='50')) { showUpgradeModal('FREE 플랜은 15개까지만 가능합니다'); return }
                         if (plan==='starter' && v==='50') { showUpgradeModal('STARTER 플랜은 30개까지만 가능합니다'); return }
                       }
                     } else if (platform === 'instagram' && searchType === 'keyword') {
@@ -3073,8 +3091,9 @@ function SearchTestPageContent() {
                         </>
                       ) : (
                         <>
-                            <SelectItem value="30">30개 (50크레딧)</SelectItem>
-                            <SelectItem value="50" disabled={plan==='free'}>50개 (70크레딧){plan==='free'?' 🔒':''}</SelectItem>
+                            <SelectItem value="15">15개 (25크레딧)</SelectItem>
+                            <SelectItem value="30" disabled={plan==='free'}>30개 (50크레딧){plan==='free'?' 🔒':''}</SelectItem>
+                            <SelectItem value="50" disabled={plan==='free'||plan==='starter'}>50개 (70크레딧){(plan==='free'||plan==='starter')?' 🔒':''}</SelectItem>
                         </>
                       )}
                     </>

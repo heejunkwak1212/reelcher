@@ -5,9 +5,30 @@ export const runtime = 'nodejs'
 
 export async function GET(req: Request) {
   try {
+    console.log('🔍 /api/me 엔드포인트 호출');
+    
     const ssr = await supabaseServer()
-    const { data: { user } } = await ssr.auth.getUser()
-    if (!user) return new Response('Unauthorized', { status: 401 })
+    console.log('✅ Supabase 서버 클라이언트 생성 완료');
+    
+    const { data: { user }, error: authError } = await ssr.auth.getUser()
+    
+    if (authError) {
+      console.error('🚫 인증 오류 발생:', authError);
+      return new Response(JSON.stringify({ error: '인증 실패', details: authError.message }), { 
+        status: 401, 
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    if (!user) {
+      console.error('🚫 사용자 정보 없음');
+      return new Response(JSON.stringify({ error: '로그인 필요' }), { 
+        status: 401, 
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    console.log('👤 인증된 사용자:', user.id);
     const svc = supabaseService()
     const { data: prof } = await svc.from('profiles').select('role, plan, display_name').eq('user_id', user.id).single()
     // Auto-upgrade admin to business plan
@@ -198,8 +219,30 @@ export async function GET(req: Request) {
     response.headers.set('Pragma', 'no-cache')
     response.headers.set('Expires', '0')
     return response
-  } catch {
-    return new Response('Bad Request', { status: 400 })
+  } catch (error) {
+    console.error('🚫 /api/me 전체 오류:', error);
+    
+    // 네트워크 타임아웃 에러 특별 처리
+    if (error instanceof Error && error.message.includes('fetch failed')) {
+      console.error('🌐 네트워크 연결 오류 - Supabase 연결 실패');
+      return new Response(JSON.stringify({ 
+        error: '네트워크 연결 오류', 
+        details: 'Supabase 서버와의 연결에 실패했습니다. 잠시 후 다시 시도해주세요.',
+        type: 'NETWORK_ERROR'
+      }), { 
+        status: 503, 
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    
+    return new Response(JSON.stringify({ 
+      error: '서버 오류', 
+      details: error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.',
+      type: 'SERVER_ERROR'
+    }), { 
+      status: 500, 
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 }
 

@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
     // 구독 정보 조회
     const { data: subscription, error: subscriptionError } = await supabase
       .from('subscriptions')
-      .select('status, plan, next_charge_at')
+      .select('status, plan, next_charge_at, billing_key, toss_customer_key')
       .eq('user_id', user.id)
       .single();
 
@@ -47,6 +47,13 @@ export async function GET(request: NextRequest) {
       hasActiveSubscription,
       subscriptionPlan: subscription?.plan || null,
       nextChargeAt: subscription?.next_charge_at || null,
+      subscription: subscription ? {
+        billingKey: subscription.billing_key,
+        customerKey: subscription.toss_customer_key,
+        status: subscription.status,
+        plan: subscription.plan,
+        nextChargeAt: subscription.next_charge_at,
+      } : null,
     });
 
   } catch (error) {

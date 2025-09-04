@@ -109,14 +109,14 @@ export default function AdminSearches() {
     if (platform === 'instagram') {
       // Instagram 검색 타입별 비용
       if (searchType === 'profile' || record.keyword?.startsWith('@')) {
-        return effectiveCount * 0.0026  // 프로필 검색: 1개 결과당 $0.0026
+        return effectiveCount * 0.0023  // 프로필 검색: 1개 결과당 $0.0023
       } else {
-        // 키워드 검색
-        return effectiveCount * 0.0076  // 키워드 검색: 1개 결과당 $0.0076
+        // 키워드 검색 (3단계 실행: Hashtag + Scraper + Profile)
+        return effectiveCount * (0.002 + 0.0023 + 0.0023)  // 1개 결과당 $0.0066
       }
     } else if (platform === 'tiktok') {
       // TikTok: 키워드/프로필 검색 모두 동일 비용
-      return effectiveCount * 0.005  // 1개 결과당 $0.005
+      return effectiveCount * 0.003  // 1개 결과당 $0.003
     } else if (platform === 'youtube') {
       // YouTube: Google API 무료
       return 0
@@ -707,25 +707,85 @@ export default function AdminSearches() {
                 </CardContent>
               </Card>
 
-              {/* 플랫폼별 사용 현황 */}
+              {/* 최근 3개월 검색 기록 상세 */}
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg">플랫폼별 사용 현황</CardTitle>
+                  <CardTitle className="text-lg">최근 3개월 검색 기록 상세</CardTitle>
+                  <div className="text-sm text-gray-500">
+                    날짜, 시간, 플랫폼, 키워드, 원가를 포함한 상세 기록
+                  </div>
                 </CardHeader>
                 <CardContent>
-                  <Tabs defaultValue="youtube" className="w-full">
-                    <TabsList className="grid w-full grid-cols-3">
+                  <Tabs defaultValue="all" className="w-full">
+                    <TabsList className="grid w-full grid-cols-4">
+                      <TabsTrigger value="all">전체</TabsTrigger>
                       <TabsTrigger value="youtube">YouTube</TabsTrigger>
                       <TabsTrigger value="instagram">Instagram</TabsTrigger>
                       <TabsTrigger value="tiktok">TikTok</TabsTrigger>
                     </TabsList>
+                    
+                    <TabsContent value="all">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>날짜/시간</TableHead>
+                            <TableHead>플랫폼</TableHead>
+                            <TableHead>유형</TableHead>
+                            <TableHead>키워드</TableHead>
+                            <TableHead>요청수</TableHead>
+                            <TableHead>결과수</TableHead>
+                            <TableHead>크레딧</TableHead>
+                            <TableHead>원가</TableHead>
+                            <TableHead>상태</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {(() => {
+                            // 모든 플랫폼의 기록을 합쳐서 날짜순으로 정렬
+                            const allRecords = [
+                              ...(userDetailData.platformRecords?.youtube || []),
+                              ...(userDetailData.platformRecords?.instagram || []),
+                              ...(userDetailData.platformRecords?.tiktok || [])
+                            ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                            
+                            return allRecords.map((record: any) => (
+                              <TableRow key={record.id}>
+                                <TableCell className="font-mono text-sm">
+                                  <div>{format(new Date(record.created_at), 'MM/dd')}</div>
+                                  <div className="text-xs text-gray-500">
+                                    {format(new Date(record.created_at), 'HH:mm')}
+                                  </div>
+                                </TableCell>
+                                <TableCell>{getPlatformBadge(record.platform)}</TableCell>
+                                <TableCell>
+                                  <Badge variant="outline">
+                                    {record.search_type === 'subtitle_extraction' ? '자막' : '검색'}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="max-w-[150px] truncate">{record.keyword || '-'}</TableCell>
+                                <TableCell>{record.requested_count || '-'}</TableCell>
+                                <TableCell>{record.results_count || '-'}</TableCell>
+                                <TableCell>{record.credits_used || '-'}</TableCell>
+                                <TableCell className="text-red-600 font-mono text-xs">
+                                  {record.platform === 'youtube' && record.search_type !== 'subtitle_extraction' 
+                                    ? '₩0 (무료)' 
+                                    : formatKRW(calculateApifyCost(record) * 1340)
+                                  }
+                                </TableCell>
+                                <TableCell>{getStatusBadge(record.status)}</TableCell>
+                              </TableRow>
+                            ))
+                          })()}
+                        </TableBody>
+                      </Table>
+                    </TabsContent>
                     
                     {['youtube', 'instagram', 'tiktok'].map(platform => (
                       <TabsContent key={platform} value={platform}>
                         <Table>
                           <TableHeader>
                             <TableRow>
-                              <TableHead>날짜</TableHead>
+                              <TableHead>날짜/시간</TableHead>
                               <TableHead>유형</TableHead>
                               <TableHead>키워드</TableHead>
                               <TableHead>요청수</TableHead>
@@ -738,7 +798,12 @@ export default function AdminSearches() {
                           <TableBody>
                             {userDetailData.platformRecords?.[platform]?.map((record: any) => (
                               <TableRow key={record.id}>
-                                <TableCell>{formatDateTime(record.created_at)}</TableCell>
+                                <TableCell className="font-mono text-sm">
+                                  <div>{format(new Date(record.created_at), 'MM/dd')}</div>
+                                  <div className="text-xs text-gray-500">
+                                    {format(new Date(record.created_at), 'HH:mm')}
+                                  </div>
+                                </TableCell>
                                 <TableCell>
                                   <Badge variant="outline">
                                     {record.search_type === 'subtitle_extraction' ? '자막' : '검색'}
@@ -748,9 +813,12 @@ export default function AdminSearches() {
                                 <TableCell>{record.requested_count || '-'}</TableCell>
                                 <TableCell>{record.results_count || '-'}</TableCell>
                                 <TableCell>{record.credits_used || '-'}</TableCell>
-                                                  <TableCell className="text-gray-700 font-mono text-xs">
-                    {formatKRW(calculateApifyCost(record) * 1340)}
-                  </TableCell>
+                                <TableCell className="text-red-600 font-mono text-xs">
+                                  {platform === 'youtube' && record.search_type !== 'subtitle_extraction' 
+                                    ? '₩0 (무료)' 
+                                    : formatKRW(calculateApifyCost(record) * 1340)
+                                  }
+                                </TableCell>
                                 <TableCell>{getStatusBadge(record.status)}</TableCell>
                               </TableRow>
                             )) || []}

@@ -1,13 +1,16 @@
 "use client"
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { supabaseBrowser } from '@/lib/supabase/client'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { BarChart, Bar, XAxis, YAxis } from 'recharts'
+import { toast } from 'sonner'
 
 export default function DashboardPage() {
+  const searchParams = useSearchParams()
   const [credit, setCredit] = useState<number | null>(null)
   const [recent, setRecent] = useState<number | null>(null)
   const [searches, setSearches] = useState<any[]>([])
@@ -60,7 +63,7 @@ export default function DashboardPage() {
 
         // 2. 기간별 검색 횟수와 크레딧 사용량을 분리하여 조회
         // 검색 횟수: 자막 추출 제외, 크레딧 사용량: 자막 추출 포함
-        const [search7d, search14d, search30d, credit7d, credit14d, credit30d] = await Promise.all([
+        const queries = [
           // 검색 횟수 (자막 추출 제외)
           supabase
             .from('search_history')
@@ -69,7 +72,7 @@ export default function DashboardPage() {
             .gt('credits_used', 0)
             .neq('search_type', 'subtitle_extraction')
             .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
-          
+
           supabase
             .from('search_history')
             .select('credits_used, status, search_type')
@@ -77,7 +80,7 @@ export default function DashboardPage() {
             .gt('credits_used', 0)
             .neq('search_type', 'subtitle_extraction')
             .gte('created_at', new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()),
-          
+
           supabase
             .from('search_history')
             .select('credits_used, status, search_type')
@@ -85,7 +88,7 @@ export default function DashboardPage() {
             .gt('credits_used', 0)
             .neq('search_type', 'subtitle_extraction')
             .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()),
-            
+
           // 크레딧 사용량 (자막 추출 포함)
           supabase
             .from('search_history')
@@ -106,22 +109,28 @@ export default function DashboardPage() {
             .select('credits_used')
             .eq('user_id', user.id)
             .gt('credits_used', 0)
-            .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
-        ])
+            .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()),
+        ];
+
+        // Promise.allSettled를 사용해서 하나가 실패해도 다른 쿼리들은 실행되도록 함
+        const results = await Promise.allSettled(queries)
+        const [search7d, search14d, search30d, credit7d, credit14d, credit30d] = results.map(result =>
+          result.status === 'fulfilled' ? result.value : { data: null, error: result.reason }
+        )
 
         // 크레딧 사용량 계산 (자막 추출 포함)
-        const usage7dTotal = credit7d.data?.reduce((sum, record) => sum + (record.credits_used || 0), 0) || 0
-        const usage14dTotal = credit14d.data?.reduce((sum, record) => sum + (record.credits_used || 0), 0) || 0
-        const usage30dTotal = credit30d.data?.reduce((sum, record) => sum + (record.credits_used || 0), 0) || 0
+        const usage7dTotal = credit7d?.data?.reduce((sum, record) => sum + (record.credits_used || 0), 0) || 0
+        const usage14dTotal = credit14d?.data?.reduce((sum, record) => sum + (record.credits_used || 0), 0) || 0
+        const usage30dTotal = credit30d?.data?.reduce((sum, record) => sum + (record.credits_used || 0), 0) || 0
 
         setSevenDayUsage(usage7dTotal)
         setFourteenDayUsage(usage14dTotal)
         setThirtyDayUsage(usage30dTotal)
 
         // 검색 횟수 계산 (자막 추출 제외)
-        const search7dCount = search7d.data?.length || 0
-        const search14dCount = search14d.data?.length || 0
-        const search30dCount = search30d.data?.length || 0
+        const search7dCount = search7d?.data?.length || 0
+        const search14dCount = search14d?.data?.length || 0
+        const search30dCount = search30d?.data?.length || 0
 
         setSevenDaySearchCount(search7dCount)
         setFourteenDaySearchCount(search14dCount)
@@ -206,7 +215,11 @@ export default function DashboardPage() {
         setRecent(monthlySearches?.length || 0)
 
       } catch (error) {
-        console.error('❌ 대시보드 전체 로딩 오류:', error)
+        console.error('❌ 대시보드 전체 로딩 오류:', {
+          error,
+          message: error instanceof Error ? error.message : 'Unknown error',
+          stack: error instanceof Error ? error.stack : undefined
+        })
         // 에러 발생 시 기본값 설정
         setCredit(0)
         setSevenDayUsage(0)
@@ -228,6 +241,33 @@ export default function DashboardPage() {
     // 초기 로드
     loadDashboardData()
 
+    // 결제 성공 시 토스트 메시지 표시
+    const subscription = searchParams.get('subscription')
+    const plan = searchParams.get('plan')
+    const action = searchParams.get('action')
+
+    if (subscription === 'success' && plan && action) {
+      const planNames = {
+        starter: 'STARTER',
+        pro: 'PRO',
+        business: 'BUSINESS'
+      }
+
+      const planName = planNames[plan as keyof typeof planNames] || plan.toUpperCase()
+
+      if (action === 'subscribe') {
+        toast.success(`🎉 ${planName} 플랜으로 바로 이용이 가능해요!`, {
+          duration: 5000,
+          description: '이제 모든 기능을 자유롭게 사용해보세요.'
+        })
+      } else if (action === 'upgrade') {
+        toast.success(`🎉 ${planName} 플랜으로 업그레이드 완료!`, {
+          duration: 5000,
+          description: '새로운 플랜의 모든 혜택을 누려보세요.'
+        })
+      }
+    }
+
     // 🔄 실시간 업데이트를 위한 윈도우 포커스 이벤트 리스너
     const handleFocus = () => {
       console.log('🔄 대시보드 포커스 이벤트 - 데이터 새로고침')
@@ -236,7 +276,7 @@ export default function DashboardPage() {
 
     const handleVisibilityChange = () => {
       if (!document.hidden) {
-        console.log('🔄 대시보드 가시성 변경 - 데이터 새로고침') 
+        console.log('🔄 대시보드 가시성 변경 - 데이터 새로고침')
         loadDashboardData()
       }
     }
@@ -257,7 +297,7 @@ export default function DashboardPage() {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       clearInterval(intervalId)
     }
-  }, [])
+  }, [searchParams])
 
   return (
     <div className="min-h-screen bg-gray-50">

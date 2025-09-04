@@ -9,6 +9,31 @@ import SupabaseProvider from '@/components/providers/SupabaseProvider'
 import { RelcherDialogProvider } from '@/components/ui/relcher-dialog'
 import { supabaseServer } from '@/lib/supabase/server'
 
+// 전역 에러 핸들링
+if (typeof window !== 'undefined') {
+  // Unhandled Promise Rejection 핸들링
+  window.addEventListener('unhandledrejection', (event) => {
+    console.error('🚨 Unhandled Promise Rejection:', event.reason, event.promise);
+    // 기본 브라우저 경고 방지
+    event.preventDefault();
+  });
+
+  // Uncaught Error 핸들링
+  window.addEventListener('error', (event) => {
+    console.error('🚨 Uncaught Error:', event.error, event.message, event.filename, event.lineno);
+  });
+
+  // React Error Boundary에서 잡히지 않는 에러들을 위한 추가 핸들링
+  const originalConsoleError = console.error;
+  console.error = (...args) => {
+    // Promise rejection 관련 에러들을 필터링
+    if (args.some(arg => typeof arg === 'string' && arg.includes('Unhandled promise rejection'))) {
+      console.warn('🎯 Promise rejection detected:', args);
+    }
+    originalConsoleError.apply(console, args);
+  };
+}
+
 // Ensure this layout renders on the Node runtime to avoid edge manifest issues
 export const runtime = 'nodejs'
 
