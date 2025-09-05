@@ -23,7 +23,7 @@ export function FeaturesSectionWithHoverEffects() {
     },
     {
       title: "인스타그램 · 틱톡",
-      description: "키워드와 관련된 영상을 리스트업하거나 원하는 계정을 검색해 해당 계정의 터진 콘텐츠와 주요 지표를 한 눈에 확인하고 대본까지 추출할 수 있어요.",
+      description: "키워드와 관련된 영상을 리스트업하거나 원하는 계정을 검색해 해당 계정의 터진 콘텐츠와 주요 지표를 한 눈에 확인하고 자막까지 추출할 수 있어요.",
       icon: (
         <div className="flex items-center gap-1">
           <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">

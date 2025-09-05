@@ -88,20 +88,23 @@ export default async function Home() {
       <RelcherHero user={user} />
       
       {/* Dashboard Screenshot Section */}
-      <section className="relative max-w-7xl mx-auto px-6 pt-4 pb-16 -mt-16">
+      <section className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-16 -mt-16">
         <Reveal>
-          <div className="relative overflow-hidden rounded-2xl shadow-2xl">
-            <Image
-              src="/dashboard-screenshot.png"
-              alt="Reelcher Dashboard"
-              width={1400}
-              height={800}
-              className="w-full h-auto object-cover"
-              priority
-            />
-            {/* Gradient fade effect at bottom */}
-            <div className="absolute bottom-0 left-0 right-0 h-48 bg-gradient-to-t from-white via-white/90 to-transparent" />
-            <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-white to-transparent" />
+          <div className="relative overflow-hidden rounded-xl sm:rounded-2xl shadow-[0_25px_50px_-12px_rgba(0,0,0,0.25),0_0_0_1px_rgba(0,0,0,0.05)] bg-white">
+            <div className="relative w-full">
+              <Image
+                src="/dash.png"
+                alt="릴처 대시보드 - 릴스 검색 사이트 화면"
+                width={1400}
+                height={800}
+                className="w-full h-auto"
+                priority
+                sizes="(max-width: 640px) 100vw, (max-width: 1024px) 90vw, (max-width: 1280px) 85vw, 1400px"
+              />
+            </div>
+            {/* Bottom gradient fade effect only - 하단 음영만 유지 */}
+            <div className="absolute bottom-0 left-0 right-0 h-24 xs:h-32 sm:h-40 md:h-48 bg-gradient-to-t from-white via-white/95 to-transparent pointer-events-none" />
+            <div className="absolute bottom-0 left-0 right-0 h-12 xs:h-16 sm:h-20 md:h-24 bg-gradient-to-t from-white to-transparent pointer-events-none" />
           </div>
         </Reveal>
       </section>

@@ -12,9 +12,10 @@ interface RelcherDialogProps {
   message: string
   type: 'alert' | 'confirm'
   onConfirm?: () => void
+  onCancel?: () => void
 }
 
-export function RelcherDialog({ isOpen, onClose, title, message, type, onConfirm }: RelcherDialogProps) {
+export function RelcherDialog({ isOpen, onClose, title, message, type, onConfirm, onCancel }: RelcherDialogProps) {
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
@@ -29,6 +30,7 @@ export function RelcherDialog({ isOpen, onClose, title, message, type, onConfirm
   }
 
   const handleCancel = () => {
+    onCancel?.()
     onClose()
   }
 
@@ -127,7 +129,13 @@ export function RelcherDialogProvider({ children }: { children: React.ReactNode 
       <RelcherDialog
         {...config}
         isOpen={isOpen}
-        onClose={() => setIsOpen(false)}
+        onClose={() => {
+          // 다이얼로그가 닫힐 때 onCancel 호출 (ESC, 외부 클릭 등)
+          if (config.onCancel) {
+            config.onCancel()
+          }
+          setIsOpen(false)
+        }}
       />
     </>
   )
@@ -154,25 +162,39 @@ export const relcherAlert = (message: string, title?: string): Promise<void> => 
 
 export const relcherConfirm = (message: string, title?: string): Promise<boolean> => {
   return new Promise((resolve) => {
+    console.log('🔔 relcherConfirm 시작:', message)
+    
     if (currentDialog) {
+      let isResolved = false
+      
+      const handleConfirm = () => {
+        console.log('✅ handleConfirm 호출됨')
+        if (!isResolved) {
+          isResolved = true
+          resolve(true)
+        }
+      }
+      
+      const handleCancel = () => {
+        console.log('❌ handleCancel 호출됨')
+        if (!isResolved) {
+          isResolved = true
+          resolve(false)
+        }
+      }
+      
       currentDialog.setConfig({
         message,
         title,
         type: 'confirm',
-        onConfirm: () => resolve(true)
+        onConfirm: handleConfirm,
+        onCancel: handleCancel
       })
-      currentDialog.setIsOpen(true)
       
-      // 취소 시 false 반환을 위한 타이머 설정
-      const checkClosed = setInterval(() => {
-        const dialogElement = document.querySelector('[role="dialog"]')
-        if (!dialogElement) {
-          clearInterval(checkClosed)
-          resolve(false)
-        }
-      }, 100)
+      console.log('🚀 다이얼로그 열기')
+      currentDialog.setIsOpen(true)
     } else {
-      // fallback to browser confirm
+      console.log('⚠️ currentDialog가 없음, 기본 confirm 사용')
       resolve(confirm(message))
     }
   })

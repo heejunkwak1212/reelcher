@@ -671,10 +671,14 @@ function SearchTestPageContent() {
   const [savedApiKeys, setSavedApiKeys] = useState<Array<{
     id: string
     platform: string
-    api_key: string
-    key_name?: string
-    is_active: boolean
-    created_at: string
+    apiKey: string
+    keyName?: string
+    isActive: boolean
+    validationStatus?: string
+    validationErrorMessage?: string
+    lastValidatedAt?: string
+    createdAt?: string
+    updatedAt?: string
   }>>([])
   const [newApiKey, setNewApiKey] = useState<string>('')
   const [newApiKeyName, setNewApiKeyName] = useState<string>('')
@@ -844,9 +848,9 @@ function SearchTestPageContent() {
         setSavedApiKeys(apiKeys || [])
         
         // 활성화된 키가 있으면 자동으로 설정
-        const activeKey = apiKeys?.find((key: any) => key.is_active)
+        const activeKey = apiKeys?.find((key: any) => key.isActive)
         if (activeKey) {
-          setYoutubeApiKey(activeKey.api_key)
+          setYoutubeApiKey(activeKey.apiKey)
         }
       }
     } catch (error) {
@@ -862,7 +866,7 @@ function SearchTestPageContent() {
     }
     
     const trimmedKey = newApiKey.trim()
-    if (savedApiKeys.some(key => key.api_key === trimmedKey)) {
+    if (savedApiKeys.some(key => key.apiKey === trimmedKey)) {
       toast.error('이미 저장된 API 키입니다.')
       return
     }
@@ -895,24 +899,51 @@ function SearchTestPageContent() {
   }
 
   const deleteApiKey = async (keyId: string) => {
+    console.log('🗑️ deleteApiKey 시작:', keyId)
+    
+    // 전역 에러 체크
+    window.addEventListener('error', (e) => {
+      console.error('🚨 전역 에러:', e.error)
+    })
+    
+    // 커스텀 확인 다이얼로그 사용
+    const confirmed = await relcherConfirm(
+      '이 API 키를 삭제하면 복구할 수 없습니다.',
+      '정말 삭제하시겠어요?'
+    )
+    
+    console.log('✅ 확인 결과:', confirmed)
+    
+    if (!confirmed) {
+      console.log('❌ 사용자가 취소함')
+      return
+    }
+
+    console.log('🚀 DELETE 요청 시작')
     try {
       const response = await fetch('/api/user-api-keys', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: keyId })
       })
+
+      console.log('📥 DELETE 응답:', response.status, response.statusText)
       
       const result = await response.json()
+      console.log('📄 응답 데이터:', result)
+      
       if (response.ok) {
+        console.log('✅ 삭제 성공!')
         toast.success(result.message)
         await loadApiKeys() // 목록 새로고침
-        
+
         // 삭제된 키가 현재 사용중이었다면 초기화
         const deletedKey = savedApiKeys.find(key => key.id === keyId)
-        if (deletedKey && youtubeApiKey === deletedKey.api_key) {
+        if (deletedKey && youtubeApiKey === deletedKey.apiKey) {
           setYoutubeApiKey('')
         }
       } else {
+        console.log('❌ 삭제 실패:', result.error)
         toast.error(result.error || 'API 키 삭제에 실패했습니다.')
       }
     } catch (error) {
@@ -921,7 +952,7 @@ function SearchTestPageContent() {
     }
   }
 
-  const useApiKey = async (keyData: { id: string; api_key: string }) => {
+  const useApiKey = async (keyData: { id: string; apiKey: string }) => {
     try {
       // 해당 키를 활성화
       const response = await fetch('/api/user-api-keys', {
@@ -934,15 +965,18 @@ function SearchTestPageContent() {
       })
       
       if (response.ok) {
-        setYoutubeApiKey(keyData.api_key)
-    setSavedApiKeysOpen(false)
-        await loadApiKeys() // 활성 상태 업데이트
+        setYoutubeApiKey(keyData.apiKey)
+        await loadApiKeys() // 활성 상태 업데이트를 먼저 완료
+        setSavedApiKeysOpen(false) // 그 다음 모달 닫기
+        toast.success('API 키가 적용되었습니다')
+      } else {
+        toast.error('API 키 활성화에 실패했습니다')
       }
     } catch (error) {
       console.error('API 키 활성화 오류:', error)
+      toast.error('API 키 활성화 중 오류가 발생했습니다')
       // 오류가 발생해도 UI에서는 일단 사용
-      setYoutubeApiKey(keyData.api_key)
-      setSavedApiKeysOpen(false)
+      setYoutubeApiKey(keyData.apiKey)
     }
   }
 
@@ -3769,52 +3803,80 @@ function SearchTestPageContent() {
             </div>
 
             {/* 저장된 키 목록 */}
-            <div className="space-y-2">
-              <div className="text-sm font-medium text-gray-700">저장된 API 키들</div>
-              {savedApiKeys.length === 0 ? (
-                <div className="text-sm text-gray-500 text-center py-4">저장된 API 키가 없습니다</div>
-              ) : (
-                savedApiKeys.map((keyData) => (
-                  <div key={keyData.id} className={`flex items-center gap-3 p-3 border rounded ${
-                    keyData.is_active ? 'border-green-400 bg-green-50' : 'border-gray-200 bg-white'
-                  }`}>
-                    <div className="flex-1">
-                      <div className="text-sm font-medium text-gray-900">
-                        {keyData.key_name || '이름 없음'}
-                        {keyData.is_active && <span className="ml-2 text-xs text-green-600 font-medium">(현재 사용중)</span>}
-                    </div>
-                      <div className="text-xs font-mono text-gray-500">
-                        {keyData.api_key.length > 30 ? `${keyData.api_key.substring(0, 30)}...` : keyData.api_key}
+            <div className="space-y-3">
+              <div className="text-sm font-medium text-gray-800">저장된 API 키들</div>
+                          {savedApiKeys.length === 0 ? (
+              <div className="text-sm text-gray-500 text-center py-6 bg-gray-50 rounded-lg border border-gray-200">저장된 API 키가 없습니다</div>
+            ) : (
+              savedApiKeys.map((keyData) => {
+                  // 실제 입력란에 있는 키와 비교 (현재 사용중인지 확인)
+                  const isCurrentlyInUse = youtubeApiKey === keyData.apiKey;
+                  
+                  return (
+                    <div key={keyData.id} className={`flex items-center gap-3 p-4 border rounded-lg shadow-sm transition-all duration-200 ${
+                      isCurrentlyInUse
+                        ? 'border-gray-400 bg-gray-100 shadow-md'
+                        : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm'
+                    }`}>
+                      <div className="flex-1">
+                        <div className="text-sm font-medium text-gray-900 mb-2">
+                          {keyData.keyName || '이름 없음'}
+                          {isCurrentlyInUse && (
+                            <span className="ml-2 px-2 py-0.5 text-xs bg-gray-700 text-white rounded-full font-medium">
+                              현재 사용중
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs font-mono text-gray-600 mb-2 bg-gray-100 px-2 py-1 rounded inline-block">
+                          {keyData.apiKey.length > 30 ? `${keyData.apiKey.substring(0, 30)}...` : keyData.apiKey}
+                        </div>
+                        <div className="text-xs text-gray-500 mb-2">
+                          생성일: {keyData.createdAt ? new Date(keyData.createdAt).toLocaleDateString('ko-KR') : ''}
+                        </div>
+                        {keyData.validationStatus && keyData.validationStatus !== 'pending' && (
+                          <div className={`text-xs font-medium inline-block ${
+                            keyData.validationStatus === 'valid'
+                              ? 'text-gray-700'
+                              : keyData.validationStatus === 'quota_exceeded'
+                              ? 'text-gray-600'
+                              : 'text-gray-600'
+                          }`}>
+                            {keyData.validationStatus === 'valid' ? <span><span className="text-green-600">✓</span> 유효함</span> :
+                             keyData.validationStatus === 'quota_exceeded' ? '⚠️ 할당량 초과' :
+                             keyData.validationStatus === 'invalid' ? '❌ 유효하지 않음' :
+                             keyData.validationStatus === 'network_error' ? '🌐 네트워크 오류' : '❓ 알 수 없음'}
+                          </div>
+                        )}
                       </div>
-                      <div className="text-xs text-gray-400">
-                        {new Date(keyData.created_at).toLocaleDateString('ko-KR')}
+                      <div className="flex gap-2">
+                        {!isCurrentlyInUse && (
+                          <button
+                            className="px-3 py-1.5 text-xs bg-black text-white rounded-md hover:bg-gray-800 transition-colors duration-200 font-medium"
+                            onClick={() => useApiKey(keyData)}
+                          >
+                            사용
+                          </button>
+                        )}
+                        <button
+                          className="px-3 py-1.5 text-xs bg-white text-black border border-gray-300 rounded-md hover:bg-gray-50 transition-colors duration-200 font-medium"
+                          onClick={() => {
+                            console.log('🔥 삭제 버튼 클릭됨!', keyData.id)
+                            deleteApiKey(keyData.id)
+                          }}
+                        >
+                          삭제
+                        </button>
                       </div>
                     </div>
-                    <div className="flex gap-2">
-                      {!keyData.is_active && (
-                    <button 
-                      className="px-2 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
-                          onClick={() => useApiKey(keyData)}
-                    >
-                      사용
-                    </button>
-                      )}
-                    <button 
-                      className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
-                        onClick={() => deleteApiKey(keyData.id)}
-                    >
-                      삭제
-                    </button>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
 
             <div className="mt-4 text-xs text-gray-500">
               • 선택한 API 키를 복사하거나 삭제할 수 있습니다.<br/>
               • '사용' 버튼을 누르면 메인 화면의 API 키 입력란에 자동으로 입력됩니다.<br/>
-              • 저장된 키는 브라우저에만 저장되며 외부로 전송되지 않습니다.
+              • 입력된 키는 암호화 후 저장되며, 운영진에게 공개되지 않습니다.
             </div>
           </div>
         </div>

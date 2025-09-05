@@ -41,6 +41,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '이미 취소된 구독입니다' }, { status: 400 });
     }
 
+    // 프로필 정보 조회
+    const { data: userProfile, error: userProfileError } = await supabase
+      .from('profiles')
+      .select('plan, created_at, display_name, phone_number, email')
+      .eq('user_id', user.id)
+      .single();
+
+    if (userProfileError || !userProfile) {
+      return NextResponse.json({ error: '사용자 정보를 찾을 수 없습니다' }, { status: 404 });
+    }
+
     // 새로운 환불 조건 분기 로직 사용
     const refundEligibility = await checkRefundEligibility(user.id);
     const isEligibleForRefund = refundEligibility.eligible;
@@ -249,13 +260,28 @@ export async function POST(request: NextRequest) {
         console.error('프로필 업데이트 실패:', profileUpdateError);
       }
 
-      // 크레딧도 무료 플랜 기본값으로 리셋
+      // 크레딧을 무료 플랜 기본값으로 리셋 (가입일 기준 30일 주기로 설정)
+      const signupDate = new Date(userProfile?.created_at || new Date());
+      const currentDate = new Date();
+      
+      // 가입일 기준으로 현재 주기 계산
+      let currentCycle = new Date(signupDate);
+      while (currentCycle <= currentDate) {
+        currentCycle.setDate(currentCycle.getDate() + 30);
+      }
+      
+      // 현재 주기 시작일과 다음 재지급일 계산
+      const cycleStartDate = new Date(currentCycle.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const nextGrantDate = currentCycle;
+      
       const { error: creditUpdateError } = await supabaseAdmin
         .from('credits')
         .update({ 
           balance: 250, 
           monthly_grant: 250,
-          last_grant_at: new Date().toISOString()
+          last_grant_at: new Date().toISOString(),
+          cycle_start_date: cycleStartDate.toISOString().split('T')[0], // YYYY-MM-DD 형식
+          next_grant_date: nextGrantDate.toISOString().split('T')[0] // YYYY-MM-DD 형식
         })
         .eq('user_id', user.id);
 
@@ -264,12 +290,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 사용자 프로필 정보 조회 (로그용)
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('display_name, phone_number, email, created_at, plan')
-      .eq('user_id', user.id)
-      .single();
+    // 사용자 프로필 정보는 이미 위에서 조회됨 (userProfile)
 
     // 크레딧 정보 조회 (로그용)
     const { data: credits, error: creditsError } = await supabase
@@ -295,7 +316,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 구독 취소 로그 생성 (기존 로직 유지)
-    if (profile) {
+    if (userProfile) {
       const { error: logError } = await supabaseAdmin
         .from('cancellation_logs')
         .insert({
@@ -307,10 +328,10 @@ export async function POST(request: NextRequest) {
           refund_eligible: isEligibleForRefund,
           refund_amount: refundEligibility.amount || 0,
           refund_processed: isEligibleForRefund && refundResult !== null,
-          signup_date: profile.created_at,
-          user_display_name: profile.display_name,
-          user_phone_number: profile.phone_number,
-          user_email: profile.email,
+          signup_date: userProfile.created_at,
+          user_display_name: userProfile.display_name,
+          user_phone_number: userProfile.phone_number,
+          user_email: userProfile.email,
         });
 
       if (logError) {

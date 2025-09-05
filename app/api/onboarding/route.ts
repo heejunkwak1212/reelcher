@@ -58,10 +58,18 @@ export async function POST(req: Request) {
       return Response.json({ error: 'Profile creation failed' }, { status: 500 })
     }
 
-    // 크레딧 초기화 (이전 탈퇴 기록이 있으면 해당 잔액으로 설정)
-    const today = new Date()
-    const cycleStartDate = today.toISOString().split('T')[0] // YYYY-MM-DD
-    const nextGrantDate = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    // 크레딧 초기화 (가입일 기준 30일 주기로 설정)
+    const signupDate = new Date(user.created_at)
+    const currentDate = new Date()
+    
+    // 가입일 기준으로 현재 주기 계산
+    let currentCycle = new Date(signupDate)
+    while (currentCycle <= currentDate) {
+      currentCycle.setDate(currentCycle.getDate() + 30)
+    }
+    
+    const cycleStartDate = new Date(currentCycle.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    const nextGrantDate = currentCycle.toISOString().split('T')[0]
     
     // 이전 탈퇴 기록이 있으면 해당 잔액으로, 없으면 250 크레딧으로 시작
     const initialBalance = previousCreditBalance > 0 ? previousCreditBalance : 250
@@ -73,7 +81,7 @@ export async function POST(req: Request) {
         balance: initialBalance,
         reserved: 0,
         monthly_grant: 250,
-        last_grant_at: today.toISOString(),
+        last_grant_at: new Date().toISOString(),
         cycle_start_date: cycleStartDate,
         next_grant_date: nextGrantDate
       }, {

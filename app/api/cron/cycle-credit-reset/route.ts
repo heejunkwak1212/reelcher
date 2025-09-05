@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
         const subscriptionStartDate = profiles?.subscription_start_date
         const lastPaymentDate = profiles?.last_payment_date
 
-        // 4. 새로운 크레딧 양 결정 (플랜별)
+        // 4. 새로운 크레딧 양 결정 (플랜별) - PLAN_CREDITS와 일치시킴
         let newCreditAmount = 0
         switch (plan) {
           case 'free':
@@ -72,10 +72,10 @@ export async function POST(request: NextRequest) {
             newCreditAmount = 2000
             break
           case 'pro':
-            newCreditAmount = 5000
+            newCreditAmount = 7000  // 수정: 5000 → 7000
             break
-          case 'premium':
-            newCreditAmount = 10000
+          case 'business':  // 수정: premium → business
+            newCreditAmount = 20000  // 수정: 10000 → 20000
             break
           default:
             newCreditAmount = 250 // 기본값
