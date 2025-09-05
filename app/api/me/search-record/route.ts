@@ -11,13 +11,13 @@ const createRecordSchema = z.object({
   keyword: z.string().min(1),
   expected_credits: z.number().int().min(0),
   requested_count: z.number().int().min(0).optional(), // 요청한 검색 결과 수
-  status: z.enum(['pending', 'completed', 'failed', 'cancelled']).default('pending')
+  status: z.enum(['pending', 'processing', 'completed', 'failed', 'cancelled']).default('pending')
 })
 
 // 검색 기록 업데이트 스키마
 const updateRecordSchema = z.object({
   id: z.string().uuid(),
-  status: z.enum(['pending', 'completed', 'failed', 'cancelled']),
+  status: z.enum(['pending', 'processing', 'completed', 'failed', 'cancelled']),
   results_count: z.number().int().min(0).optional(),
   actual_credits: z.number().int().min(0).optional(),
   refund_amount: z.number().int().min(0).optional(),

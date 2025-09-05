@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
     console.log(`📅 12개월 전: ${twelveMonthsAgo.toISOString()}`)
 
     // 해당 사용자의 결제 내역 조회 (최근 12개월)
-    // 1. 실제 결제 이벤트 조회 (PAYMENT + payment_key가 있는 것만)
+    // 1. 실제 결제 이벤트 조회 (PAYMENT + DONE 상태인 것만)
     console.log(`🔍 실제 결제 이벤트 조회: customer_key=user_${user.id}`)
     const { data: paymentEvents, error: paymentError1 } = await supabase
       .from('billing_webhook_logs')
@@ -49,13 +49,13 @@ export async function GET(request: NextRequest) {
       .eq('customer_key', `user_${user.id}`)
       .eq('event_type', 'PAYMENT')
       .eq('status', 'DONE')
-      .not('payment_key', 'is', null) // payment_key가 있는 실제 결제만
       .gte('created_at', twelveMonthsAgo.toISOString())
       .order('created_at', { ascending: false });
 
     console.log(`📊 실제 결제 이벤트 결과: ${paymentEvents?.length || 0}개`)
     if (paymentEvents && paymentEvents.length > 0) {
       console.log('📋 실제 결제 이벤트 샘플:', paymentEvents[0])
+      console.log('📋 모든 결제 이벤트 order_id:', paymentEvents.map(p => ({ order_id: p.order_id, amount: p.amount })))
     }
 
     // 2. 구독 취소 내역 조회 (환불이 있는 경우만)
@@ -89,7 +89,11 @@ export async function GET(request: NextRequest) {
     // 페이지네이션 적용
     const paymentLogs = allEvents.slice(offset, offset + limit);
 
-    console.log(`📊 결제 내역 조회 결과: ${paymentLogs?.length || 0}개 항목 (전체: ${allEvents.length}개)`);
+    console.log(`📊 결제 내역 조회 결과: ${paymentLogs?.length || 0}개 항목 (전체: ${allEvents.length}개)`)
+    console.log(`📊 페이지네이션: page=${page}, offset=${offset}, limit=${limit}`)
+    if (paymentLogs && paymentLogs.length > 0) {
+      console.log('📋 페이지네이션된 결제 내역:', paymentLogs.map(p => ({ order_id: p.order_id, amount: p.amount, type: p.type })))
+    }
 
     // 다음 페이지 존재 여부 확인
     const { count: paymentNextCount, error: paymentNextError1 } = await supabase
@@ -98,7 +102,6 @@ export async function GET(request: NextRequest) {
       .eq('customer_key', `user_${user.id}`)
       .eq('event_type', 'PAYMENT')
       .eq('status', 'DONE')
-      .not('payment_key', 'is', null) // payment_key가 있는 실제 결제만
       .gte('created_at', twelveMonthsAgo.toISOString());
 
     const { count: cancellationNextCount, error: cancellationNextError } = await supabase
@@ -111,6 +114,13 @@ export async function GET(request: NextRequest) {
     const totalCount = (paymentNextCount || 0) + (cancellationNextCount || 0);
     const hasMore = totalCount > offset + limit;
 
+    // 사용자의 현재 플랜 조회 (subscription_ 패턴용)
+    const { data: userProfile } = await supabase
+      .from('profiles')
+      .select('plan')
+      .eq('user_id', user.id)
+      .single();
+
     // 플랜 정보 매핑 (대소문자 무관하게 검색)
     const getPlanFromOrderId = (orderId: string, planAtCancellation?: string) => {
       if (planAtCancellation) return planAtCancellation.toUpperCase();
@@ -119,10 +129,9 @@ export async function GET(request: NextRequest) {
       if (lowerOrderId.includes('pro')) return 'PRO';
       if (lowerOrderId.includes('business')) return 'BUSINESS';
       
-      // subscription_ 패턴인 경우 DB에서 실제 플랜 조회
+      // subscription_ 패턴인 경우 사용자의 현재 플랜 사용
       if (lowerOrderId.includes('subscription_')) {
-        // 현재는 STARTER 플랜으로 기본 설정 (필요시 DB 조회 추가 가능)
-        return 'STARTER';
+        return (userProfile?.plan || 'starter').toUpperCase();
       }
       return 'UNKNOWN';
     };

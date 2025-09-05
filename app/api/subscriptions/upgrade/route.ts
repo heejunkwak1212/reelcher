@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase/server';
 import { supabaseService } from '@/lib/supabase/service';
 import { z } from 'zod';
+import { 
+  calculateCreditAccumulation, 
+  isFirstPaidSubscription, 
+  recordPlanChange, 
+  PLAN_CREDITS,
+  PLAN_PRICES 
+} from '@/lib/plan-change-helpers';
 
 const upgradeSubscriptionSchema = z.object({
   newPlan: z.enum(['starter', 'pro', 'business']),
@@ -25,24 +32,12 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { newPlan, upgrade, billingKey: requestBillingKey, customerKey: requestCustomerKey } = upgradeSubscriptionSchema.parse(body);
 
-    // 플랜별 가격 정의
-    const planPrices: Record<string, number> = {
-      starter: 19000,
-      pro: 49000,
-      business: 119000,
-    };
+    // 크레딧 누적 계산 및 기본 정보
+    const creditCalculation = await calculateCreditAccumulation(user.id, newPlan);
+    const newPrice = PLAN_PRICES[newPlan];
+    const isFirstPaid = await isFirstPaidSubscription(user.id);
 
-    // 플랜별 크레딧 정의
-    const planCredits: Record<string, number> = {
-      starter: 2000,
-      pro: 7000,
-      business: 20000,
-    };
-
-    const newPrice = planPrices[newPlan];
-    const newCredits = planCredits[newPlan];
-
-    if (!newPrice || !newCredits) {
+    if (!newPrice) {
       return NextResponse.json({ error: '잘못된 플랜입니다' }, { status: 400 });
     }
 
@@ -138,12 +133,12 @@ export async function POST(request: NextRequest) {
           console.error('프로필 업데이트 실패:', profileUpdateError);
         }
 
-        // 크레딧 초기화 및 새 플랜 크레딧 지급
+        // 크레딧 누적 방식으로 업데이트 (무료→유료)
         const { error: creditUpdateError } = await supabaseAdmin
           .from('credits')
           .update({
-            balance: newCredits,
-            monthly_grant: newCredits,
+            balance: creditCalculation.newBalance,
+            monthly_grant: creditCalculation.newTotal,
             last_grant_at: now.toISOString(),
             plan_updated_at: now.toISOString(),
           })
@@ -178,7 +173,7 @@ export async function POST(request: NextRequest) {
           success: true,
           message: `${newPlan.toUpperCase()} 플랜으로 성공적으로 변경되었습니다`,
           newPlan,
-          newCredits,
+          newCredits: creditCalculation.newTotal,
           paymentResult,
         });
 
@@ -235,12 +230,12 @@ export async function POST(request: NextRequest) {
       console.error('프로필 업데이트 실패:', profileUpdateError);
     }
 
-    // 크레딧 초기화 및 새 플랜 크레딧 지급
+    // 크레딧 누적 방식으로 업데이트
     const { error: creditUpdateError } = await supabaseAdmin
       .from('credits')
       .update({
-        balance: newCredits,
-        monthly_grant: newCredits,
+        balance: creditCalculation.newBalance,
+        monthly_grant: creditCalculation.newTotal,
         last_grant_at: now.toISOString(),
         plan_updated_at: now.toISOString(),
       })
@@ -250,7 +245,23 @@ export async function POST(request: NextRequest) {
       console.error('크레딧 업데이트 실패:', creditUpdateError);
     }
 
-    // 플랜 변경 로그 기록 (결제 내역에 표시하기 위해 PAYMENT로 기록)
+    // 플랜 변경 로그 기록
+    try {
+      await recordPlanChange({
+        userId: user.id,
+        fromPlan: profile.plan,
+        toPlan: newPlan,
+        creditsBeforeChange: creditCalculation.currentUsed, // 기존 사용량
+        creditsAfterChange: creditCalculation.newBalance,
+        creditsUsedBeforeChange: creditCalculation.currentUsed,
+        isFirstPaidSubscription: isFirstPaid,
+        newBillingCycleStart: now.toISOString(),
+      });
+    } catch (planChangeError) {
+      console.error('플랜 변경 로그 기록 실패:', planChangeError);
+    }
+
+    // 기존 결제 로그 기록 (결제 내역 표시용)
     const { error: paymentLogError } = await supabaseAdmin
       .from('billing_webhook_logs')
       .insert({
@@ -275,7 +286,9 @@ export async function POST(request: NextRequest) {
       success: true,
       message: `${newPlan.toUpperCase()} 플랜으로 성공적으로 변경되었습니다`,
       newPlan,
-      newCredits,
+      newCredits: creditCalculation.newTotal,
+      creditsUsed: creditCalculation.currentUsed,
+      newBalance: creditCalculation.newBalance,
       nextChargeAt: subscription.next_charge_at, // 기존 결제일 유지
       planChangeDetails: paymentResult,
     });

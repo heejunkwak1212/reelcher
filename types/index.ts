@@ -127,7 +127,7 @@ export interface IYouTubeSearchRequest {
     period?: 'day' | 'week' | 'month' | 'month2' | 'month3' | 'month6' | 'year' | 'all'
     minViews?: number
     maxSubscribers?: number
-    videoDuration?: 'any' | 'short' | 'long'
+    videoDuration?: 'any' | 'short' | 'medium' | 'long'
     sortBy?: 'viewCount' | 'engagement_rate' | 'reaction_rate' | 'date_desc' | 'date_asc'
   }
 }

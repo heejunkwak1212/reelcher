@@ -227,8 +227,47 @@ export async function POST(req: Request) {
     
     // 결제 취소 이벤트 처리
     else if (eventType === 'CANCEL_STATUS_CHANGED') {
-      console.log(`🚫 Payment cancelled: orderId=${orderId}`)
-      await saveWebhookLog(payload, true)
+      console.log(`🚫 Payment cancelled: orderId=${orderId}, status=${status}`)
+      
+      try {
+        // 구독 관련 환불인 경우 처리
+        if (orderId.startsWith('subscription_')) {
+          const { data: extractResult } = await supabaseService()
+            .rpc('extract_user_id_from_order_id', { order_id: orderId })
+          
+          if (extractResult) {
+            const userId = extractResult
+            console.log(`💰 Processing refund for user ${userId}, orderId=${orderId}`)
+            
+            // 환불 로그 저장 (실제 토스에서 환불 처리된 경우)
+            await supabaseService()
+              .from('billing_webhook_logs')
+              .insert({
+                event_type: 'PAYMENT_CANCELED',
+                payment_key: paymentKey,
+                order_id: orderId,
+                customer_key: customerKey,
+                status: 'CANCELED',
+                amount: -amount, // 환불은 음수로 기록
+                payment_method: 'REFUND',
+                raw_payload: {
+                  reason: 'Toss Payments refund processed',
+                  status: 'CANCELED',
+                  processedAt: new Date().toISOString(),
+                  refundAmount: amount
+                },
+                processed: true
+              })
+            
+            console.log(`✅ Refund webhook processed for user ${userId}`)
+          }
+        }
+        
+        await saveWebhookLog(payload, true)
+      } catch (error) {
+        console.error('❌ Failed to process refund webhook:', error)
+        await saveWebhookLog(payload, false, error instanceof Error ? error.message : String(error))
+      }
     }
     
     // 기타 이벤트

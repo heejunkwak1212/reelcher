@@ -266,6 +266,14 @@ export default function DashboardPage() {
           description: '새로운 플랜의 모든 혜택을 누려보세요.'
         })
       }
+
+      // 결제 완료 후 sessionStorage 정리
+      setTimeout(() => {
+        sessionStorage.removeItem('billingKey')
+        sessionStorage.removeItem('customerKey')
+        sessionStorage.removeItem('billingPlan')
+        console.log('✅ 결제 완료 후 sessionStorage 정리 완료')
+      }, 1000)
     }
 
     // 🔄 실시간 업데이트를 위한 윈도우 포커스 이벤트 리스너
@@ -384,9 +392,14 @@ export default function DashboardPage() {
           {/* Chart */}
           <div className="lg:col-span-3">
             <Card className="border-gray-200 shadow-none rounded-lg">
-              <CardHeader>
+              <CardHeader className="relative">
                 <CardTitle className="text-lg font-semibold text-gray-900">최근 30일 크레딧 사용량</CardTitle>
                 <p className="text-sm text-gray-600">일별 세부 크레딧 사용 패턴 확인</p>
+                <Link href="/dashboard/history" className="absolute top-4 right-4">
+                  <Button variant="outline" size="sm" className="bg-white hover:bg-gray-50 border-gray-200 text-gray-600 hover:text-gray-800 text-xs px-3 py-1.5">
+                    자세히 보기
+                  </Button>
+                </Link>
               </CardHeader>
               <CardContent className="p-3 flex justify-center">
                 {loading ? (

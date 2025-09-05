@@ -85,7 +85,7 @@ function buildGuessFromVideo(row: any): string | null {
   return null
 }
 
-function PreviewContent({ row, videoDuration }: { row: any; videoDuration?: 'any' | 'short' | 'long' }) {
+function PreviewContent({ row, videoDuration }: { row: any; videoDuration?: 'any' | 'short' | 'medium' | 'long' }) {
   const [src, setSrc] = useState<string | null>(() => buildInitialPreviewSrc(row))
   const [stage, setStage] = useState<'img' | 'guess' | 'video' | 'none'>(row?.thumbnailUrl ? 'img' : (row?.videoUrl || row?.video_url ? 'guess' : 'none'))
   const [retry, setRetry] = useState(0)
@@ -109,21 +109,21 @@ function PreviewContent({ row, videoDuration }: { row: any; videoDuration?: 'any
     setStage('none')
   }
   
-  // YouTube 영상 타입에 따른 미리보기 크기 결정
+  // YouTube 영상 타입에 따른 미리보기 크기 결정 (고정된 크기 사용)
   const isYouTube = row?.url?.includes('youtube.com')
   
   let box = 'w-[280px] h-[420px]' // 기본 세로형
   
   if (isYouTube) {
-    if (videoDuration === 'short') {
-      // 쇼츠만 선택: 세로형 유지
+    // 실제 영상 URL을 기반으로 썸네일 크기 결정 (필터와 무관하게 고정)
+    const isShorts = row?.url?.includes('/shorts/')
+    
+    if (isShorts) {
+      // 쇼츠 영상: 세로형 고정
       box = 'w-[280px] h-[420px]'
-    } else if (videoDuration === 'long') {
-      // 롱폼만 선택: 더 유연한 크기 (검은색 여백 최소화)
-      box = 'max-w-[420px] max-h-[280px]'
     } else {
-      // 전체 선택: 유연한 크기 사용
-      box = 'max-w-[420px] max-h-[420px]'
+      // 일반 영상: 가로형 고정
+      box = 'max-w-[420px] max-h-[280px]'
     }
   }
   
@@ -174,7 +174,7 @@ function PreviewContent({ row, videoDuration }: { row: any; videoDuration?: 'any
 }
 
 // Small inline thumbnail that always shows; hover opens larger preview; click opens modal.
-function InlineThumb({ row, videoDuration }: { row: any; videoDuration?: 'any' | 'short' | 'long' }) {
+function InlineThumb({ row, videoDuration }: { row: any; videoDuration?: 'any' | 'short' | 'medium' | 'long' }) {
   const [hover, setHover] = useState(false)
   const [open, setOpen] = useState(false)
   const [imageSrc, setImageSrc] = useState<string | null>(buildInitialPreviewSrc(row))
@@ -349,6 +349,14 @@ function SearchTestPageContent() {
       setSearchType('keyword')
     }
   }, [platform, searchType])
+
+  // 플랫폼과 검색 타입에 따른 기본 결과 개수 설정
+  useEffect(() => {
+    if (platform === 'youtube') {
+      const defaultLimit = searchType === 'url' ? '15' : '30'
+      setLimit(defaultLimit)
+    }
+  }, [platform, searchType])
   const [expandedTitleRow, setExpandedTitleRow] = useState<string | null>(null) // 확장된 제목 행 관리
   
   // Validation states
@@ -380,7 +388,7 @@ function SearchTestPageContent() {
   }, [keywordPopup])
 
   // Validation function
-  const validateInputs = () => {
+  const validateInputs = async () => {
     const errors: {[key: string]: string} = {}
     
     if (searchType === 'keyword') {
@@ -390,6 +398,15 @@ function SearchTestPageContent() {
     } else if (searchType === 'url' || searchType === 'profile') {
       if (!keywords[0] || keywords[0].trim() === '') {
         errors.keywords = '필수 입력란을 확인해주세요.'
+      }
+      
+      // YouTube 유사 영상 검색 URL 검증
+      if (platform === 'youtube' && searchType === 'url') {
+        const inputUrl = keywords[0]?.trim() || ''
+        if (!inputUrl.startsWith('https://www.youtube.com/')) {
+          await relcherAlert('유튜브 내의 영상 URL만 입력할 수 있어요.', '영상 링크를 확인해주세요!')
+          errors.keywords = 'YouTube URL 형식이 올바르지 않습니다.'
+        }
       }
     }
     
@@ -571,7 +588,7 @@ function SearchTestPageContent() {
   const [youtubeUrlSearch, setYoutubeUrlSearch] = useState<string[]>([''])
   
   // Instagram 검색 타입별 독립적인 키워드 상태
-  const [instagramKeywordSearch, setInstagramKeywordSearch] = useState<string[]>(['재테크'])
+  const [instagramKeywordSearch, setInstagramKeywordSearch] = useState<string[]>([''])
   const [instagramProfileSearch, setInstagramProfileSearch] = useState<string[]>([''])
   
   // TikTok 검색 타입별 독립적인 키워드 상태
@@ -635,10 +652,16 @@ function SearchTestPageContent() {
   
   const [user, setUser] = useState<any>(null)
   // period UI removed for MVP
-  const [limit, setLimit] = useState<'5' | '15' | '30' | '50' | '60' | '90' | '120'>('30')
+  const [limit, setLimit] = useState<'5' | '15' | '30' | '50' | '60' | '90' | '120'>(() => {
+    // 플랫폼과 검색 타입에 따른 기본값 설정
+    if (platform === 'youtube') {
+      return searchType === 'url' ? '15' : '30'
+    }
+    return '30'
+  })
   // YouTube 전용 필터
   const [maxSubscribers, setMaxSubscribers] = useState<number>(0)
-  const [videoDuration, setVideoDuration] = useState<'any' | 'short' | 'long'>('any')
+  const [videoDuration, setVideoDuration] = useState<'any' | 'short' | 'medium' | 'long'>('any')
   const [minViews, setMinViews] = useState<number>(0)
   const [period, setPeriod] = useState<'day' | 'week' | 'month' | 'month2' | 'month3' | 'month6' | 'year' | 'all'>('month')
   
@@ -776,9 +799,15 @@ function SearchTestPageContent() {
       modal.querySelector('#confirm')?.addEventListener('click', () => {
         setPlatform(newPlatform)
         setBaseItems(null) // 검색 결과 초기화
-        // 플랫폼별 기본 limit 설정
+        // validation 에러 초기화
+        setValidationErrors({})
+        setShowValidationErrors(false)
+        // 플랫폼별 기본 설정
         if (newPlatform === 'youtube') {
           setLimit('30') // YouTube는 키워드 검색 기본값
+        } else if (newPlatform === 'instagram') {
+          setSearchType('keyword') // Instagram은 키워드 검색으로 기본 설정
+          setLimit('30')
         } else {
           setLimit('30')
         }
@@ -787,9 +816,15 @@ function SearchTestPageContent() {
     } else {
       // 검색 결과가 없거나 같은 플랫폼이면 바로 전환
       setPlatform(newPlatform)
-      // 플랫폼별 기본 limit 설정
+      // validation 에러 초기화
+      setValidationErrors({})
+      setShowValidationErrors(false)
+      // 플랫폼별 기본 설정
       if (newPlatform === 'youtube') {
         setLimit('30') // YouTube는 키워드 검색 기본값
+      } else if (newPlatform === 'instagram') {
+        setSearchType('keyword') // Instagram은 키워드 검색으로 기본 설정
+        setLimit('30')
       } else {
         setLimit('30')
       }
@@ -822,13 +857,13 @@ function SearchTestPageContent() {
   // API 키 관련 유틸리티 함수들 (Supabase 기반)
   const addNewApiKey = async () => {
     if (!newApiKey.trim()) {
-      alert('API 키를 입력해주세요.')
+      toast.error('API 키를 입력해주세요.')
       return
     }
     
     const trimmedKey = newApiKey.trim()
     if (savedApiKeys.some(key => key.api_key === trimmedKey)) {
-      alert('이미 저장된 API 키입니다.')
+      toast.error('이미 저장된 API 키입니다.')
       return
     }
     
@@ -847,15 +882,15 @@ function SearchTestPageContent() {
       if (response.ok) {
     setNewApiKey('')
         setNewApiKeyName('')
-        alert(result.message)
+        toast.success(result.message)
         await loadApiKeys() // 목록 새로고침
         setYoutubeApiKey(trimmedKey) // 새 키로 자동 설정
       } else {
-        alert(result.error || 'API 키 저장에 실패했습니다.')
+        toast.error(result.error || 'API 키 저장에 실패했습니다.')
       }
     } catch (error) {
       console.error('API 키 저장 오류:', error)
-      alert('API 키 저장 중 오류가 발생했습니다.')
+      toast.error('API 키 저장 중 오류가 발생했습니다.')
     }
   }
 
@@ -869,7 +904,7 @@ function SearchTestPageContent() {
       
       const result = await response.json()
       if (response.ok) {
-        alert(result.message)
+        toast.success(result.message)
         await loadApiKeys() // 목록 새로고침
         
         // 삭제된 키가 현재 사용중이었다면 초기화
@@ -878,11 +913,11 @@ function SearchTestPageContent() {
           setYoutubeApiKey('')
         }
       } else {
-        alert(result.error || 'API 키 삭제에 실패했습니다.')
+        toast.error(result.error || 'API 키 삭제에 실패했습니다.')
       }
     } catch (error) {
       console.error('API 키 삭제 오류:', error)
-      alert('API 키 삭제 중 오류가 발생했습니다.')
+      toast.error('API 키 삭제 중 오류가 발생했습니다.')
     }
   }
 
@@ -1221,9 +1256,9 @@ function SearchTestPageContent() {
   }
 
   // 검색 전 확인 및 실행 함수
-  const checkVerificationAndRun = () => {
+  const checkVerificationAndRun = async () => {
     // 입력 값 검증
-    if (!validateInputs()) {
+    if (!(await validateInputs())) {
       return
     }
     
@@ -1774,11 +1809,12 @@ function SearchTestPageContent() {
       if (platform === 'youtube') {
         // YouTube API 키 확인
         if (!youtubeApiKey.trim()) {
-          alert('YouTube API 키를 입력해주세요.')
+          toast.error('YouTube API 키를 입력해주세요.')
           setLoading(false)
           setProgressOpen(false)
           return
         }
+        
         
         // YouTube 검색 페이로드
         payload = {
@@ -1917,7 +1953,7 @@ function SearchTestPageContent() {
           document.body.appendChild(modal)
           modal.querySelector('#cnl')?.addEventListener('click', () => modal.remove())
         } else {
-        alert(msg)
+        toast.error(msg)
         }
         setRaw(JSON.stringify(j || { error: msg }, null, 2))
         setProgressOpen(false)
@@ -2510,12 +2546,7 @@ function SearchTestPageContent() {
               {user ? (
                 <Button asChild variant="outline" className="text-sm font-medium border-2 hover:border-gray-300 hover:bg-gray-50 hover:shadow-md transition-all duration-200 hover:-translate-y-0.5">
                   <Link href="/dashboard">
-                    <div className="flex items-center gap-3">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                      </svg>
-                      대시보드
-      </div>
+                    대시보드
                   </Link>
                 </Button>
               ) : (
@@ -2710,8 +2741,8 @@ function SearchTestPageContent() {
                           <div class="bg-white rounded shadow-lg w-full max-w-md p-5">
                             <div class="text-base font-semibold mb-3">유사 영상 검색 안내</div>
                             <div class="text-sm text-neutral-700 space-y-2 mb-4">
-                              <p>• 유튜브 링크 기반 검색은 <strong>FREE 15개, STARTER 30개, PRO 이상 50개</strong>까지 제공됩니다.</p>
-                              <p>• 일반 키워드 검색에 비해 <strong>API 사용량이 많습니다</strong>.</p>
+                              <p>• 유튜브 링크 기반 검색은 <strong>최대 50개 결과</strong>까지 제공돼요.</p>
+                              <p>• 일반 키워드 검색에 비해 API 사용량이 많아요.</p>
                             </div>
                             <div class="flex items-center gap-2 mb-4">
                               <input type="checkbox" id="opt7days-similar" class="rounded">
@@ -2760,15 +2791,22 @@ function SearchTestPageContent() {
                   size="large"
                   placeholder={
                     platform === 'instagram' && searchType === 'profile'
-                      ? '예: https://www.instagram.com/abc 또는 abc'
+                      ? 'https://www.instagram.com/reelcher 또는 reelcher'
                       : searchType === 'profile' 
-                        ? '예: https://www.tiktok.com/@abc 또는 abc'
+                        ? 'https://www.tiktok.com/@reelcher 또는 reelcher'
                         : platform === 'youtube' 
-                          ? '예: https://www.youtube.com/watch?v=...' 
-                          : '예: https://www.tiktok.com/@username/video/...'
+                          ? 'https://www.youtube.com/watch?v=...' 
+                          : 'https://www.tiktok.com/@username/video/...'
                   }
                   value={keywords[0]} 
-                  onChange={(value) => setKeywords([value])}
+                  onChange={(value) => {
+                    setKeywords([value])
+                    // 텍스트 입력시 validation 에러 초기화
+                    if (showValidationErrors && validationErrors.keywords) {
+                      setValidationErrors({})
+                      setShowValidationErrors(false)
+                    }
+                  }}
                   error={showValidationErrors && validationErrors.keywords}
                 />
                 
@@ -2833,9 +2871,16 @@ function SearchTestPageContent() {
                   <div className="flex-1">
                     <Input
                       size="large"
-                    placeholder={`예: ${platform === 'youtube' ? '요리, 게임, 뷰티...' : platform === 'tiktok' ? '재테크, 음식, 패션...' : '맛집, 여행, 패션...'}`}
+                    placeholder={`${platform === 'youtube' ? '요리, 게임, 뷰티...' : platform === 'tiktok' ? '재테크, 음식, 패션...' : '맛집, 여행, 패션...'}`}
                     value={keywords[0]} 
-                      onChange={(value) => setKeywords([value, ...keywords.slice(1)])}
+                      onChange={(value) => {
+                        setKeywords([value, ...keywords.slice(1)])
+                        // 텍스트 입력시 validation 에러 초기화
+                        if (showValidationErrors && validationErrors.keywords) {
+                          setValidationErrors({})
+                          setShowValidationErrors(false)
+                        }
+                      }}
                       error={showValidationErrors && validationErrors.keywords}
                   />
                   </div>
@@ -2992,14 +3037,23 @@ function SearchTestPageContent() {
                 {/* 영상 길이 */}
                 <div>
                   <div className="text-sm font-medium text-gray-700 mb-2">영상 길이</div>
-                  <Select value={videoDuration} onValueChange={(value) => setVideoDuration(value as any)}>
-                    <SelectTrigger className="w-full h-10">
+                  <Select 
+                    value={searchType === 'url' ? 'any' : videoDuration} 
+                    onValueChange={(value) => {
+                      if (searchType !== 'url') {
+                        setVideoDuration(value as any)
+                      }
+                    }}
+                    disabled={searchType === 'url'}
+                  >
+                    <SelectTrigger className={`w-full h-10 ${searchType === 'url' ? 'opacity-60 cursor-not-allowed' : ''}`}>
                       <SelectValue placeholder="길이 선택" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="any">모든 길이</SelectItem>
-                      <SelectItem value="short">쇼츠</SelectItem>
-                      <SelectItem value="long">롱폼</SelectItem>
+                      <SelectItem value="any">{searchType === 'url' ? '첨부 영상 포맷' : '모든 길이'}</SelectItem>
+                      <SelectItem value="short">4분 이내 (쇼츠 메인)</SelectItem>
+                      <SelectItem value="medium">4분~20분</SelectItem>
+                      <SelectItem value="long">20분 이상</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -3010,7 +3064,7 @@ function SearchTestPageContent() {
                   <NumberInput
                     value={minViews}
                     onChange={setMinViews}
-                    placeholder="예: 10,000 (빈 값: 제한 없음)"
+                    placeholder="10,000 (빈 값: 제한 없음)"
                   />
                 </div>
 
@@ -3020,7 +3074,7 @@ function SearchTestPageContent() {
                   <NumberInput
                     value={maxSubscribers}
                     onChange={setMaxSubscribers}
-                    placeholder="예: 100,000 (빈 값: 제한 없음)"
+                    placeholder="100,000 (빈 값: 제한 없음)"
                   />
                 </div>
               </div>
@@ -4088,7 +4142,10 @@ function ExportButtons({ items, platform, onProgress }: { items: SearchRow[]; pl
       headers: { 'content-type': 'application/json' }, 
       body: JSON.stringify({ rows: selectedItems, platform }) 
     })
-    if (!res.ok) return alert('엑셀 생성 실패')
+    if (!res.ok) {
+      toast.error('엑셀 생성 실패')
+      return
+    }
     const blob = await res.blob()
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -4141,7 +4198,7 @@ function ExportButtons({ items, platform, onProgress }: { items: SearchRow[]; pl
       }
       
       if (!urls.length) {
-        alert('다운로드 가능한 영상 URL이 없습니다')
+        toast.error('다운로드 가능한 영상 URL이 없습니다')
         return
       }
       
@@ -4159,7 +4216,7 @@ function ExportButtons({ items, platform, onProgress }: { items: SearchRow[]; pl
     })
       if (!res.ok) {
         const errorText = await res.text()
-        alert(`영상 다운로드 실패: ${errorText}`)
+        toast.error(`영상 다운로드 실패: ${errorText}`)
         return
       }
       
@@ -4198,7 +4255,7 @@ function ExportButtons({ items, platform, onProgress }: { items: SearchRow[]; pl
     URL.revokeObjectURL(url)
     } catch (error) {
       console.error('다운로드 오류:', error)
-      alert('영상 다운로드 중 오류가 발생했습니다')
+      toast.error('영상 다운로드 중 오류가 발생했습니다')
     } finally {
       // 성공/실패와 관계없이 항상 로딩 상태 종료
       onProgress.finish()
@@ -4228,7 +4285,7 @@ function ExportButtons({ items, platform, onProgress }: { items: SearchRow[]; pl
         const thumbnailUrl = item.thumbnailUrl
         
         if (!thumbnailUrl) {
-          alert('썸네일 URL이 없습니다')
+          toast.error('썸네일 URL이 없습니다')
           return
         }
         
@@ -4250,7 +4307,7 @@ function ExportButtons({ items, platform, onProgress }: { items: SearchRow[]; pl
         })
         
         if (!response.ok) {
-          alert('썸네일 다운로드 실패')
+          toast.error('썸네일 다운로드 실패')
           return
         }
         
@@ -4292,7 +4349,7 @@ function ExportButtons({ items, platform, onProgress }: { items: SearchRow[]; pl
           .filter(url => url && typeof url === 'string')
         
         if (!thumbnailUrls.length) {
-          alert('다운로드 가능한 썸네일이 없습니다')
+          toast.error('다운로드 가능한 썸네일이 없습니다')
           return
         }
         
@@ -4311,7 +4368,7 @@ function ExportButtons({ items, platform, onProgress }: { items: SearchRow[]; pl
         
         if (!res.ok) {
           const errorText = await res.text()
-          alert(`썸네일 다운로드 실패: ${errorText}`)
+          toast.error(`썸네일 다운로드 실패: ${errorText}`)
           return
         }
         
@@ -4336,7 +4393,7 @@ function ExportButtons({ items, platform, onProgress }: { items: SearchRow[]; pl
       }
     } catch (error) {
       console.error('썸네일 다운로드 오류:', error)
-      alert('썸네일 다운로드 중 오류가 발생했습니다')
+      toast.error('썸네일 다운로드 중 오류가 발생했습니다')
     } finally {
       onProgress.finish()
     }
@@ -4565,7 +4622,7 @@ function SubtitleDialog({ url, platform, plan }: { url: string; platform?: strin
     }
   }
   const load = async () => {
-    if (!url) { alert('영상 URL이 없습니다'); return }
+    if (!url) { toast.error('영상 URL이 없습니다'); return }
     // if cached, show immediately
     if (cache.has(url)) {
       setText(cache.get(url) || '')
@@ -4703,7 +4760,7 @@ function SubtitleDialog({ url, platform, plan }: { url: string; platform?: strin
 }
 
 // Button that opens a modal preview with robust fallbacks (image → derived jpg → looping video)
-function PreviewThumbButton({ row, videoDuration }: { row: any; videoDuration?: 'any' | 'short' | 'long' }) {
+function PreviewThumbButton({ row, videoDuration }: { row: any; videoDuration?: 'any' | 'short' | 'medium' | 'long' }) {
   const [open, setOpen] = useState(false)
   const warmup = () => {
     const src = buildInitialPreviewSrc(row)

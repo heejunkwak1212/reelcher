@@ -24,9 +24,11 @@ interface InputProps {
   onChange?: (value: string) => void;
   onFocus?: () => void;
   onBlur?: () => void;
-  ref?: React.RefObject<HTMLInputElement | null>;
+  ref?: React.RefObject<HTMLInputElement | HTMLTextAreaElement | null>;
   className?: string;
   wrapperClassName?: string;
+  isTextarea?: boolean;
+  type?: string;
 }
 
 export const Input = ({
@@ -46,12 +48,14 @@ export const Input = ({
   ref,
   className,
   wrapperClassName,
+  isTextarea = false,
+  type = "text",
   ...rest
 }: InputProps) => {
   const [_value, set_value] = useState(value || "");
-  const _ref = ref ? ref : useRef<HTMLInputElement>(null);
+  const _ref = ref ? ref : useRef<HTMLInputElement | HTMLTextAreaElement>(null);
 
-  const _onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const _onChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     set_value(e.target.value);
     if (onChange) {
       onChange(e.target.value);
@@ -72,9 +76,10 @@ export const Input = ({
         </div>
       )}
       <div className={clsx(
-        "flex items-center duration-150 font-medium shadow-sm",
+        "flex duration-150 font-medium shadow-sm rounded-lg",
+        isTextarea ? "items-start" : "items-center",
         error ? "border border-red-300 bg-red-50 shadow-sm hover:shadow-md focus-within:border-red-500 focus-within:shadow-md" : "border border-gray-300 bg-white hover:border-gray-400 hover:shadow-md focus-within:border-blue-500 focus-within:shadow-md focus-within:ring-1 focus-within:ring-blue-500/20",
-        sizes[size],
+        !isTextarea ? sizes[size] : "",
         disabled ? "cursor-not-allowed bg-gray-100 border-gray-200" : "",
         wrapperClassName
       )}>
@@ -88,22 +93,42 @@ export const Input = ({
             {prefix}
           </div>
         )}
-        <input
-          className={clsx(
-            "w-full inline-flex appearance-none placeholder:text-gray-500 placeholder:opacity-70 outline-none font-medium",
-            (size === "xSmall" || size === "mediumSmall") ? "px-3" : "px-3",
-            disabled ? "cursor-not-allowed bg-gray-100 text-gray-700" : "bg-white text-gray-900",
-            className
-          )}
-          placeholder={placeholder}
-          disabled={disabled}
-          value={_value}
-          onChange={_onChange}
-          onFocus={onFocus}
-          onBlur={onBlur}
-          ref={_ref}
-          {...rest}
-        />
+        {isTextarea ? (
+          <textarea
+            className={clsx(
+              "w-full inline-flex appearance-none placeholder:text-gray-500 placeholder:opacity-70 outline-none font-medium resize-none",
+              (size === "xSmall" || size === "mediumSmall") ? "px-3 py-2" : "px-3 py-2",
+              disabled ? "cursor-not-allowed bg-gray-100 text-gray-700" : "bg-white text-gray-900",
+              className
+            )}
+            placeholder={placeholder}
+            disabled={disabled}
+            value={_value}
+            onChange={_onChange}
+            onFocus={onFocus}
+            onBlur={onBlur}
+            ref={_ref as React.RefObject<HTMLTextAreaElement>}
+            {...rest}
+          />
+        ) : (
+          <input
+            className={clsx(
+              "w-full inline-flex appearance-none placeholder:text-gray-500 placeholder:opacity-70 outline-none font-medium",
+              (size === "xSmall" || size === "mediumSmall") ? "px-3" : "px-3",
+              disabled ? "cursor-not-allowed bg-gray-100 text-gray-700" : "bg-white text-gray-900",
+              className
+            )}
+            type={type}
+            placeholder={placeholder}
+            disabled={disabled}
+            value={_value}
+            onChange={_onChange}
+            onFocus={onFocus}
+            onBlur={onBlur}
+            ref={_ref as React.RefObject<HTMLInputElement>}
+            {...rest}
+          />
+        )}
         {suffix && (
           <div className={clsx(
             "text-gray-700 fill-gray-700 h-full flex items-center justify-center",

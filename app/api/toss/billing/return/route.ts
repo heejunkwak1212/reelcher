@@ -71,7 +71,7 @@ export async function GET(req: Request) {
     }
 
     // 결제 확인 페이지로 리다이렉트 (실제 결제는 사용자 확인 후)
-    const confirmUrl = `${new URL(req.url).origin}/toss/payment/confirm?billingKey=${encodeURIComponent(billingKey)}&customerKey=${encodeURIComponent(customerKey)}&plan=${plan || 'starter'}`
+    const confirmUrl = `${new URL(req.url).origin}/toss/payment/confirm?plan=${plan || 'starter'}`
     console.log('🔄 결제 확인 페이지로 리다이렉트:', confirmUrl)
     return Response.redirect(confirmUrl, 302)
   } catch (e) {
@@ -138,7 +138,7 @@ export async function POST(req: Request) {
     }
 
     // 결제 확인 페이지 URL을 JSON으로 응답 (POST는 리다이렉트 불가)
-    const confirmUrl = `${new URL(req.url).origin}/toss/payment/confirm?billingKey=${encodeURIComponent(billingKey)}&customerKey=${encodeURIComponent(customerKey)}&plan=${plan || 'starter'}`
+    const confirmUrl = `${new URL(req.url).origin}/toss/payment/confirm?plan=${plan || 'starter'}`
     console.log('POST - 결제 확인 페이지 URL 응답:', confirmUrl)
     
     return Response.json({ 

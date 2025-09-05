@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/input'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { ChevronDownIcon } from '@radix-ui/react-icons'
+import { toast } from 'sonner'
 
 const TYPES = [
   '버그/시스템 오류',
@@ -23,14 +25,46 @@ export default function ContactForm() {
   const [email, setEmail] = useState('')
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
+  const [errors, setErrors] = useState<{[key: string]: string}>({})
+  const [showErrors, setShowErrors] = useState(false)
+  const validateForm = () => {
+    const newErrors: {[key: string]: string} = {}
+    
+    if (!email.trim()) {
+      newErrors.email = '이메일을 입력해주세요.'
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      newErrors.email = '올바른 이메일 형식을 입력해주세요.'
+    }
+    
+    if (!message.trim()) {
+      newErrors.message = '문의 내용을 입력해주세요.'
+    } else if (message.trim().length < 5) {
+      newErrors.message = '문의 내용은 5자 이상 입력해주세요.'
+    }
+    
+    setErrors(newErrors)
+    setShowErrors(Object.keys(newErrors).length > 0)
+    return Object.keys(newErrors).length === 0
+  }
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    if (!validateForm()) {
+      return
+    }
+    
     setLoading(true)
     const res = await fetch('/api/inquiries', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ type, email, message }) })
     setLoading(false)
-    if (!res.ok) return alert('전송 실패')
+    if (!res.ok) {
+      toast.error('전송 실패')
+      return
+    }
     setEmail(''); setMessage('')
-    alert('접수되었습니다. 최대한 빨리 답변드릴게요!')
+    setErrors({})
+    setShowErrors(false)
+    toast.success('접수되었습니다. 최대한 빨리 답변드릴게요!')
   }
   return (
     <form onSubmit={submit} className="space-y-6">
@@ -87,22 +121,23 @@ export default function ContactForm() {
           >
             답변 받을 이메일
           </span>
-          <input 
-            className="h-10 border border-gray-300 rounded-lg px-3 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-all bg-white" 
-            type="email" 
-            required 
-            value={email} 
-            onChange={(e)=>setEmail(e.target.value)} 
-            placeholder="you@example.com"
-            style={{
-              fontSize: 'var(--text-regular-size)',
-              lineHeight: 'var(--text-regular-line-height)',
-              letterSpacing: 'var(--text-regular-letter-spacing)'
+          <Input
+            type="email"
+            value={email}
+            onChange={(value) => {
+              setEmail(value)
+              // 텍스트 입력시 에러 초기화
+              if (showErrors && errors.email) {
+                setErrors({...errors, email: ''})
+                if (!errors.message) setShowErrors(false)
+              }
             }}
+            placeholder="you@example.com"
+            error={showErrors ? errors.email : undefined}
           />
         </label>
       </div>
-      <label className="flex flex-col gap-2">
+      <label className="flex flex-col gap-2 mt-2">
         <span 
           className="text-gray-700"
           style={{
@@ -114,17 +149,20 @@ export default function ContactForm() {
         >
           문의 내용
         </span>
-        <textarea 
-          className="border border-gray-300 rounded-lg px-3 py-3 min-h-[140px] text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 focus:border-gray-400 transition-all bg-white resize-none" 
-          required 
-          value={message} 
-          onChange={(e)=>setMessage(e.target.value)} 
-          placeholder="어떤 점이 궁금하신가요?"
-          style={{
-            fontSize: 'var(--text-regular-size)',
-            lineHeight: 'var(--text-regular-line-height)',
-            letterSpacing: 'var(--text-regular-letter-spacing)'
+        <Input
+          isTextarea
+          value={message}
+          onChange={(value) => {
+            setMessage(value)
+            // 텍스트 입력시 에러 초기화
+            if (showErrors && errors.message) {
+              setErrors({...errors, message: ''})
+              if (!errors.email) setShowErrors(false)
+            }
           }}
+          placeholder="어떤 점이 궁금하신가요?"
+                      error={showErrors ? errors.message : undefined}
+          className="min-h-[140px]"
         />
       </label>
       <Button 

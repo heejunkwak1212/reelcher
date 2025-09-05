@@ -2,6 +2,7 @@ import { db } from '@/db'
 import { pages } from '@/db/schema'
 import { eq } from 'drizzle-orm'
 import { supabaseServer } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
 import InlineEditor from '@/components/admin/InlineEditor'
 import ContactForm from '@/components/layout/ContactForm'
 import SiteHeader from '@/components/layout/SiteHeader'
@@ -12,6 +13,12 @@ export default async function ContactPage() {
   const row = (await db.select().from(pages).where(eq(pages.slug, 'contact')).limit(1))[0]
   const ssr = await supabaseServer()
   const { data: { user } } = await ssr.auth.getUser().catch(()=>({ data:{ user:null }} as any))
+  
+  // 비로그인 사용자는 sign-in 페이지로 리다이렉트
+  if (!user) {
+    redirect('/sign-in')
+  }
+  
   let isAdmin = false
   if (user) {
     const { data } = await ssr.from('profiles').select('role').eq('user_id', user.id).single()

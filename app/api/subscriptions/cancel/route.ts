@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabase/server';
 import { supabaseService } from '@/lib/supabase/service';
 import { z } from 'zod';
+import { checkRefundEligibility, recordPlanChange, refundTossPayment, getLastPayment } from '@/lib/plan-change-helpers';
 
 const cancelSubscriptionSchema = z.object({
   reason: z.string().min(1, '취소 사유를 입력해주세요').max(200, '취소 사유는 200자 이하로 입력해주세요'),
@@ -40,24 +41,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '이미 취소된 구독입니다' }, { status: 400 });
     }
 
-    // 48시간 이내 여부 확인
-    const renewedAt = new Date(subscription.renewed_at);
-    const currentTime = new Date();
-    const timeSinceRenewal = currentTime.getTime() - renewedAt.getTime();
-    const isWithin48Hours = timeSinceRenewal <= REFUND_TIME_LIMIT_MS;
-
-    // 현재 결제 주기에서 크레딧 사용 이력 확인
-    const { data: searchHistory, error: searchError } = await supabase
-      .from('search_history')
-      .select('credits_used')
-      .eq('user_id', user.id)
-      .gte('created_at', subscription.renewed_at)
-      .gt('credits_used', 0);
-
-    const hasUsedCredits = searchHistory && searchHistory.length > 0;
-    
-    // 환불 조건 체크: 48시간 이내 + 크레딧 미사용
-    const isEligibleForRefund = isWithin48Hours && !hasUsedCredits;
+    // 새로운 환불 조건 분기 로직 사용
+    const refundEligibility = await checkRefundEligibility(user.id);
+    const isEligibleForRefund = refundEligibility.eligible;
 
     let refundResult = null;
 
@@ -99,12 +85,27 @@ export async function POST(request: NextRequest) {
             console.log(`💡 현재 결제 상태: status=${paymentStatus.status}, balanceAmount=${paymentStatus.balanceAmount}`);
             
             // 취소 가능한 상태인지 확인
-            if (paymentStatus.status !== 'DONE' || paymentStatus.balanceAmount <= 0) {
-              console.log('⚠️ 이미 취소되었거나 취소할 수 없는 결제입니다.');
+            if (paymentStatus.status === 'CANCELED' || paymentStatus.status === 'PARTIAL_CANCELED') {
+              console.log('⚠️ 이미 취소된 결제입니다. 웹훅 대기 중일 수 있습니다.');
               refundResult = {
                 status: 'ALREADY_CANCELED',
                 totalAmount: payment.amount,
-                message: '이미 취소된 결제 또는 취소 불가능한 상태'
+                message: '이미 취소된 결제 (웹훅 처리 대기 중)',
+                balanceAmount: paymentStatus.balanceAmount
+              };
+            } else if (paymentStatus.status !== 'DONE') {
+              console.log(`⚠️ 취소할 수 없는 결제 상태: ${paymentStatus.status}`);
+              refundResult = {
+                status: 'CANNOT_CANCEL',
+                totalAmount: payment.amount,
+                message: `취소 불가능한 상태: ${paymentStatus.status}`
+              };
+            } else if (paymentStatus.balanceAmount <= 0) {
+              console.log('⚠️ 환불 가능한 잔액이 없습니다.');
+              refundResult = {
+                status: 'NO_BALANCE',
+                totalAmount: payment.amount,
+                message: '환불 가능한 잔액 없음'
               };
             } else {
               // 2단계: 실제 환불 요청 (멱등키 사용)
@@ -131,19 +132,50 @@ export async function POST(request: NextRequest) {
                 
                 try {
                   const errorData = JSON.parse(errorText);
+                  console.error(`❌ 환불 실패 - 에러 코드: ${errorData.code}, 메시지: ${errorData.message}`);
+                  
+                  // 토스 공식문서 기반 에러 처리
                   if (errorData.code === 'ALREADY_CANCELED_PAYMENT') {
-                    console.log('⚠️ 이미 취소된 결제입니다. 환불 처리를 건너뜁니다.');
-                    // 이미 취소된 결제라면 환불 성공으로 처리
+                    console.log('⚠️ 이미 취소된 결제입니다. 웹훅 확인이 필요할 수 있습니다.');
                     refundResult = {
-                      status: 'CANCELED',
+                      status: 'ALREADY_CANCELED',
                       totalAmount: payment.amount,
-                      message: '이미 취소된 결제'
+                      message: '이미 취소된 결제 (웹훅 확인 필요)',
+                      tossErrorCode: errorData.code
+                    };
+                  } else if (errorData.code === 'FORBIDDEN_REQUEST') {
+                    console.error('❌ 환불 권한 없음 - API 키 또는 권한 확인 필요');
+                    refundResult = {
+                      status: 'FORBIDDEN',
+                      totalAmount: payment.amount,
+                      message: 'API 권한 없음',
+                      tossErrorCode: errorData.code
+                    };
+                  } else if (errorData.code === 'NOT_FOUND_PAYMENT') {
+                    console.error('❌ 결제 정보를 찾을 수 없음');
+                    refundResult = {
+                      status: 'NOT_FOUND',
+                      totalAmount: payment.amount,
+                      message: '결제 정보 없음',
+                      tossErrorCode: errorData.code
                     };
                   } else {
-                    console.error(`❌ 환불 실패 - 에러 코드: ${errorData.code}, 메시지: ${errorData.message}`);
+                    // 기타 에러는 실패로 처리
+                    refundResult = {
+                      status: 'FAILED',
+                      totalAmount: payment.amount,
+                      message: errorData.message || '환불 처리 실패',
+                      tossErrorCode: errorData.code
+                    };
                   }
                 } catch (parseError) {
                   console.error('환불 응답 파싱 실패:', parseError);
+                  refundResult = {
+                    status: 'PARSE_ERROR',
+                    totalAmount: payment.amount,
+                    message: '응답 파싱 실패',
+                    rawError: errorText
+                  };
                 }
               }
             }
@@ -189,11 +221,8 @@ export async function POST(request: NextRequest) {
     // 환불 조건을 만족하는 경우 즉시 만료, 아니면 다음 결제일까지 유지
     if (isEligibleForRefund) {
       subscriptionUpdateData.next_charge_at = new Date().toISOString();
-    } else if (hasUsedCredits) {
-      // 크레딧 사용 이력이 있으면 다음 결제일까지 유지
-      subscriptionUpdateData.next_charge_at = subscription.next_charge_at;
     } else {
-      // 48시간 경과했지만 크레딧 미사용인 경우 다음 결제일까지 유지
+      // 환불 조건 미충족 시 다음 결제일까지 유지
       subscriptionUpdateData.next_charge_at = subscription.next_charge_at;
     }
 
@@ -249,7 +278,23 @@ export async function POST(request: NextRequest) {
       .eq('user_id', user.id)
       .single();
 
-    // 구독 취소 로그 생성
+    // 플랜 변경 로그 기록 (paid_to_free)
+    try {
+      await recordPlanChange({
+        userId: user.id,
+        fromPlan: subscription.plan,
+        toPlan: 'free',
+        creditsBeforeChange: credits?.balance || 0,
+        creditsAfterChange: shouldImmediatelyDowngrade ? 250 : credits?.balance || 0,
+        creditsUsedBeforeChange: 0, // 취소 시에는 사용량 기록하지 않음
+        isFirstPaidSubscription: false, // 취소는 첫 구독이 아님
+        refundPaymentKey: refundResult?.paymentKey,
+      });
+    } catch (planChangeError) {
+      console.error('플랜 변경 로그 기록 실패:', planChangeError);
+    }
+
+    // 구독 취소 로그 생성 (기존 로직 유지)
     if (profile) {
       const { error: logError } = await supabaseAdmin
         .from('cancellation_logs')
@@ -260,7 +305,7 @@ export async function POST(request: NextRequest) {
           plan_at_cancellation: subscription.plan,
           credits_at_cancellation: credits?.balance || 0,
           refund_eligible: isEligibleForRefund,
-          refund_amount: refundResult?.totalAmount || 0,
+          refund_amount: refundEligibility.amount || 0,
           refund_processed: isEligibleForRefund && refundResult !== null,
           signup_date: profile.created_at,
           user_display_name: profile.display_name,
@@ -281,7 +326,7 @@ export async function POST(request: NextRequest) {
       message: isEligibleForRefund 
         ? '구독 취소 및 환불 요청이 완료되었어요. 결제하신 수단으로 영업일 기준 최대 48시간 이내 환불될 예정이에요.'
         : '구독이 성공적으로 취소되었습니다',
-      hasUsedCredits,
+      refundReason: refundEligibility.reason,
       effectiveDate: isEligibleForRefund ? new Date().toISOString() : subscription.next_charge_at,
       refundDetails: refundResult,
     });

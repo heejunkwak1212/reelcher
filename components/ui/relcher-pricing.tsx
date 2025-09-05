@@ -11,6 +11,7 @@ import { useState, useRef, useEffect } from "react";
 import { CheckIcon } from "@radix-ui/react-icons";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { supabaseBrowser } from '@/lib/supabase/client';
+import { toast } from 'sonner';
 
 interface PricingPlan {
   name: string;
@@ -170,7 +171,11 @@ export function RelcherPricing({
       // 구독 취소 - billing 페이지로 이동
       setShowConfirmModal(false);
       window.location.href = '/dashboard/billing';
-    } else if ((confirmAction === 'upgrade' || confirmAction === 'downgrade') && pendingPlan) {
+    } else if (confirmAction === 'downgrade') {
+      // 다운그레이드 - billing 페이지로 이동 (구독 취소 필요)
+      setShowConfirmModal(false);
+      window.location.href = '/dashboard/billing';
+    } else if (confirmAction === 'upgrade' && pendingPlan) {
       // 업그레이드/다운그레이드 처리 - 결제 확인 페이지로 이동
       setShowConfirmModal(false);
 
@@ -183,8 +188,21 @@ export function RelcherPricing({
             const subscriptionData = await subscriptionResponse.json();
 
             if (subscriptionData.subscription?.billingKey && subscriptionData.subscription?.customerKey) {
-              // 결제 확인 페이지로 이동 (빌링키와 고객키 포함)
-              window.location.href = `/toss/payment/confirm?upgrade=true&plan=${pendingPlan}&billingKey=${subscriptionData.subscription.billingKey}&customerKey=${subscriptionData.subscription.customerKey}`;
+              // 유료→상위유료 즉시 업그레이드 API 호출
+              const upgradeResponse = await fetch('/api/subscriptions/upgrade-immediate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ newPlan: pendingPlan }),
+              });
+
+              if (upgradeResponse.ok) {
+                const result = await upgradeResponse.json();
+                toast.success(`${result.message}\n환불액: ${result.upgrade.refundAmount.toLocaleString()}원\n새 결제액: ${result.upgrade.chargeAmount.toLocaleString()}원`);
+                window.location.reload();
+              } else {
+                const error = await upgradeResponse.json();
+                toast.error(`업그레이드 실패: ${error.error}`);
+              }
             } else {
               throw new Error('빌링키 정보를 찾을 수 없습니다');
             }
@@ -193,7 +211,7 @@ export function RelcherPricing({
           }
         } catch (error) {
           console.error('구독 정보 조회 실패:', error);
-          alert('구독 정보를 확인하는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
+          toast.error('구독 정보를 확인하는 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
         }
       } else {
         // 구독이 없는 경우 - 새로 카드등록 후 결제
@@ -263,7 +281,7 @@ export function RelcherPricing({
       }
       const clientKey = process.env.NEXT_PUBLIC_TOSS_CLIENT_KEY;
       if (!clientKey) { 
-        alert('NEXT_PUBLIC_TOSS_CLIENT_KEY가 설정되지 않았습니다'); 
+        toast.error('NEXT_PUBLIC_TOSS_CLIENT_KEY가 설정되지 않았습니다'); 
         return;
       }
       
@@ -286,14 +304,14 @@ export function RelcherPricing({
       // 빌링키 발급 요청 (카드 등록만, 실제 결제는 서버에서)
       await payment.requestBillingAuth({
         method: "CARD", // 자동결제(빌링)는 카드만 지원합니다
-        successUrl: `${origin}/toss/billing/return?plan=${plan}&customerKey=${customerKey}`,
+        successUrl: `${origin}/toss/billing/return?plan=${plan}&customerKey=${customerKey}&storeInSession=true`,
         failUrl: `${origin}/pricing?error=billing_failed&plan=${plan}`,
         customerEmail: me.email || "customer123@gmail.com",
         customerName: me.display_name || "김토스"
       });
     } catch (e) {
       console.error('Toss billing auth error:', e);
-      alert('결제창 호출에 실패했습니다');
+      toast.error('결제창 호출에 실패했습니다');
     }
   };
 
@@ -557,7 +575,7 @@ export function RelcherPricing({
             <DialogTitle className="text-center">
               {confirmAction === 'cancel' && '구독 취소'}
               {confirmAction === 'upgrade' && '플랜 업그레이드'}
-              {confirmAction === 'downgrade' && '플랜 전환'}
+              {confirmAction === 'downgrade' && '플랜 다운그레이드'}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -578,7 +596,35 @@ export function RelcherPricing({
                     onClick={handleConfirmAction}
                     className="flex-1"
                   >
-                    구독 취소하기
+                    구독 취소
+                  </Button>
+                </div>
+              </>
+            )}
+            
+            {confirmAction === 'downgrade' && (
+              <>
+                <div className="text-center space-y-3">
+                  <p className="text-gray-800 font-medium">
+                    플랜 다운그레이드는 구독 취소를 먼저 진행해주셔야 해요.
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    해당 플랜에서의 사용 이력이 있는 경우, 다음 결제 주기부터 다운그레이드 적용이 가능하다는 점 양해부탁드려요
+                  </p>
+                </div>
+                <div className="flex gap-3">
+                  <Button 
+                    variant="outline" 
+                    onClick={handleConfirmModalClose}
+                    className="flex-1"
+                  >
+                    취소
+                  </Button>
+                  <Button 
+                    onClick={handleConfirmAction}
+                    className="flex-1"
+                  >
+                    구독 취소
                   </Button>
                 </div>
               </>
@@ -597,7 +643,7 @@ export function RelcherPricing({
                     pendingPlan === 'starter' ? '2,000' :
                     pendingPlan === 'pro' ? '7,000' :
                     pendingPlan === 'business' ? '20,000' : ''
-                  } 크레딧이 즉시 새로 지급돼요.
+                  } 크레딧이 즉시 추가 지급돼요.
                 </p>
                 <div className="flex gap-3">
                   <Button 
@@ -630,7 +676,7 @@ export function RelcherPricing({
                     pendingPlan === 'starter' ? '2,000' :
                     pendingPlan === 'pro' ? '7,000' :
                     pendingPlan === 'business' ? '20,000' : ''
-                  } 크레딧이 즉시 새로 지급돼요.
+                  } 크레딧이 즉시 추가 지급돼요.
                 </p>
                 <div className="flex gap-3">
                   <Button 

@@ -10,8 +10,9 @@ export default function PaymentConfirmPage() {
   const searchParams = useSearchParams()
   const router = useRouter()
   
-  const billingKey = searchParams.get('billingKey')
-  const customerKey = searchParams.get('customerKey')
+  // URL 파라미터 또는 sessionStorage에서 billing 정보 가져오기
+  const billingKey = searchParams.get('billingKey') || (typeof window !== 'undefined' ? sessionStorage.getItem('billingKey') : null)
+  const customerKey = searchParams.get('customerKey') || (typeof window !== 'undefined' ? sessionStorage.getItem('customerKey') : null)
   const plan = searchParams.get('plan') || 'starter'
   const isUpgrade = searchParams.get('upgrade') === 'true'
 
@@ -57,25 +58,25 @@ export default function PaymentConfirmPage() {
   const currentPlan = planInfo[plan as keyof typeof planInfo] || planInfo.starter
 
   useEffect(() => {
-    console.log('🎯 결제 확인 페이지 로드됨:', { plan, isUpgrade })
+    console.log('🎯 결제 확인 페이지 로드됨:', { plan, isUpgrade, billingKey, customerKey })
 
-    // 업그레이드 모드일 때는 billingKey와 customerKey가 필수
-    if (isUpgrade && (!billingKey || !customerKey)) {
-      console.error('❌ 업그레이드 모드에서 결제 정보 누락')
-      setError('플랜 변경을 위한 결제 정보가 올바르지 않습니다. 다시 시도해주세요.')
-    } else if (!isUpgrade && (!billingKey || !customerKey)) {
-      console.error('❌ 신규 구독에서 결제 정보 누락')
-      setError('결제 정보가 올바르지 않습니다.')
-    } else {
-      console.log('✅ 결제 정보 확인 완료')
-      
-      // URL에서 민감한 정보 제거
-      const newUrl = new URL(window.location.href)
-      newUrl.searchParams.delete('billingKey')
-      newUrl.searchParams.delete('customerKey')
-      window.history.replaceState({}, '', newUrl.toString())
+    // billing 정보 확인
+    if (billingKey && customerKey) {
+      console.log('✅ 결제 정보 확인 완료 (sessionStorage 또는 URL)')
+      return
     }
-  }, [billingKey, customerKey, plan, isUpgrade])
+
+    // 결제 처리 중이 아닌 경우에만 에러 표시 (결제 완료 후 리다이렉트 중에는 에러 표시 안함)
+    if (!isProcessing) {
+      if (isUpgrade && (!billingKey || !customerKey)) {
+        console.error('❌ 업그레이드 모드에서 결제 정보 누락')
+        setError('플랜 변경을 위한 결제 정보가 올바르지 않습니다. 다시 시도해주세요.')
+      } else if (!isUpgrade && (!billingKey || !customerKey)) {
+        console.error('❌ 신규 구독에서 결제 정보 누락')
+        setError('결제 정보가 올바르지 않습니다. 다시 시도해주세요.')
+      }
+    }
+  }, [billingKey, customerKey, plan, isUpgrade, isProcessing])
 
   const handlePaymentConfirm = async () => {
     if (!billingKey || !customerKey) return
@@ -100,7 +101,7 @@ export default function PaymentConfirmPage() {
         const result = await response.json()
 
         if (response.ok && result.success) {
-          // 업그레이드 성공 - 대시보드로 이동
+          // 업그레이드 성공 - 대시보드로 이동 (sessionStorage는 페이지 이동 후 정리)
           router.push(`/dashboard?subscription=success&plan=${plan}&action=upgrade&amount=${currentPlan.price}&credits=${currentPlan.credits}&message=업그레이드`)
         } else {
           setError(result.error || '업그레이드 처리 중 오류가 발생했습니다.')
@@ -120,7 +121,7 @@ export default function PaymentConfirmPage() {
         const result = await response.json()
 
         if (response.ok && result.success) {
-          // 결제 성공 - 대시보드로 이동
+          // 결제 성공 - 대시보드로 이동 (sessionStorage는 페이지 이동 후 정리)
           router.push(`/dashboard?subscription=success&plan=${plan}&action=subscribe&amount=${currentPlan.price}&credits=${currentPlan.credits}&message=구독`)
         } else {
           setError(result.message || '결제 처리 중 오류가 발생했습니다.')

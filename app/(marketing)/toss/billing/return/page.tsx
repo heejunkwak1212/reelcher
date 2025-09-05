@@ -15,8 +15,9 @@ function BillingReturnContent() {
     const customerKey = sp.get('customerKey')
     const plan = sp.get('plan') || 'starter'
     const period = sp.get('period') || 'monthly'
-    
-    console.log('Billing return params:', { authKey, customerKey, plan, period });
+    const storeInSession = sp.get('storeInSession') === 'true'
+
+    console.log('Billing return params:', { authKey, customerKey, plan, period, storeInSession });
     
     if (!authKey || !customerKey) { 
       setMsg('잘못된 요청입니다. 결제 정보가 누락되었습니다.'); 
@@ -41,11 +42,24 @@ function BillingReturnContent() {
         
         const response = await ex.json()
         console.log('Billing response:', response);
-        
-        // 새로운 플로우: 결제 확인 페이지로 리다이렉트
+
+        // sessionStorage에 billing 정보 저장 (URL 노출 방지)
+        if (storeInSession && response.success && response.billingKey && response.customerKey) {
+          sessionStorage.setItem('billingKey', response.billingKey)
+          sessionStorage.setItem('customerKey', response.customerKey)
+          sessionStorage.setItem('billingPlan', plan)
+          console.log('✅ Billing info stored in sessionStorage')
+        }
+
+        // 새로운 플로우: 결제 확인 페이지로 리다이렉트 (URL 파라미터 없이)
         if (response.success && response.redirectUrl) {
+          // URL에서 billingKey와 customerKey 파라미터 제거
+          const cleanUrl = new URL(response.redirectUrl)
+          cleanUrl.searchParams.delete('billingKey')
+          cleanUrl.searchParams.delete('customerKey')
+
           setMsg('결제 페이지로 이동 중...')
-          setTimeout(() => router.replace(response.redirectUrl), 1000)
+          setTimeout(() => router.replace(cleanUrl.toString()), 1000)
         } else {
           throw new Error('빌링키 발급 응답이 올바르지 않습니다.')
         }

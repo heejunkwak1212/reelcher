@@ -489,15 +489,20 @@ export class YouTubeClient {
     }
 
     const isOriginalShort = originalSeconds < 60
-    let adjustedDuration = filters.videoDuration || 'any'
+    
+    // 🎯 유사 영상 검색에서는 영상 길이 필터를 비활성화
+    // 이유: videoDuration 필터가 관련성(relevance)보다 우선시되어 
+    //       관련성 높은 인기 영상들이 배제되고 저조회수 영상만 반환되는 문제
+    let adjustedDuration = 'any' // 항상 모든 길이로 고정
 
-    if (adjustedDuration === 'any') {
-      adjustedDuration = 'any'
-    } else if (isOriginalShort && adjustedDuration === 'long') {
-      adjustedDuration = 'any'
-    } else if (!isOriginalShort && adjustedDuration === 'short') {
-      adjustedDuration = 'any'
-    }
+    // 디버깅 로그 추가
+    console.log(`🔍 [유사영상검색] 원본 영상 분석:`, {
+      videoId,
+      originalSeconds,
+      isOriginalShort,
+      requestedFilter: filters.videoDuration,
+      adjustedDuration: '강제로 any로 설정 (관련성 우선)'
+    })
 
     // main.py와 동일한 견고한 순차적 폴백 검색 전략 - 다양성 확보를 위한 조정
     const originalTags = snippet.tags || []
@@ -555,6 +560,9 @@ export class YouTubeClient {
 
     if (adjustedDuration !== 'any') {
       commonParams.videoDuration = adjustedDuration
+      console.log(`🎯 [유사영상검색] YouTube API에 videoDuration 파라미터 설정:`, adjustedDuration)
+    } else {
+      console.log(`🎯 [유사영상검색] videoDuration 필터 없음 (any 선택됨)`)
     }
 
     if (publishedAfter) {
@@ -753,6 +761,10 @@ export class YouTubeClient {
     if (filters.maxSubscribers) {
       videos = videos.filter(v => v.subscriberCount <= filters.maxSubscribers!)
     }
+
+    // 🎯 유사 영상 검색에서는 영상 길이 필터링을 비활성화
+    // 관련성과 인기도를 우선시하여 더 나은 결과 제공
+    console.log(`🎯 [유사영상검색] 영상 길이 필터링 건너뜀 - 관련성 우선 정책`)
 
     // 최종 정렬 (유사도 정렬 후 사용자 정렬 적용)
     if (filters.sortBy) {

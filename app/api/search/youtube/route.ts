@@ -18,7 +18,7 @@ const youtubeSearchSchema = z.object({
     period: z.enum(['day', 'week', 'month', 'month2', 'month3', 'month6', 'year', 'all']).optional(),
     minViews: z.number().min(0).optional(),
     maxSubscribers: z.number().min(0).optional(),
-    videoDuration: z.enum(['any', 'short', 'long']).optional(),
+    videoDuration: z.enum(['any', 'short', 'medium', 'long']).optional(),
     sortBy: z.enum(['viewCount', 'engagement_rate', 'reaction_rate', 'date_desc', 'date_asc']).optional()
   }).optional().default({})
 })
@@ -138,7 +138,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 관리자가 아닌 경우에만 크레딧 즉시 차감 (search-record API 방식)
+    // 관리자가 아닌 경우에만 search-record 생성 및 크레딧 차감
     let expectedCredits = 0
     let searchRecordId: string | null = null
     
@@ -146,6 +146,7 @@ export async function POST(request: NextRequest) {
       // 크레딧 계산 (YouTube는 Instagram보다 저렴하게)
       const creditCosts: Record<number, number> = {
         5: 0,     // 개발용 - 무료
+        15: 25,   // 영상기반 검색 15개
         30: 50,   // Instagram 100 → YouTube 50
         60: 100,  // Instagram 200 → YouTube 100
         90: 150,  // Instagram 300 → YouTube 150
@@ -153,9 +154,40 @@ export async function POST(request: NextRequest) {
       }
       expectedCredits = creditCosts[searchRequest.resultsLimit] || 0
 
-      // 크레딧 필요 여부만 확인 (검색 기록은 프론트엔드에서 생성하므로 여기서는 생성하지 않음)
+      // search-record 생성 (크레딧 즉시 차감)
       if (expectedCredits > 0) {
         console.log(`💰 YouTube 검색 예상 크레딧: ${expectedCredits}`)
+        
+        const searchRecordPayload = {
+          platform: 'youtube',
+          search_type: searchRequest.searchType,
+          keyword: searchRequest.query,
+          expected_credits: expectedCredits,
+          requested_count: searchRequest.resultsLimit,
+          status: 'processing'
+        }
+
+        const searchRecordResponse = await fetch(new URL('/api/me/search-record', request.url), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Cookie': request.headers.get('cookie') || ''
+          },
+          body: JSON.stringify(searchRecordPayload)
+        })
+
+        if (searchRecordResponse.ok) {
+          const searchRecordData = await searchRecordResponse.json()
+          searchRecordId = searchRecordData.id
+          console.log(`✅ search-record 생성 완료: ${searchRecordId}`)
+        } else {
+          const error = await searchRecordResponse.json()
+          console.error(`❌ search-record 생성 실패: ${error.error}`)
+          return NextResponse.json(
+            { error: error.error || '크레딧 차감 실패' },
+            { status: searchRecordResponse.status }
+          )
+        }
       }
     }
 
@@ -177,9 +209,9 @@ export async function POST(request: NextRequest) {
     // ==========================================
     
     // 검색 완료 시 search-record 업데이트
-    if (!isAdmin && expectedCredits > 0) {
+    if (!isAdmin && searchRecordId && expectedCredits > 0) {
       try {
-        console.log(`🔄 YouTube 검색 완료, 크레딧 차감 시작`)
+        console.log(`🔄 YouTube 검색 완료, search-record 업데이트 시작`)
 
         // 실제 크레딧 사용량 계산 (proration - 정확한 공식 적용)
         const returned = actualResults
@@ -188,60 +220,40 @@ export async function POST(request: NextRequest) {
         // 정확한 크레딧 계산: 결과 개수에 따른 비례 계산
         const baseCredits = expectedCredits / requested  // 개당 크레딧
         const actualCredits = Math.floor(returned * baseCredits)  // 실제 결과 개수 × 개당 크레딧
-        const refundAmount = Math.max(0, expectedCredits - actualCredits)
 
-        console.log(`💰 크레딧 계산 상세 - 요청:${requested}, 결과:${returned}, 개당:${baseCredits.toFixed(2)}, 실제차감:${actualCredits}, 환불:${refundAmount}`)
+        console.log(`💰 크레딧 계산 상세 - 요청:${requested}, 결과:${returned}, 개당:${baseCredits.toFixed(2)}, 실제차감:${actualCredits}`)
 
-        // 크레딧 즉시 차감 (search-record 생성 없이 직접 차감)
-        const creditPayload = {
-          userId: user.id,  // 필수: userId 추가
-          commit: actualCredits  // 실제 차감할 크레딧 양
+        // search-record 업데이트 (결과 수 및 실제 크레딧 사용량)
+        const updatePayload = {
+          id: searchRecordId,
+          results_count: actualResults,
+          actual_credits: actualCredits,
+          status: 'completed'
         }
 
-        console.log(`💸 크레딧 차감 요청:`, creditPayload)
+        console.log(`📝 search-record 업데이트 요청:`, updatePayload)
 
-        const creditResponse = await fetch(new URL('/api/credits/consume', request.url), {
-          method: 'POST',
+        const updateResponse = await fetch(new URL('/api/me/search-record', request.url), {
+          method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
             'Cookie': request.headers.get('cookie') || ''
           },
-          body: JSON.stringify(creditPayload)
+          body: JSON.stringify(updatePayload)
         })
 
-        if (creditResponse.ok) {
-          console.log(`✅ 크레딧 차감 완료: ${actualCredits} 크레딧 차감됨`)
-
-          // 환불이 필요한 경우 (롤백으로 처리)
-          if (refundAmount > 0) {
-            const refundPayload = {
-              userId: user.id,
-              rollback: refundAmount
-            }
-
-            await fetch(new URL('/api/credits/consume', request.url), {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Cookie': request.headers.get('cookie') || ''
-              },
-              body: JSON.stringify(refundPayload)
-            })
-
-            console.log(`💰 환불 완료: ${refundAmount} 크레딧 환불됨`)
-          }
+        if (updateResponse.ok) {
+          const updateData = await updateResponse.json()
+          console.log(`✅ search-record 업데이트 완료: 실제 크레딧 ${actualCredits}, 환불 ${updateData.refundAmount || 0}`)
         } else {
-          console.error(`❌ 크레딧 차감 실패: ${creditResponse.status} ${creditResponse.statusText}`)
+          console.error(`❌ search-record 업데이트 실패: ${updateResponse.status}`)
         }
       } catch (error) {
-        console.error('❌ 크레딧 차감 중 오류:', error)
+        console.error('❌ search-record 업데이트 중 오류:', error)
       }
     }
     
-    console.log(`📝 YouTube 검색 완료 - 결과: ${actualResults}개, 크레딧: search-record API에서 처리됨`)
-
-    // 검색 통계는 search-record API에서 처리함 (중복 제거)
-    console.log(`📝 YouTube 검색 완료 - 통계는 search-record API에서 처리됨`)
+    console.log(`📝 YouTube 검색 완료 - 결과: ${actualResults}개, search-record ID: ${searchRecordId}`)
 
     return NextResponse.json({
       success: true,
@@ -249,7 +261,7 @@ export async function POST(request: NextRequest) {
       results: searchResponse?.results || [],
       totalCount: searchResponse?.totalCount || 0,
       searchType: searchResponse?.searchType || 'keyword',
-      creditsUsed: isAdmin ? 0 : Math.floor((actualResults / 30) * 50), // search-record API에서 처리됨
+      creditsUsed: isAdmin ? 0 : expectedCredits, // search-record API에서 처리됨
       metadata: searchResponse?.metadata || {}
     })
 
