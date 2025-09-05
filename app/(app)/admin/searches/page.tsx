@@ -154,7 +154,7 @@ export default function AdminSearches() {
     // 정확한 계산을 위해서는 billing_webhook_logs의 실제 결제 금액 참조 필요
     const planRevenue = {
       starter: 29000,  // 수정된 STARTER 플랜 월 구독료
-      pro: 49000,      // PRO 플랜 월 구독료  
+      pro: 49900,      // PRO 플랜 월 구독료  
       business: 99000, // BUSINESS 플랜 월 구독료
     }
 

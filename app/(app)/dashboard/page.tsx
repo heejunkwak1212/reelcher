@@ -28,6 +28,7 @@ export default function DashboardPage() {
   const loadDashboardData = async () => {
       try {
         setLoading(true)
+      
       const supabase = supabaseBrowser()
         const { data: { user }, error: authError } = await supabase.auth.getUser()
         

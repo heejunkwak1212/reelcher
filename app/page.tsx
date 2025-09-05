@@ -10,6 +10,7 @@ import { supabaseServer } from '@/lib/supabase/server'
 import { FaqSection } from '@/components/faq'
 import { FeaturesSectionWithHoverEffects } from '@/components/feature-section-with-hover-effects'
 import MainPageWrapper from '@/components/layout/MainPageWrapper'
+import { generateOrganizationJsonLd, generateWebsiteJsonLd } from '@/lib/metadata'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic';
@@ -238,6 +239,20 @@ export default async function Home() {
         </Reveal>
       </section>
       </main>
+      
+      {/* JSON-LD 구조화 데이터 */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(generateOrganizationJsonLd())
+        }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(generateWebsiteJsonLd())
+        }}
+      />
     </MainPageWrapper>
   )
 }

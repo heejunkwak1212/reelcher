@@ -129,8 +129,8 @@ async function processSubscriptionRenewal(orderId: string, amount: number, payme
     
     // 금액으로 플랜 결정 (테스트용: 스타터 100원)
     let plan = 'starter'
-    if (amount >= 119000) plan = 'business'
-    else if (amount >= 49000) plan = 'pro'
+    if (amount >= 119900) plan = 'business'
+    else if (amount >= 49900) plan = 'pro'
     else if (amount >= 100) plan = 'starter' // 테스트용으로 100원으로 변경
     
     console.log(`🔄 Processing subscription renewal: userId=${userId}, plan=${plan}, amount=${amount}`)

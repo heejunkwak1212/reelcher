@@ -34,7 +34,7 @@ export function RelcherPricing({
   title = "투명한 맞춤형 가격",
   description = "당신에게 맞는 플랜을 선택하세요\n모든 플랜에는 플랫폼 접근, 검색 도구, 전담 지원이 포함됩니다.",
 }: RelcherPricingProps) {
-  const [isMonthly, setIsMonthly] = useState(true);
+  const [isMonthly, setIsMonthly] = useState(true); // 월간만 지원
   
   // 로그인 및 구독 상태 관리
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -336,8 +336,8 @@ export function RelcherPricing({
     },
     {
       name: "STARTER", // 플랜명
-      price: "19000", // 월간 가격 (원화) - PRD.MD 기준
-      yearlyPrice: "15200", // 연간시 월 요금 (원화) - 20% 할인 적용 (19000*0.8)
+      price: "19900", // 월간 가격 (원화) - PRD.MD 기준
+      yearlyPrice: "15920", // 연간시 월 요금 (원화) - 20% 할인 적용 (19900*0.8)
       period: "month", // 기간
       features: [
         "월 2,000 크레딧",
@@ -352,8 +352,8 @@ export function RelcherPricing({
     },
     {
       name: "PRO", // 플랜명
-      price: "49000", // 월간 가격 (원화) - PRD.MD 기준
-      yearlyPrice: "39200", // 연간시 월 요금 (원화) - 20% 할인 적용 (49000*0.8)
+      price: "49900", // 월간 가격 (원화) - PRD.MD 기준
+      yearlyPrice: "39920", // 연간시 월 요금 (원화) - 20% 할인 적용 (49900*0.8)
       period: "month", // 기간
       features: [
         "월 7,000 크레딧",
@@ -367,8 +367,8 @@ export function RelcherPricing({
     },
     {
       name: "BUSINESS", // 플랜명
-      price: "119000", // 월간 가격 (원화) - PRD.MD 기준
-      yearlyPrice: "95200", // 연간시 월 요금 (원화) - 20% 할인 적용 (119000*0.8)
+      price: "119900", // 월간 가격 (원화) - PRD.MD 기준
+      yearlyPrice: "95920", // 연간시 월 요금 (원화) - 20% 할인 적용 (119900*0.8)
       period: "month", // 기간
       features: [
         "월 20,000 크레딧",
@@ -398,6 +398,7 @@ export function RelcherPricing({
         </p>
       </div>
 
+      {/* 월간/연간 토글 - 현재는 월간만 지원하므로 숨김 처리
       <div className="flex justify-center mb-10">
         <div className="bg-white rounded-full p-3 shadow-2xl border-2 border-gray-300 backdrop-blur-sm">
           <div className="relative inline-flex items-center cursor-pointer">
@@ -421,6 +422,7 @@ export function RelcherPricing({
           </div>
         </div>
       </div>
+      */}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-1 max-w-7xl mx-auto">
         {plans.map((plan, index) => (

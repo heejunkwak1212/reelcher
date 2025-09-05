@@ -14,10 +14,10 @@ function BillingReturnContent() {
     const authKey = sp.get('authKey')
     const customerKey = sp.get('customerKey')
     const plan = sp.get('plan') || 'starter'
-    const period = sp.get('period') || 'monthly'
+    const billingPeriod = 'monthly' // 월간 결제만 지원
     const storeInSession = sp.get('storeInSession') === 'true'
 
-    console.log('Billing return params:', { authKey, customerKey, plan, period, storeInSession });
+    console.log('Billing return params:', { authKey, customerKey, plan, storeInSession });
     
     if (!authKey || !customerKey) { 
       setMsg('잘못된 요청입니다. 결제 정보가 누락되었습니다.'); 

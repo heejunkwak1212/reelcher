@@ -1,4 +1,7 @@
 import SiteHeader from '@/components/layout/SiteHeader'
+import { pageMetadata } from '@/lib/metadata'
+
+export const metadata = pageMetadata.faq
 
 export default function FAQPage() {
   return (

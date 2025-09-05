@@ -13,7 +13,8 @@ export default function PaymentConfirmPage() {
   // URL 파라미터 또는 sessionStorage에서 billing 정보 가져오기
   const billingKey = searchParams.get('billingKey') || (typeof window !== 'undefined' ? sessionStorage.getItem('billingKey') : null)
   const customerKey = searchParams.get('customerKey') || (typeof window !== 'undefined' ? sessionStorage.getItem('customerKey') : null)
-  const plan = searchParams.get('plan') || 'starter'
+  const plan = searchParams.get('plan') || (typeof window !== 'undefined' ? sessionStorage.getItem('billingPlan') : null) || 'starter'
+  const billingPeriod = 'monthly' // 월간 결제만 지원
   const isUpgrade = searchParams.get('upgrade') === 'true'
 
   const [isProcessing, setIsProcessing] = useState(false)
@@ -23,7 +24,7 @@ export default function PaymentConfirmPage() {
   const planInfo = {
     starter: { 
       name: '스타터 플랜', 
-      price: 19000, 
+      price: 19900, 
       credits: 2000, 
       features: [
         "월 2,000 크레딧",
@@ -34,7 +35,7 @@ export default function PaymentConfirmPage() {
     },
     pro: { 
       name: '프로 플랜', 
-      price: 49000, 
+      price: 49900, 
       credits: 7000,
       features: [
         "월 7,000 크레딧",
@@ -44,7 +45,7 @@ export default function PaymentConfirmPage() {
     },
     business: { 
       name: '비즈니스 플랜', 
-      price: 119000, 
+      price: 119900, 
       credits: 20000,
       features: [
         "월 20,000 크레딧",

@@ -42,7 +42,7 @@ function calculateRevenue(record: any, userProfile: any, billingHistory: any[]):
     // 결제 기록이 없으면 현재 플랜 기준으로 fallback (무료 사용자 등)
     const planRevenue: Record<string, number> = {
       starter: 29000,
-      pro: 49000,
+      pro: 49900,
       business: 99000
     }
     return planRevenue[plan] || 0

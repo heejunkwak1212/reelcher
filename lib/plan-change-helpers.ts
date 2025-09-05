@@ -39,9 +39,9 @@ export const PLAN_CREDITS = {
 
 // 플랜별 가격 정보 (원)
 export const PLAN_PRICES = {
-  starter: 100, // 테스트용
-  pro: 49000,
-  business: 119000,
+  starter: 19900,
+  pro: 49900,
+  business: 119900,
 } as const;
 
 /**

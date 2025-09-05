@@ -19,8 +19,8 @@ export async function POST(req: Request) {
       return Response.json({ success: false, message: 'TOSS_SECRET_KEY missing' }, { status: 500 })
     }
 
-    // 플랜별 가격 설정 (테스트용: 스타터 100원)
-    const planPrices = { starter: 100, pro: 49000, business: 119000 }
+    // 플랜별 가격 설정 (월간만 지원)
+    const planPrices = { starter: 19900, pro: 49900, business: 119900 }
     const planCredits = { starter: 2000, pro: 7000, business: 20000 }
     
     const amount = planPrices[plan]
@@ -41,7 +41,7 @@ export async function POST(req: Request) {
         customerKey: customerKey,
         amount: amount,
         orderId: orderId,
-        orderName: `릴처 ${plan.toUpperCase()} 플랜 구독`
+        orderName: `릴처 ${plan.toUpperCase()} 플랜 월간 구독`
       })
     })
     

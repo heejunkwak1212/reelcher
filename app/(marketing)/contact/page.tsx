@@ -6,6 +6,9 @@ import { redirect } from 'next/navigation'
 import InlineEditor from '@/components/admin/InlineEditor'
 import ContactForm from '@/components/layout/ContactForm'
 import SiteHeader from '@/components/layout/SiteHeader'
+import { pageMetadata } from '@/lib/metadata'
+
+export const metadata = pageMetadata.contact
 
 export const runtime = 'nodejs'
 

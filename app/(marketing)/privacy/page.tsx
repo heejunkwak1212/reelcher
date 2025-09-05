@@ -4,6 +4,9 @@ import { eq } from 'drizzle-orm'
 import { supabaseServer } from '@/lib/supabase/server'
 import InlineEditor from '@/components/admin/InlineEditor'
 import SiteHeader from '@/components/layout/SiteHeader'
+import { pageMetadata } from '@/lib/metadata'
+
+export const metadata = pageMetadata.privacy
 
 export const runtime = 'nodejs'
 

@@ -58,6 +58,7 @@ export async function GET(req: Request) {
         user_id: userId,
         plan: plan || 'starter',
         billing_key: billingKey,
+        billing_period: 'monthly',
         status: 'pending', // 결제 대기 상태
         toss_customer_key: customerKey,
         created_at: new Date().toISOString(),
@@ -125,6 +126,7 @@ export async function POST(req: Request) {
         user_id: userId,
         plan: plan || 'starter',
         billing_key: billingKey,
+        billing_period: 'monthly',
         status: 'pending', // 결제 대기 상태
         toss_customer_key: customerKey,
         created_at: new Date().toISOString(),

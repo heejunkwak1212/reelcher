@@ -42,15 +42,15 @@ export async function PUT(req: Request) {
     const { data: rows } = await svc.from('subscriptions').select('user_id, plan, billing_key, status')
     const planToCredits: Record<string, number> = { starter: 2000, pro: 7000, business: 20000 }
     const now = new Date()
-    const next = new Date(now)
-    next.setUTCMonth(next.getUTCMonth() + 1)
     for (const s of rows || []) {
       if (!s.billing_key || s.status !== 'active') continue
-      const delta = planToCredits[s.plan as keyof typeof planToCredits] || 0
-      if (!delta) continue
-      // 토스 공식 가이드에 따른 빌링키로 자동결제 승인 (테스트용: 스타터 100원)
-      const planToPrices: Record<string, number> = { starter: 100, pro: 49000, business: 119000 }
+      
+      // 토스 공식 가이드에 따른 빌링키로 자동결제 승인 (월간만 지원)
+      const planToPrices: Record<string, number> = { starter: 19900, pro: 49900, business: 119900 }
       const amount = planToPrices[s.plan as keyof typeof planToPrices] || 0
+      const delta = planToCredits[s.plan as keyof typeof planToCredits] || 0
+      
+      if (!delta) continue
       
       if (amount > 0) {
         const secret = process.env.TOSS_SECRET_KEY
@@ -68,7 +68,7 @@ export async function PUT(req: Request) {
               customerKey: `customer_${s.user_id}`,
               amount: amount,
               orderId: orderId,
-              orderName: `릴처 ${s.plan.toUpperCase()} 플랜 월 구독료`
+              orderName: `릴처 ${s.plan.toUpperCase()} 플랜 월간 구독료`
             })
           })
           
@@ -80,7 +80,10 @@ export async function PUT(req: Request) {
           const paymentResult = await paymentRes.json()
           console.log(`Auto payment success for user ${s.user_id}:`, paymentResult)
           
-          // 결제 성공 시에만 크레딧 지급 및 구독 갱신
+          // 결제 성공 시에만 크레딧 지급 및 구독 갱신 (월간만 지원)
+          const next = new Date(now)
+          next.setUTCMonth(next.getUTCMonth() + 1)
+          
           const { data: cr } = await svc.from('credits').select('balance,reserved').eq('user_id', s.user_id).single()
           await svc.from('credits').upsert({ user_id: s.user_id as any, balance: (cr?.balance || 0) + delta, reserved: cr?.reserved || 0 })
           await svc.from('subscriptions').update({ renewed_at: now.toISOString(), next_charge_at: next.toISOString() }).eq('user_id', s.user_id)
