@@ -141,7 +141,7 @@ export function Pricing({
               <p className="text-base font-semibold text-muted-foreground">
                 {plan.name}
               </p>
-              <div className="mt-6 flex items-center justify-center gap-x-2">
+              <div className="mt-3 flex items-center justify-center gap-x-2">
                 <span className="text-5xl font-bold tracking-tight text-foreground">
                   <NumberFlow
                     value={
@@ -167,7 +167,7 @@ export function Pricing({
               </div>
 
               <p className="text-xs leading-5 text-muted-foreground">
-                {isMonthly ? "billed monthly" : "billed annually"}
+                {isMonthly ? "VAT 포함" : "billed annually"}
               </p>
 
               <ul className="mt-5 gap-2 flex flex-col">

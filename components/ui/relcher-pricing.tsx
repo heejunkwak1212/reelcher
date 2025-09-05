@@ -358,7 +358,7 @@ export function RelcherPricing({
         "최대 120개 검색 결과", // 기능 2
         "최우선 지원", // 기능 3 // 기능 4
       ],
-      description: "대규모 팀과 기업을 위한 완전한 솔루션", // 설명
+      description: "대규모 팀과 기업을 위한 솔루션", // 설명
       buttonText: "BUSINESS 시작하기", // 버튼 텍스트
       href: "#", // 토스페이 연결을 위한 임시 링크
       isPopular: false, // 인기 여부
@@ -451,7 +451,7 @@ export function RelcherPricing({
                 {plan.name}
               </p>
               
-              <div className="mt-6 flex flex-col items-center justify-center">
+              <div className="mt-3 flex flex-col items-center justify-center">
                 {/* 연간 선택시 기존 월 요금에 취소선 표시 */}
                 {!isMonthly && plan.price !== "0" && (
                   <div className="text-lg font-medium text-gray-500 mb-1" style={{ textDecoration: 'line-through' }}>
@@ -480,7 +480,7 @@ export function RelcherPricing({
 
               {plan.price !== "0" && (
                 <p className="text-xs leading-5 text-muted-foreground mt-1">
-                  {isMonthly ? "월간 결제" : "연간 결제 (월 단위 요금)"}
+                  {isMonthly ? "VAT 포함" : "연간 결제 (월 단위 요금)"}
                 </p>
               )}
 
@@ -587,9 +587,12 @@ export function RelcherPricing({
             {confirmAction === 'upgrade' && pendingPlan && (
               <>
                 <p className="text-center text-gray-600">
-                  현재 <span className="font-medium">{currentPlan.toUpperCase()}</span> 플랜을 구독 중이에요. <span className="font-medium">{pendingPlan.toUpperCase()}</span> 플랜으로 업그레이드하시겠어요?
+                  현재 <span className="font-medium">{currentPlan.toUpperCase()}</span> 플랜을 구독 중이에요.
                 </p>
-                <p className="text-center text-sm text-gray-500">
+                <p className="text-center text-gray-600 mt-3">
+                  기존 등록되어있는 결제 카드를 변경하시겠어요?
+                </p>
+                <p className="text-center text-sm text-gray-500 mt-2">
                   총 {
                     pendingPlan === 'starter' ? '2,000' :
                     pendingPlan === 'pro' ? '7,000' :
@@ -602,13 +605,13 @@ export function RelcherPricing({
                     onClick={handleConfirmModalClose}
                     className="flex-1"
                   >
-                    취소
+                    아니요, 괜찮아요
                   </Button>
                   <Button 
                     onClick={handleConfirmAction}
                     className="flex-1"
                   >
-                    업그레이드
+                    네, 변경할래요
                   </Button>
                 </div>
               </>
@@ -617,9 +620,12 @@ export function RelcherPricing({
             {confirmAction === 'downgrade' && pendingPlan && (
               <>
                 <p className="text-center text-gray-600">
-                  현재 <span className="font-medium">{currentPlan.toUpperCase()}</span> 플랜을 구독 중이에요. <span className="font-medium">{pendingPlan.toUpperCase()}</span> 플랜으로 전환하시겠어요?
+                  현재 <span className="font-medium">{currentPlan.toUpperCase()}</span> 플랜을 구독 중이에요.
                 </p>
-                <p className="text-center text-sm text-gray-500">
+                <p className="text-center text-gray-600 mt-3">
+                  기존 등록되어있는 결제 카드를 변경하시겠어요?
+                </p>
+                <p className="text-center text-sm text-gray-500 mt-2">
                   총 {
                     pendingPlan === 'starter' ? '2,000' :
                     pendingPlan === 'pro' ? '7,000' :
@@ -632,13 +638,13 @@ export function RelcherPricing({
                     onClick={handleConfirmModalClose}
                     className="flex-1"
                   >
-                    취소
+                    아니요, 괜찮아요
                   </Button>
                   <Button 
                     onClick={handleConfirmAction}
                     className="flex-1"
                   >
-                    확인
+                    네, 변경할래요
                   </Button>
                 </div>
               </>
