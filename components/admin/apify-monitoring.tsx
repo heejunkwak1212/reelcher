@@ -89,10 +89,7 @@ export default function ApifyMonitoring() {
 
   useEffect(() => {
     fetchData();
-
-    // 실시간 모니터링을 위해 10초마다 자동 새로고침
-    const interval = setInterval(() => fetchData(), 10000);
-    return () => clearInterval(interval);
+    // 자동 새로고침 제거됨 - 수동 새로고침만 가능
   }, [fetchData]);
 
   const getUsageColor = (percentage: number) => {
@@ -157,7 +154,7 @@ export default function ApifyMonitoring() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Apify 리소스 모니터링</h2>
-          <p className="text-gray-600">실시간 액터 실행 상태 및 리소스 사용량 (10초마다 자동 업데이트)</p>
+          <p className="text-gray-600">실시간 액터 실행 상태 및 리소스 사용량 (수동 새로고침)</p>
         </div>
         <div className="flex items-center gap-4">
           {lastUpdated && (

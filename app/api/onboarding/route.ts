@@ -9,6 +9,7 @@ const bodySchema = z.object({
   howFound: z.string().trim().optional().default(''),
   role: z.literal('user'),
   phoneNumber: z.string().trim().optional(), // 전화번호 추가
+  agreeMarketing: z.boolean().optional().default(false), // 마케팅 수신동의 추가
 })
 
 export async function POST(req: Request) {
@@ -47,6 +48,7 @@ export async function POST(req: Request) {
         how_found: input.howFound,
         role: 'user',
         phone_number: input.phoneNumber || null,
+        marketing_consent: input.agreeMarketing,
         onboarding_completed: true,
         created_at: new Date().toISOString()
       }, {

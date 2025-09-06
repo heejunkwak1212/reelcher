@@ -525,7 +525,7 @@ export function RelcherPricing({
                     isLoggedIn && currentPlan === plan.name.toLowerCase()
                       ? "bg-gray-100 text-gray-600 border-gray-300 cursor-not-allowed hover:bg-gray-100 hover:text-gray-600"
                       : plan.isPopular
-                        ? "bg-primary text-primary-foreground border-primary hover:bg-primary/90"
+                        ? "bg-primary text-primary-foreground border-primary hover:bg-primary/90 hover:text-primary-foreground"
                         : "bg-background text-foreground border-border hover:bg-primary hover:text-primary-foreground hover:border-primary"
                   )}
                 >

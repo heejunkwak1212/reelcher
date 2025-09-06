@@ -23,7 +23,7 @@ export default async function PrivacyPage() {
 4. 서비스 고도화(사용 행태 분석, 품질·보안 개선), 부정 이용 방지 및 접속 보안
 
 제2조(처리 및 보유 기간)
-1. 회원정보: 회원 탈퇴 시까지 보유하되, 관계 법령에 따라 필요한 경우 일정 기간 보관
+1. 회원정보: 회원 탈퇴 시까지 보유하되, 관계 법령에 따라 필요한 경우 일정 기간 보관. 단, 재가입 방지를 위한 목적으로 회원 탈퇴 시 전화번호와 잔여 크레딧 정보는 탈퇴일로부터 30일간 보관됩니다.
 2. 거래·정산 관련 기록: 전자상거래 등에서의 소비자보호에 관한 법률 등 관련 법령에 따른 보관(예: 결제 기록 5년, 소비자 불만·분쟁처리 3년 등)
 3. 접속기록: 통신비밀보호법에 따라 3개월 보관
 
@@ -62,7 +62,7 @@ export default async function PrivacyPage() {
 개인정보침해신고센터(privacy.kisa.or.kr, 국번없이 118), 개인정보분쟁조정위원회(kopico.go.kr, 1833-6972) 등 관련 기관에 분쟁 해결이나 상담을 신청할 수 있습니다.
 
 부칙
-1. 본 방침은 2025년 8월 16일로부터 적용됩니다.
+1. 본 방침은 2025년 9월 9일로부터 적용됩니다.
 2. 내용 변경 시 적용일 7일 전부터 서비스 내 공지합니다.`
   const row = (await db.select().from(pages).where(eq(pages.slug, 'privacy')).limit(1))[0]
   const ssr = await supabaseServer()
@@ -77,7 +77,7 @@ export default async function PrivacyPage() {
       <SiteHeader />
       <div className="max-w-3xl mx-auto px-6 py-10 space-y-4" style={{ fontFamily: 'Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif' }}>
       <h1 className="text-2xl font-bold">개인정보처리방침</h1>
-      <div className="text-sm text-neutral-500">게시일: 2025-08-16</div>
+      <div className="text-sm text-neutral-500">게시일: 2025-09-09</div>
       <InlineEditor slug="privacy" initialContent={row?.content || defaultPrivacy} isAdmin={isAdmin} />
       </div>
     </>

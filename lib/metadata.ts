@@ -67,64 +67,64 @@ export function createPageMetadata({
 export const pageMetadata = {
   home: createPageMetadata({
     title: '릴처: 릴스 검색 사이트 | 틱톡 유튜브 다운로드',
-    description: '릴스 검색 사이트, 틱톡 검색 사이트, 유튜브 검색 사이트를 한번에! 인스타그램 릴스, 틱톡, 유튜브 쇼츠를 쉽게 검색하고 다운로드할 수 있는 무료 사이트입니다.',
+    description: '릴스, 틱톡, 유튜브 검색을 한번에, 인스타그램 릴스, 틱톡, 유튜브 쇼츠를 쉽게 검색하고 다운로드할 수 있는 사이트예요.',
     path: '',
   }),
 
   dashboard: createPageMetadata({
-    title: '대시보드',
-    description: '나의 검색 기록, 크레딧 사용량, 분석 결과를 한눈에 확인하세요.',
+    title: '대시보드 | 릴처',
+    description: '나의 검색 기록, 크레딧 사용량, 분석 결과를 한눈에 확인해보세요.',
     path: '/dashboard',
     noIndex: true, // 개인 대시보드는 검색엔진에 노출하지 않음
   }),
 
   search: createPageMetadata({
-    title: '릴스 틱톡 유튜브 검색',
-    description: '릴스 검색, 틱톡 검색, 유튜브 쇼츠 검색을 한번에! 키워드로 쉽게 찾고 다운로드하세요.',
+    title: '릴스 틱톡 유튜브 검색 | 릴처',
+    description: '릴스 검색, 틱톡 검색, 유튜브 쇼츠 검색을 한번에! 키워드로 쉽게 찾고 다운로드까지 해보세요.',
     path: '/search-test',
   }),
 
   pricing: createPageMetadata({
-    title: '릴스 검색 사이트 요금제',
-    description: '릴스 검색 사이트 릴처의 요금제를 확인하세요. 무료로 릴스, 틱톡, 유튜브 검색과 다운로드를 이용할 수 있습니다.',
+    title: '요금제 | 릴처',
+    description: '릴처의 요금제를 확인해보세요. 릴스, 틱톡, 유튜브 검색과 다운로드 기능을 무료부터 프리미엄까지 다양한 플랜으로 이용할 수 있어요.',
     path: '/pricing',
   }),
 
   contact: createPageMetadata({
-    title: '릴스 검색 사이트 문의하기',
-    description: '릴스 검색 사이트 릴처 이용 중 궁금한 점이나 문의사항이 있으시면 언제든 연락주세요.',
+    title: '문의하기 | 릴처',
+    description: '릴처 서비스 이용 중 궁금한 점이나 문의사항이 있으시면 언제든 연락해주세요. 빠른 시간 내에 친절하게 답변드릴게요.',
     path: '/contact',
     noIndex: true,
   }),
 
   privacy: createPageMetadata({
-    title: '릴스 검색 사이트 개인정보처리방침',
-    description: '릴스 검색 사이트 릴처의 개인정보 수집, 이용, 보관에 관한 정책을 확인하세요.',
+    title: '개인정보처리방침 | 릴처',
+    description: '릴처의 개인정보 수집, 이용, 보관에 관한 정책을 확인해보세요. 사용자의 개인정보 보호를 위한 릴처의 정책을 안내해드려요.',
     path: '/privacy',
   }),
 
   terms: createPageMetadata({
-    title: '릴스 검색 사이트 이용약관',
-    description: '릴스 검색 사이트 릴처 서비스 이용에 관한 약관과 규정을 확인하세요.',
+    title: '이용약관 | 릴처',
+    description: '릴처 서비스 이용에 관한 약관과 규정을 확인해보세요. 안전하고 올바른 서비스 이용을 위한 가이드라인을 제공해드려요.',
     path: '/terms',
   }),
 
   faq: createPageMetadata({
-    title: '릴스 검색 사이트 자주 묻는 질문',
-    description: '릴스 검색 사이트, 틱톡 검색 사이트, 유튜브 검색 사이트 이용 시 자주 묻는 질문과 답변을 확인하세요.',
+    title: '자주 묻는 질문 | 릴처',
+    description: '릴처 이용 시 자주 묻는 질문과 답변을 확인해보세요. 릴스, 틱톡, 유튜브 검색 및 다운로드 관련 궁금증을 해결해드릴게요.',
     path: '/faq',
   }),
 
   signIn: createPageMetadata({
-    title: '로그인',
-    description: 'Reelcher에 로그인하여 더 많은 기능을 이용하세요.',
+    title: '로그인 | 릴처',
+    description: '릴처에 로그인하여 더 많은 기능을 이용해보세요. 릴스, 틱톡, 유튜브 검색 및 다운로드 서비스를 시작해보세요.',
     path: '/sign-in',
     noIndex: true,
   }),
 
   onboarding: createPageMetadata({
-    title: '시작하기',
-    description: 'Reelcher 서비스를 시작하기 위한 간단한 설정을 완료하세요.',
+    title: '시작하기 | 릴처',
+    description: '릴처 서비스를 시작하기 위한 간단한 설정을 완료해보세요. 맞춤형 서비스 이용을 위한 초기 설정을 진행해드려요.',
     path: '/onboarding',
     noIndex: true,
   }),
@@ -133,8 +133,8 @@ export const pageMetadata = {
 // 다이나믹 메타데이터 생성 함수들
 export function createSearchResultMetadata(keyword: string, resultCount: number): Metadata {
   return createPageMetadata({
-    title: `"${keyword}" 검색 결과`,
-    description: `"${keyword}" 키워드로 검색한 ${resultCount}개의 릴스, 틱톡, 유튜브 쇼츠 결과를 확인하세요.`,
+    title: `"${keyword}" 검색 결과 | 릴처`,
+    description: `"${keyword}" 키워드로 검색한 ${resultCount}개의 릴스, 틱톡, 유튜브 쇼츠 결과를 확인해보세요.`,
     path: `/search-test?q=${encodeURIComponent(keyword)}`,
   })
 }
@@ -173,7 +173,7 @@ export function generateWebsiteJsonLd() {
     '@context': 'https://schema.org',
     '@type': 'WebSite',
     name: 'Reelcher',
-    description: '릴스 검색 사이트, 틱톡 검색 사이트, 유튜브 검색 사이트를 한번에 이용할 수 있는 무료 사이트',
+    description: '릴스 검색 사이트, 틱톡 검색 사이트, 유튜브 검색을 한번에 이용할 수 있는 플랫폼입니다.',
     url: 'https://reelcher.com',
     potentialAction: {
       '@type': 'SearchAction',

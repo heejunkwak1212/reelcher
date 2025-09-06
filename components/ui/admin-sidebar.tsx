@@ -15,6 +15,9 @@ import {
   Server,
   UserX,
   MessageSquare,
+  Mail,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import Link from "next/link";
@@ -242,6 +245,22 @@ export function AdminSidebar({ user, onSidebarChange }: AdminSidebarProps) {
                       <motion.li variants={variants}>
                         {!isCollapsed && (
                           <p className="ml-2 text-sm font-medium">문의 관리</p>
+                        )}
+                      </motion.li>
+                    </Link>
+                    
+                    <Link
+                      href="/admin/marketing"
+                      prefetch={true}
+                      className={cn(
+                        "flex h-8 w-full flex-row items-center rounded-md px-2 py-1.5 transition hover:bg-gray-100 hover:text-gray-900",
+                        pathname?.includes("marketing") && "bg-gray-100 text-gray-900",
+                      )}
+                    >
+                      <Mail className="h-4 w-4" />
+                      <motion.li variants={variants}>
+                        {!isCollapsed && (
+                          <p className="ml-2 text-sm font-medium">마케팅 수신동의</p>
                         )}
                       </motion.li>
                     </Link>

@@ -252,8 +252,8 @@ export async function GET() {
 
       const monthRefundTotal = monthRefunds?.reduce((sum, refund) => sum + (refund.refund_amount || 0), 0) || 0
 
-      // 해당 월의 실제 순수익
-      const monthRevenue = monthPaymentTotal - monthRefundTotal
+      // 해당 월의 실제 순수익 (환불이 결제를 초과하지 않도록 보정)
+      const monthRevenue = Math.max(0, monthPaymentTotal - monthRefundTotal)
 
       console.log(`${monthKey} MRR 계산 완료:`, { 
         monthPaymentTotal, 
