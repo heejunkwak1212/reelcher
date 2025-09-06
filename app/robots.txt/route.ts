@@ -1,5 +1,9 @@
-# 네이버 검색봇 (Yeti) 우선 설정 - 네이버 가이드 권장 순서
-User-agent: Yeti
+import { NextResponse } from 'next/server'
+
+export const runtime = 'nodejs'
+
+export async function GET() {
+  const robotsContent = `User-agent: Yeti
 Allow: /
 Allow: /pricing
 Allow: /faq
@@ -17,7 +21,6 @@ Disallow: /sign-in
 Disallow: /admin
 Disallow: /api
 
-# 모든 검색봇 기본 설정
 User-agent: *
 Allow: /
 Allow: /pricing
@@ -37,7 +40,6 @@ Disallow: /admin
 Disallow: /api
 Disallow: /_next
 
-# AI 크롤러 차단
 User-agent: GPTBot
 Disallow: /
 
@@ -50,5 +52,14 @@ Disallow: /
 User-agent: PerplexityBot
 Disallow: /
 
-# 사이트맵 위치
-Sitemap: https://reelcher.com/sitemap.xml
+Sitemap: https://reelcher.com/sitemap.xml`
+
+  return new NextResponse(robotsContent, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Cache-Control': 'public, max-age=3600',
+      // Content-Disposition 헤더를 명시적으로 설정하지 않음 (네이버 가이드 준수)
+    },
+  })
+}

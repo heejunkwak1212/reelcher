@@ -57,14 +57,14 @@ export const viewport = {
 export const metadata: Metadata = {
   title: {
     default: "릴처: 릴스 틱톡 유튜브 검색 벤치마킹 솔루션",
-    template: "%s | Reelcher"
+    template: "%s | 릴처"
   },
-  description: "릴스 검색, 틱톡 검색, 유튜브 쇼츠 검색을 한번에! 인스타그램 릴스, 틱톡, 유튜브 쇼츠를 쉽게 검색하고 다운로드할 수 있는 서비스입니다.",
+  description: "릴스 검색, 틱톡 검색, 유튜브 쇼츠 검색을 한 곳에서! 인스타그램 릴스, 틱톡, 유튜브 쇼츠를 쉽게 검색하고 다운로드할 수 있는 서비스입니다.",
   keywords: [
     "릴스 검색 사이트", "릴스 다운로드 사이트", "틱톡 검색 사이트", "유튜브 검색 사이트",
     "인스타그램 릴스 검색", "틱톡 다운로드", "유튜브 쇼츠 검색", "릴스 검색",
     "틱톡 검색", "유튜브 검색", "무료 다운로드 사이트", "동영상 검색 사이트",
-    "소셜미디어 검색", "바이럴 영상 검색", "릴스 사이트", "틱톡 사이트"
+    "릴스 다운로드", "바이럴 영상 검색", "릴스 사이트", "틱톡 사이트"
   ],
   authors: [{ name: 'Reelcher Team', url: 'https://reelcher.com' }],
   creator: 'Reelcher',
@@ -95,10 +95,10 @@ export const metadata: Metadata = {
 
   // Open Graph
   openGraph: {
-    title: 'Reelcher: 릴스 검색 사이트 | 틱톡 유튜브 다운로드',
-    description: '릴스 검색 사이트, 틱톡 검색 사이트, 유튜브 검색 사이트를 한번에! 무료로 검색하고 다운로드하세요',
+    title: '릴처: SNS 벤치마킹 콘텐츠 검색 분석',
+    description: '릴스, 틱톡, 유튜브 콘텐츠를 검색 한 번으로 주요 지표까지 확인하고 각종 데이터를 추출해보세요.',
     url: 'https://reelcher.com',
-    siteName: 'Reelcher',
+    siteName: '릴처',
     locale: 'ko_KR',
     type: 'website',
     images: [
@@ -114,8 +114,8 @@ export const metadata: Metadata = {
   // Twitter Card
   twitter: {
     card: 'summary_large_image',
-    title: 'Reelcher: 릴스 검색 사이트 | 틱톡 유튜브 다운로드',
-    description: '릴스 검색 사이트, 틱톡 검색 사이트, 유튜브 검색 사이트를 한번에! 무료로 검색하고 다운로드하세요',
+    title: '릴처: SNS 벤치마킹 콘텐츠 검색 분석',
+    description: '릴스, 틱톡, 유튜브 콘텐츠를 검색 한 번으로 주요 지표까지 확인하고 각종 데이터까지 추출해보세요.',
     creator: '@reelcher',
     images: ['https://reelcher.com/og-image.png'],
   },

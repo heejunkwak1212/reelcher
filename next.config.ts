@@ -55,16 +55,7 @@ const nextConfig: NextConfig = {
           { key: 'Content-Security-Policy', value: csp },
         ],
       },
-      // robots.txt에 대한 올바른 Content-Type 설정 (네이버 웹마스터 가이드 준수)
-      {
-        source: '/robots.txt',
-        headers: [
-          { key: 'Content-Type', value: 'text/plain; charset=utf-8' },
-          { key: 'Cache-Control', value: 'public, max-age=3600' },
-          // Content-Disposition 제거 - 네이버 가이드: 순수한 text/plain 응답 필요
-          { key: 'Content-Disposition', value: '' },
-        ],
-      },
+      // robots.txt는 이제 API Route (/app/robots.txt/route.ts)에서 처리
     ]
   },
 }

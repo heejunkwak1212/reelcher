@@ -79,8 +79,8 @@ export const pageMetadata = {
   }),
 
   search: createPageMetadata({
-    title: '릴스 틱톡 유튜브 검색 | 릴처',
-    description: '릴스 검색, 틱톡 검색, 유튜브 쇼츠 검색을 한번에! 키워드로 쉽게 찾고 다운로드까지 해보세요.',
+    title: '릴처 | 릴스 틱톡 유튜브 검색',
+    description: '릴스 검색, 틱톡 검색, 유튜브 쇼츠 검색을 한 곳에서! 키워드로 쉽게 찾고 다운로드까지 해보세요.',
     path: '/search-test',
   }),
 
