@@ -156,9 +156,13 @@ export default function OnboardingPage() {
                   className="mt-1"
                 />
                 <Label htmlFor="agreeTerms" className="text-sm text-gray-600 leading-relaxed">
-                  <Link href="/terms" target="_blank" rel="noopener noreferrer" className="text-black underline hover:no-underline">
+                  <button 
+                    type="button"
+                    onClick={() => window.open('/terms', '_blank', 'noopener,noreferrer')}
+                    className="text-black underline hover:no-underline cursor-pointer"
+                  >
                     이용약관
-                  </Link>
+                  </button>
                   {' '}동의 (필수)
                 </Label>
               </div>
@@ -171,9 +175,13 @@ export default function OnboardingPage() {
                   className="mt-1"
                 />
                 <Label htmlFor="agreePrivacy" className="text-sm text-gray-600 leading-relaxed">
-                  <Link href="/privacy" target="_blank" rel="noopener noreferrer" className="text-black underline hover:no-underline">
+                  <button 
+                    type="button"
+                    onClick={() => window.open('/privacy', '_blank', 'noopener,noreferrer')}
+                    className="text-black underline hover:no-underline cursor-pointer"
+                  >
                     개인정보처리방침
-                  </Link>
+                  </button>
                   {' '}동의 (필수)
                 </Label>
               </div>
