@@ -106,7 +106,7 @@ export const metadata: Metadata = {
         url: 'https://reelcher.com/og-image.png',
         width: 1200,
         height: 630,
-        alt: 'Reelcher - 릴스 검색 사이트, 틱톡 검색 사이트, 유튜브 검색 사이트',
+        alt: '릴처 - 릴스, 틱톡, 유튜브 쇼츠 검색 사이트',
       }
     ],
   },
