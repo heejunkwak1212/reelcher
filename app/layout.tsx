@@ -96,7 +96,7 @@ export const metadata: Metadata = {
   // Open Graph
   openGraph: {
     title: '릴처: SNS 벤치마킹 콘텐츠 검색 분석',
-    description: '릴스, 틱톡, 유튜브 콘텐츠를 검색 한 번으로 주요 지표까지 확인하고 각종 데이터를 추출해보세요.',
+    description: '릴스, 틱톡, 유튜브 콘텐츠를 검색 한 번으로 주요 지표까지 확인하고 각종 데이터까지 추출해보세요.',
     url: 'https://reelcher.com',
     siteName: '릴처',
     locale: 'ko_KR',
