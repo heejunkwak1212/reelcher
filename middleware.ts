@@ -111,6 +111,6 @@ export async function middleware(req: NextRequest) {
 // 불필요한 경로(이미지, 정적 파일 등)에서는 실행되지 않아 성능이 최적화됩니다.
 export const config = {
   matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+    '/((?!api|_next/static|_next/image|favicon.ico|.*\\.html).*)',
   ],
 }
