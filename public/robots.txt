@@ -1,0 +1,59 @@
+# Reelcher.com robots.txt
+# 네이버 검색엔진 최적화 가이드 준수
+# https://searchadvisor.naver.com/guide/seo-basic-robots
+
+# 네이버 검색봇 (Yeti) 우선 설정
+User-agent: Yeti
+Allow: /
+Allow: /pricing
+Allow: /faq
+Allow: /privacy
+Allow: /terms
+Allow: /contact
+Allow: /*.css
+Allow: /*.js
+Allow: /favicon.ico
+Allow: /logo.svg
+Disallow: /dashboard
+Disallow: /search-test
+Disallow: /onboarding
+Disallow: /sign-in
+Disallow: /admin
+Disallow: /api
+Disallow: /_next/static
+
+# 모든 검색봇 기본 설정
+User-agent: *
+Allow: /
+Allow: /pricing
+Allow: /faq
+Allow: /privacy
+Allow: /terms
+Allow: /contact
+Allow: /*.css
+Allow: /*.js
+Allow: /favicon.ico
+Allow: /logo.svg
+Disallow: /dashboard
+Disallow: /search-test
+Disallow: /onboarding
+Disallow: /sign-in
+Disallow: /admin
+Disallow: /api
+Disallow: /_next
+
+# AI 크롤러 차단
+User-agent: GPTBot
+Disallow: /
+
+User-agent: ChatGPT-User
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
+
+User-agent: PerplexityBot
+Disallow: /
+
+# 사이트맵 위치 (네이버 가이드 권장)
+Sitemap: https://reelcher.com/sitemap.xml

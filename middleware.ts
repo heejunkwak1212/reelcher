@@ -86,11 +86,11 @@ export async function middleware(req: NextRequest) {
       console.log(`🔒 온보딩 완료된 사용자의 온보딩 페이지 접근 차단: ${pathname} → /dashboard`)
       return NextResponse.redirect(url)
     }
-  } else if (needsProfileCheck && profile?.onboarding_completed === false) {
-    // 온보딩이 완료되지 않은 사용자는 온보딩 페이지로 리다이렉트
+  } else if (needsProfileCheck && (profile === null || profile?.onboarding_completed === false)) {
+    // 프로필이 없거나 온보딩이 완료되지 않은 사용자는 온보딩 페이지로 리다이렉트
     const url = req.nextUrl.clone()
     url.pathname = '/onboarding'
-    console.log(`📝 온보딩 미완료 사용자를 온보딩 페이지로 리다이렉트: ${pathname} → /onboarding`)
+    console.log(`📝 온보딩으로 리다이렉트: 프로필=${profile ? '존재' : '없음'}, 온보딩완료=${profile?.onboarding_completed}, 경로: ${pathname} → /onboarding`)
     return NextResponse.redirect(url)
   }
 
