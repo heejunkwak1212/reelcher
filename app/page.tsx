@@ -10,7 +10,7 @@ import { supabaseServer } from '@/lib/supabase/server'
 import { FaqSection } from '@/components/faq'
 import { FeaturesSectionWithHoverEffects } from '@/components/feature-section-with-hover-effects'
 import MainPageWrapper from '@/components/layout/MainPageWrapper'
-import { generateOrganizationJsonLd, generateWebsiteJsonLd } from '@/lib/metadata'
+import { generateOrganizationJsonLd, generateWebsiteJsonLd, generateNaverOptimizedJsonLd } from '@/lib/metadata'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic';
@@ -87,24 +87,30 @@ export default async function Home() {
       <SiteHeader />
       <RelcherHero user={user} />
       
-      {/* Dashboard Screenshot Section */}
+      {/* Dashboard Screenshot Section - 모든 환경에서 안정적 표시 */}
       <section className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-4 pb-16 -mt-16">
         <Reveal>
           <div className="relative overflow-hidden rounded-xl sm:rounded-2xl shadow-[0_25px_50px_-12px_rgba(0,0,0,0.25),0_0_0_1px_rgba(0,0,0,0.05)] bg-white">
-            <div className="relative w-full">
+            <div className="relative w-full min-h-[200px] sm:min-h-[300px] md:min-h-[400px] lg:min-h-[500px]">
               <Image
                 src="/dash.png"
                 alt="릴처 대시보드 - 릴스 검색 사이트 화면"
                 width={1400}
                 height={800}
-                className="w-full h-auto"
+                className="w-full h-auto object-contain"
                 priority
-                sizes="(max-width: 640px) 100vw, (max-width: 1024px) 90vw, (max-width: 1280px) 85vw, 1400px"
+                loading="eager"
+                sizes="(max-width: 640px) 100vw, (max-width: 768px) 90vw, (max-width: 1024px) 85vw, (max-width: 1280px) 80vw, 1400px"
+                style={{
+                  maxWidth: '100%',
+                  height: 'auto',
+                  display: 'block'
+                }}
               />
             </div>
-            {/* Bottom gradient fade effect only - 하단 음영만 유지 */}
-            <div className="absolute bottom-0 left-0 right-0 h-24 xs:h-32 sm:h-40 md:h-48 bg-gradient-to-t from-white via-white/95 to-transparent pointer-events-none" />
-            <div className="absolute bottom-0 left-0 right-0 h-12 xs:h-16 sm:h-20 md:h-24 bg-gradient-to-t from-white to-transparent pointer-events-none" />
+            {/* Bottom gradient fade effect - 반응형 높이 적용 */}
+            <div className="absolute bottom-0 left-0 right-0 h-16 sm:h-24 md:h-32 lg:h-40 bg-gradient-to-t from-white via-white/95 to-transparent pointer-events-none" />
+            <div className="absolute bottom-0 left-0 right-0 h-8 sm:h-12 md:h-16 lg:h-20 bg-gradient-to-t from-white to-transparent pointer-events-none" />
           </div>
         </Reveal>
       </section>
@@ -254,6 +260,12 @@ export default async function Home() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{
           __html: JSON.stringify(generateWebsiteJsonLd())
+        }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(generateNaverOptimizedJsonLd())
         }}
       />
     </MainPageWrapper>

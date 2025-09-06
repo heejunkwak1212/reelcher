@@ -114,6 +114,12 @@ export const metadata: Metadata = {
         width: 1200,
         height: 630,
         alt: '릴처 - 릴스, 틱톡, 유튜브 쇼츠 검색 사이트',
+      },
+      {
+        url: 'https://reelcher.com/logo.svg',
+        width: 512,
+        height: 512,
+        alt: '릴처 로고',
       }
     ],
   },
@@ -169,18 +175,20 @@ export const metadata: Metadata = {
     'apple-mobile-web-app-title': 'Reelcher',
     
     // 네이버 검색 최적화
-    'naver-site-verification': process.env.NAVER_SITE_VERIFICATION || '', // 네이버 웹마스터도구 인증
-    'NaverBot': 'All', // 네이버봇 크롤링 허용
+    'naver-site-verification': process.env.NAVER_SITE_VERIFICATION || '',
+    'NaverBot': 'All',
+    'Yeti': 'All', // 네이버 검색로봇 추가 허용
     
     // 추가 검색엔진 최적화
     'msapplication-TileColor': '#ffffff',
     'theme-color': '#ffffff',
     
-    // 소셜 미디어 최적화
-    'fb:app_id': '123456789', // Facebook App ID (실제 발급받은 ID로 교체)
+    // 소셜 미디어 최적화  
+    'fb:app_id': '123456789',
     
-    // 메타데이터 캐시 무효화를 위한 버전 태그
-    'cache-version': '2024-12-19-v2',
+    // 강제 캐시 무효화를 위한 타임스탬프
+    'cache-version': `2024-12-19-v3-${Date.now()}`,
+    'last-modified': new Date().toISOString(),
     
     // 네이버 검색 결과 개선을 위한 추가 태그
     'subject': '릴스 검색 사이트, 틱톡 검색 사이트, 유튜브 검색',
@@ -188,6 +196,16 @@ export const metadata: Metadata = {
     'reply-to': 'reelcher1@gmail.com',
     'distribution': 'global',
     'rating': 'general',
+    
+    // 네이버 특화 메타태그 추가
+    'content-language': 'ko-KR',
+    'geo.region': 'KR',
+    'geo.country': 'South Korea',
+    'DC.language': 'ko',
+    'DC.title': '릴처: 릴스 틱톡 유튜브 검색 벤치마킹 솔루션',
+    'DC.creator': 'Reelcher Team',
+    'DC.subject': '릴스 검색, 틱톡 검색, 유튜브 쇼츠 검색, SNS 콘텐츠 분석',
+    'DC.description': '릴스 검색, 틱톡 검색, 유튜브 쇼츠 검색을 한 곳에서! 인스타그램 릴스, 틱톡, 유튜브 쇼츠를 쉽게 검색하고 다운로드할 수 있는 서비스입니다.',
   },
 };
 

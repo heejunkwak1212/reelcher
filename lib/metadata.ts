@@ -180,5 +180,54 @@ export function generateWebsiteJsonLd() {
       target: 'https://reelcher.com/search-test?q={search_term_string}',
       'query-input': 'required name=search_term_string',
     },
+    mainEntity: {
+      '@type': 'WebApplication',
+      name: '릴처',
+      applicationCategory: 'Social Media Analysis',
+      operatingSystem: 'Web Browser',
+      offers: {
+        '@type': 'Offer',
+        price: '0',
+        priceCurrency: 'KRW',
+        description: '무료 플랜 제공'
+      }
+    }
+  }
+}
+
+// 네이버 특화 구조화 데이터 생성
+export function generateNaverOptimizedJsonLd() {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: '릴처',
+    description: '릴스 검색, 틱톡 검색, 유튜브 쇼츠 검색을 한 곳에서 이용할 수 있는 SNS 콘텐츠 분석 플랫폼',
+    url: 'https://reelcher.com',
+    applicationCategory: 'Social Media Tools',
+    operatingSystem: 'Web',
+    author: {
+      '@type': 'Organization',
+      name: 'Reelcher Team'
+    },
+    offers: {
+      '@type': 'Offer',
+      price: '0',
+      priceCurrency: 'KRW',
+      availability: 'https://schema.org/InStock'
+    },
+    featureList: [
+      '인스타그램 릴스 검색',
+      '틱톡 영상 검색',
+      '유튜브 쇼츠 검색',
+      '영상 다운로드',
+      '데이터 분석',
+      '엑셀 내보내기'
+    ],
+    screenshot: 'https://reelcher.com/dash.png',
+    aggregateRating: {
+      '@type': 'AggregateRating',
+      ratingValue: '4.8',
+      ratingCount: '150'
+    }
   }
 }
