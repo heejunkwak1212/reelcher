@@ -46,8 +46,8 @@ export async function POST(request: NextRequest) {
     }
 
     // 디버깅: 사용자 정보 로깅
-    console.log('🔍 YouTube API - User ID:', user.id)
-    console.log('🔍 YouTube API - User Email:', user.email)
+    // YouTube API 사용자 인증 (프로덕션 보안을 위해 상세 로깅 제거)
+    // YouTube API 사용자 이메일 (프로덕션 보안을 위해 상세 로깅 제거)
 
     // 요청 본문 파싱 및 검증
     const body = await request.json()

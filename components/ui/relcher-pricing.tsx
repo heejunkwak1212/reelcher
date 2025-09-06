@@ -293,8 +293,10 @@ export function RelcherPricing({
       const tossPayments = anyWin.TossPayments(clientKey);
       const origin = window.location.origin;
       
-      console.log('Starting billing auth with customerKey:', customerKey);
-      console.log('TossPayments object:', tossPayments);
+      // 빌링 인증 시작 (프로덕션 보안을 위해 상세 로깅 제거)
+      if (process.env.NODE_ENV === 'development') {
+        console.log('Starting billing auth with customerKey:', customerKey);
+      }
       
       // payment 인스턴스 생성 (V2 SDK 방식 - 빌링 전용)
       const payment = tossPayments.payment({

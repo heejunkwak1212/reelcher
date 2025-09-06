@@ -38,7 +38,7 @@ export class MemoryQueueManager {
   private processing = false
   private monitor: ApifyMonitor
   private readonly MEMORY_THRESHOLD = 85 // 85% 이상이면 대기
-  private readonly RETRY_INTERVAL = 10000 // 10초마다 체크
+  private readonly RETRY_INTERVAL = 15000 // 15초마다 체크 (최적화)
   private readonly MAX_QUEUE_SIZE = 50
   private activeSessions = new Set<string>() // 진행 중인 검색 세션
   private completedResults = new Map<string, any>() // 완료된 결과 저장
@@ -201,10 +201,12 @@ export class MemoryQueueManager {
     if (this.queue.length === 0) return
 
     const request = this.queue[0] // 우선순위가 가장 높은 요청
-    console.log(`🚀 대기열에서 요청 처리 시작: ${request.id}`)
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`🚀 대기열에서 요청 처리 시작: ${request.id}`)
+    }
 
     try {
-      // 바로 실행 시도 (메모리 체크 없이)
+      // 외부 서비스 실행 (프로덕션 보안을 위해 상세 정보 숨김)
       const { startTaskRun } = await import('./apify')
       const result = await startTaskRun({
         taskId: request.taskId,
@@ -215,7 +217,10 @@ export class MemoryQueueManager {
       // 성공 시 대기열에서 제거
       this.queue.shift()
       request.onSuccess?.(result.runId)
-      console.log(`✅ 대기열 요청 성공: ${request.id} -> ${result.runId}`)
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`✅ 대기열 요청 성공: ${request.id}`)
+      }
 
       // 완료된 runId를 결과로 저장 (클라이언트에서 사용)
       this.completedResults.set(request.id, {
@@ -224,7 +229,6 @@ export class MemoryQueueManager {
         taskId: request.taskId,
         completedAt: new Date().toISOString()
       })
-      console.log(`💾 대기열 완료 결과 저장: ${request.id} -> ${result.runId}`)
 
     } catch (error: any) {
       const errorType = error?.type || 'unknown'

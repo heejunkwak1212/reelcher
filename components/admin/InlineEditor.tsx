@@ -14,7 +14,7 @@ export default function InlineEditor({ slug, initialContent, isAdmin }: { slug: 
         {lines.map((l, i) => {
           const t = (l ?? '').trim()
           // 큰 제목
-          if (/^#\s+/.test(l)) return <h1 key={i} className="text-2xl font-bold">{l.replace(/^#\s+/, '')}</h1>
+          if (/^#\s+/.test(l)) return <h2 key={i} className="text-2xl font-bold">{l.replace(/^#\s+/, '')}</h2>
           // 섹션 제목
           if (/^##\s+/.test(l) || /^제\d+조/.test(t)) return <h2 key={i} className="text-xl font-semibold mt-4">{l.replace(/^##\s+/, '')}</h2>
           // 서문은 일반 단락으로 출력(요청에 따라 롤백)

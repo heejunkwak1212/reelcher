@@ -22,7 +22,10 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { platform, apiKey } = validateApiKeySchema.parse(body);
 
-    console.log(`🔍 ${platform} API 키 검증 요청 - 사용자: ${user.id}`);
+    // API 키 검증 요청 (프로덕션 보안을 위해 사용자 정보 숨김)
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`API 키 검증 요청 - ${platform}`)
+    }
 
     // YouTube API 키 검증
     if (platform === 'youtube') {

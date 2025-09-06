@@ -12,13 +12,12 @@ export async function GET(request: NextRequest) {
       return Response.json({ error: '날짜가 필요합니다.' }, { status: 400 })
     }
 
-    console.log(`📊 ${date} 상세 데이터 조회 시작`)
-
+    // 관리자 전용 상세 데이터 조회
     const supabase = supabaseServer()
     const monitor = new ApifyMonitor(process.env.APIFY_TOKEN!)
 
     // 해당 날짜의 모든 검색 기록 조회 (Apify 사용한 것만)
-    const { data: searchRecords, error: recordsError } = await supabase
+    const { data: searchRecords, error: recordsError } = await (await supabase)
       .from('search_history')
       .select(`
         *,
@@ -35,7 +34,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 상세 데이터 구성
-    const details = searchRecords.map(record => {
+    const details = searchRecords.map((record: any) => {
       const userEmail = record.profiles?.email || 'Unknown'
       const actorName = getActorDisplayName(record.platform, record.search_type)
       const cost = calculateApifyCost(record)
@@ -52,7 +51,7 @@ export async function GET(request: NextRequest) {
     return Response.json({
       date,
       details,
-      totalCost: details.reduce((sum, d) => sum + d.cost, 0)
+      totalCost: details.reduce((sum: number, d: any) => sum + d.cost, 0)
     })
 
   } catch (error) {

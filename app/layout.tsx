@@ -75,19 +75,26 @@ export const metadata: Metadata = {
   
   icons: {
     icon: [
-      { url: '/favicon.ico', sizes: '16x16 32x32' },
+      { url: '/favicon.ico', sizes: '16x16 32x32', type: 'image/x-icon' },
       { url: '/logo.svg', type: 'image/svg+xml', sizes: 'any' }
     ],
     shortcut: ['/favicon.ico'],
     apple: [
-      { url: '/logo.svg', sizes: '180x180', type: 'image/svg+xml' }
+      { url: '/logo.svg', sizes: '180x180', type: 'image/svg+xml' },
+      { url: '/logo.svg', sizes: '152x152', type: 'image/svg+xml' },
+      { url: '/logo.svg', sizes: '120x120', type: 'image/svg+xml' }
     ],
     other: [
       {
         rel: 'icon',
         url: '/logo.svg',
         type: 'image/svg+xml',
-        sizes: '16x16 32x32 48x48 64x64 128x128',
+        sizes: 'any',
+      },
+      {
+        rel: 'mask-icon',
+        url: '/safari-pinned-tab.svg',
+        color: '#000000',
       }
     ]
   },
@@ -171,6 +178,16 @@ export const metadata: Metadata = {
     
     // 소셜 미디어 최적화
     'fb:app_id': '123456789', // Facebook App ID (실제 발급받은 ID로 교체)
+    
+    // 메타데이터 캐시 무효화를 위한 버전 태그
+    'cache-version': '2024-12-19-v2',
+    
+    // 네이버 검색 결과 개선을 위한 추가 태그
+    'subject': '릴스 검색 사이트, 틱톡 검색 사이트, 유튜브 검색',
+    'classification': 'Technology, Social Media, Content Analysis',
+    'reply-to': 'reelcher1@gmail.com',
+    'distribution': 'global',
+    'rating': 'general',
   },
 };
 

@@ -205,13 +205,14 @@ export class YouTubeClient {
       const errorData = await response.json().catch(() => ({}))
       const reason = errorData?.error?.errors?.[0]?.reason || 'unknown'
       
-      console.error('YouTube API 오류:', {
-        status: response.status,
-        statusText: response.statusText,
-        errorData,
-        reason,
-        url: url.toString()
-      })
+      // YouTube API 오류 (프로덕션 보안을 위해 상세 로깅 제거)
+      if (process.env.NODE_ENV === 'development') {
+        console.error('YouTube API 오류:', {
+          status: response.status,
+          statusText: response.statusText,
+          reason
+        })
+      }
       
       if (reason === 'quotaExceeded') {
         throw new YouTubeAPIError('API quota exceeded', 'QUOTA_EXCEEDED', response.status)
@@ -227,11 +228,15 @@ export class YouTubeClient {
     }
 
     const data = await response.json()
-    console.log('YouTube API 응답:', {
-      endpoint,
-      itemsCount: data?.items?.length || 0,
-      totalResults: data?.pageInfo?.totalResults || 0
-    })
+    
+    // YouTube API 응답 로깅 (프로덕션 보안을 위해 상세 로깅 제거)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('YouTube API 응답:', {
+        endpoint,
+        itemsCount: data?.items?.length || 0,
+        totalResults: data?.pageInfo?.totalResults || 0
+      })
+    }
 
     return data
   }

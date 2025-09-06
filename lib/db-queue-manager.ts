@@ -341,11 +341,7 @@ export class DatabaseQueueManager {
 
     try {
       // Apify 태스크 실행
-      console.log(`🎬 [QUEUE STEP 5] Apify 액터 실행 시작:`)
-      console.log(`  - 태스크ID: ${item.task_id}`)
-      console.log(`  - 입력 데이터:`, JSON.stringify(item.task_input, null, 2))
-      console.log(`  - 토큰 존재 여부: ${!!process.env.APIFY_TOKEN}`)
-      
+      // 외부 서비스 실행 (프로덕션 보안을 위해 상세 로깅 제거)
       const { startTaskRun } = await import('./apify')
       const result = await startTaskRun({
         taskId: item.task_id,
@@ -353,30 +349,23 @@ export class DatabaseQueueManager {
         token: process.env.APIFY_TOKEN!
       })
 
-      console.log(`🎉 [QUEUE STEP 6] Apify 액터 실행 성공:`)
-      console.log(`  - 대기열ID: ${item.id}`)
-      console.log(`  - Apify RunID: ${result.runId}`)
-      console.log(`  - 태스크ID: ${item.task_id}`)
-      console.log(`  - 세션 단계: ${item.session_step || 'N/A'}`)
-      console.log(`  - 실행 시작 시간: ${new Date().toISOString()}`)
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`🎉 [QUEUE STEP 6] 실행 성공:`)
+        console.log(`  - 대기열ID: ${item.id}`)
+        console.log(`  - 세션 단계: ${item.session_step || 'N/A'}`)
+      }
 
-      // Apify 결과가 완료될 때까지 대기하고 실제 데이터 저장
+      // 외부 서비스 결과 처리 (프로덕션 보안을 위해 상세 로깅 제거)
       try {
-        console.log(`📥 [DEBUG] Apify 결과 대기 시작:`)
-        console.log(`  - RunID: ${result.runId}`)
-        console.log(`  - 예상 대기 시간: 30초~2분`)
-        
         const { waitForRunItems } = await import('./apify')
         const apifyResult = await waitForRunItems({ 
           token: process.env.APIFY_TOKEN!, 
           runId: result.runId 
         })
         
-        console.log(`✅ [DEBUG] Apify 결과 가져오기 성공:`)
-        console.log(`  - 결과 개수: ${apifyResult.items?.length || 0}개`)
-        console.log(`  - 첫 번째 아이템 미리보기:`, apifyResult.items?.[0] ? 
-          `${(apifyResult.items[0] as any)?.id || 'no-id'} - ${(apifyResult.items[0] as any)?.text?.slice(0, 50) || 'no-text'}...` : 
-          'No items')
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`✅ 결과 가져오기 성공: ${apifyResult.items?.length || 0}개`)
+        }
 
         const resultData = {
           success: true,
@@ -385,9 +374,6 @@ export class DatabaseQueueManager {
           completedAt: new Date().toISOString(),
           fromQueue: true
         }
-
-        console.log(`💾 [DEBUG] DB에 결과 저장 중:`)
-        console.log(`  - 결과 데이터 크기: ${JSON.stringify(resultData).length} bytes`)
 
         // 완료 상태와 함께 실제 결과 데이터 저장
         await this.supabase

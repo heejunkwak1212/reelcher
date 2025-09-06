@@ -40,7 +40,7 @@ export async function POST(req: Request) {
   try {
     // Read body once and reuse to avoid stream re-consumption errors
     const body = await req.json().catch(() => ({} as any))
-    console.log('Instagram API 요청 본문:', JSON.stringify(body, null, 2))
+    // 민감한 정보 로깅 제거 (프로덕션 보안)
     
     // 요청 본문을 먼저 저장만 하고 검증은 나중에
     console.log('Instagram API 요청 본문 저장 완료')
@@ -48,28 +48,25 @@ export async function POST(req: Request) {
     // Optional Turnstile token verification (env-gated)
     const turnstileSecret = process.env.TURNSTILE_SECRET_KEY
     const isDevelopment = process.env.NODE_ENV === 'development'
-    console.log('Turnstile 검증 시작. Secret 존재:', !!turnstileSecret, '개발환경:', isDevelopment)
+    // Turnstile 검증 시작 (프로덕션 보안을 위해 상세 로깅 제거)
     if (turnstileSecret && !isDevelopment) {
       try {
         const token = (body as any)?.turnstileToken
-        console.log('Turnstile 토큰:', token ? '존재함' : '없음')
+        // Turnstile 토큰 검증 (민감한 정보 로깅 제거)
         if (!token) {
-          console.log('Turnstile 토큰이 없어서 400 반환')
           return new Response('CAPTCHA required', { status: 400 })
         }
-        console.log('Turnstile 서버 검증 시작...')
         const verify = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
           method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
           body: new URLSearchParams({ secret: turnstileSecret, response: token }),
         }).then(r => r.json()).catch(() => ({ success: false }))
-        console.log('Turnstile 검증 결과:', verify)
         if (!verify?.success) {
-          console.log('Turnstile 검증 실패로 400 반환')
+          // Turnstile 검증 실패 (프로덕션 보안을 위해 상세 로깅 제거)
           return new Response('CAPTCHA failed', { status: 400 })
         }
-        console.log('Turnstile 검증 성공')
+        // Turnstile 검증 성공 (프로덕션 보안을 위해 상세 로깅 제거)
       } catch (e) {
-        console.error('Turnstile 검증 중 예외 발생:', e)
+        console.error('Turnstile 검증 중 예외 발생')
       }
     }
     console.log('Rate Limiting 검사 시작. Limiter 존재:', !!searchLimiter)
@@ -93,8 +90,8 @@ export async function POST(req: Request) {
     if (!user) return new Response('Unauthorized', { status: 401 })
 
     // 디버깅: 사용자 정보 로깅
-    console.log('🔍 Instagram API - User ID:', user.id)
-    console.log('🔍 Instagram API - User Email:', user.email)
+    // 사용자 인증 확인 (프로덕션 보안을 위해 상세 로깅 제거)
+    // 사용자 이메일 확인 (프로덕션 보안을 위해 상세 로깅 제거)
     
     let isAdmin = false
     try {
@@ -122,7 +119,10 @@ export async function POST(req: Request) {
       
       // 대기열에서 완료된 runId가 있는 경우 해당 결과 사용
       if (input.queuedRunId) {
-        console.log(`🔍 대기열 완료된 runId로 결과 가져오기: ${input.queuedRunId}`)
+        // 대기열 완료된 결과 가져오기 (프로덕션 보안을 위해 상세 로깅 제거)
+        if (process.env.NODE_ENV === 'development') {
+          console.log('대기열 완료된 결과 가져오기 시작')
+        }
         try {
           const { waitForRunItems } = await import('@/lib/apify')
           const token = process.env.APIFY_TOKEN!
@@ -134,7 +134,7 @@ export async function POST(req: Request) {
             fromQueue: true
           })
         } catch (error) {
-          console.error('❌ 대기열 runId 결과 가져오기 실패:', error)
+          console.error('❌ 대기열 결과 가져오기 실패')
           return Response.json({ error: '대기열 결과를 가져올 수 없습니다.' }, { status: 500 })
         }
       }
@@ -152,7 +152,7 @@ export async function POST(req: Request) {
     }
 
     const token = process.env.APIFY_TOKEN
-    console.log('APIFY_TOKEN 확인:', token ? 'TOKEN 존재' : 'TOKEN 없음')
+    // 외부 서비스 토큰 확인 (프로덕션 보안을 위해 상세 로깅 제거)
     if (!token) return new Response('APIFY_TOKEN missing', { status: 500 })
 
     // 이미 위에서 user 인증 완료됨
@@ -258,14 +258,17 @@ export async function POST(req: Request) {
     )).slice(0, 3)
     const plainHashtag = normalizedKeywords[0]
     
-    console.log('🏷️ 키워드 변환:', {
-      originalKeyword,
-      plainHashtag,
-      normalizedKeywords
-    })
+    // 키워드 정규화 완료 (프로덕션 보안을 위해 상세 로깅 제거)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🏷️ 키워드 변환:', {
+        originalKeyword,
+        plainHashtag,
+        normalizedKeywords
+      })
+    }
 
     // 1) Hashtag Scraper (reels only) → collect URLs to feed into details
-    // Setup abort handling: if client disconnects, abort all Apify runs (best-effort)
+    // 외부 서비스 중단 처리 설정 (프로덕션 보안을 위해 상세 로깅 제거)
     const apifyRunIds = new Set<string>()
     const onAbort = () => {
       const idList = Array.from(apifyRunIds)
@@ -295,7 +298,10 @@ export async function POST(req: Request) {
     {
       attempts++
       try {
-        console.log('Instagram 검색 시작 - normalizedKeywords:', normalizedKeywords)
+        // Instagram 검색 시작 (프로덕션 보안을 위해 상세 로깅 제거)
+        if (process.env.NODE_ENV === 'development') {
+          console.log('Instagram 검색 시작')
+        }
         const kwCount = Math.max(1, normalizedKeywords.length)
         const base = Math.floor(resultsLimit / kwCount)
         let remainder = resultsLimit % kwCount
@@ -317,7 +323,10 @@ export async function POST(req: Request) {
         const firstKeyword = normalizedKeywords[0]
         const firstSlice = Math.min(30, perOversample[0])
         
-        console.log(`🎯 Instagram 첫 번째 키워드 "${firstKeyword}" 즉시 실행 시도 - slice: ${firstSlice}`)
+        // Instagram 첫 번째 키워드 즉시 실행 (프로덕션 보안을 위해 상세 로깅 제거)
+        if (process.env.NODE_ENV === 'development') {
+          console.log('Instagram 첫 번째 키워드 즉시 실행 시도')
+        }
         
         const firstResult = await queueManager.executeWithSessionContinuity(
           taskId,
@@ -338,13 +347,10 @@ export async function POST(req: Request) {
         
         // 대기열에 추가된 경우 즉시 202 응답 반환
         if (!firstResult.success) {
-          console.log(`⏳ [STEP 1] Instagram 키워드 검색이 대기열에 추가됨: ${firstResult.message}`)
-          console.log(`🔄 [STEP 2] 인스타그램 대기열 추가 상세:`)
-          console.log(`  - 사용자: ${user.id} (${user.email})`)
-          console.log(`  - 세션ID: ${searchSessionId}`)
-          console.log(`  - 대기열ID: ${firstResult.queueId}`)
-          console.log(`  - 메시지: ${firstResult.message}`)
-          console.log(`📤 [STEP 3] 202 응답 반환 준비 중...`)
+          // Instagram 키워드 검색 대기열 추가 (프로덕션 보안을 위해 상세 로깅 제거)
+          if (process.env.NODE_ENV === 'development') {
+            console.log('Instagram 키워드 검색이 대기열에 추가됨')
+          }
           
           const response202 = Response.json({
             success: false,
@@ -377,10 +383,12 @@ export async function POST(req: Request) {
           if (idx === 0) {
             // 첫 번째 키워드는 이미 처리됨
             const started = { runId: firstResult.runId! }
-            console.log(`Instagram Apify 액터 시작됨 - runId: ${started.runId}`)
+            // 외부 서비스 처리 (프로덕션 보안을 위해 상세 로깅 제거)
             apifyRunIds.add(started.runId)
             const run = await waitForRunItems<IHashtagItem>({ token, runId: started.runId })
-            console.log(`Instagram Apify 액터 완료 - runId: ${started.runId}, items: ${run.items?.length || 0}개`)
+            if (process.env.NODE_ENV === 'development') {
+              console.log(`완료 - items: ${run.items?.length || 0}개`)
+            }
             return Array.isArray(run.items) ? run.items : []
           }
           
@@ -391,7 +399,10 @@ export async function POST(req: Request) {
           for (let b = 0; b < batches; b++) {
             const slice = Math.min(30, want - b * 30)
             if (slice <= 0) break
-            console.log(`Instagram Apify 액터 호출 시작 - taskId: ${taskId}, kw: ${kw}, slice: ${slice}`)
+            // Instagram 외부 서비스 액터 호출 (프로덕션 보안을 위해 상세 로깅 제거)
+            if (process.env.NODE_ENV === 'development') {
+              console.log('Instagram 외부 서비스 액터 호출 시작')
+            }
             
             const result = await queueManager.executeWithSessionContinuity(
               taskId,
@@ -416,10 +427,16 @@ export async function POST(req: Request) {
             }
             
             const started = { runId: result.runId! }
-            console.log(`Instagram Apify 액터 시작됨 - runId: ${started.runId}`)
+            // Instagram 외부 서비스 액터 시작 (프로덕션 보안을 위해 상세 로깅 제거)
+            if (process.env.NODE_ENV === 'development') {
+              console.log('Instagram 외부 서비스 액터 시작됨')
+            }
             apifyRunIds.add(started.runId)
             const run = await waitForRunItems<IHashtagItem>({ token, runId: started.runId })
-            console.log(`Instagram Apify 액터 완료 - runId: ${started.runId}, items: ${run.items?.length || 0}개`)
+            // Instagram 외부 서비스 액터 완료 (프로덕션 보안을 위해 상세 로깅 제거)
+            if (process.env.NODE_ENV === 'development') {
+              console.log(`Instagram 외부 서비스 액터 완료 - items: ${run.items?.length || 0}개`)
+            }
             acc = acc.concat(Array.isArray(run.items) ? run.items : [])
           }
           return acc
@@ -858,7 +875,10 @@ export async function POST(req: Request) {
       try {
         // 키워드 정보 재확인
         const searchKeyword = input.keyword || ''
-        console.log('🔑 처리할 키워드:', searchKeyword)
+        // 처리할 키워드 (프로덕션 보안을 위해 상세 로깅 제거)
+        if (process.env.NODE_ENV === 'development') {
+          console.log('처리할 키워드:', searchKeyword)
+        }
         
         // Update counters atomically via service role to avoid RLS edge cases
         const svc = (await import('@/lib/supabase/service')).supabaseService()
@@ -1084,10 +1104,14 @@ async function handleProfileSearch(
     const taskId = 'bold_argument/instagram-scraper-task-2'
     const profileUrl_full = `https://www.instagram.com/${username}`
     
-    console.log('Instagram 프로필 스크래퍼 태스크 시작:', taskId)
-    console.log('프로필 URL:', profileUrl_full)
-    console.log('결과 개수:', resultsLimit)
-    console.log('업로드 기간 필터:', onlyPostsNewerThan)
+    // Instagram 프로필 스크래퍼 시작 (프로덕션 보안을 위해 상세 로깅 제거)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Instagram 프로필 시작')
+    }
+    // 프로필 검색 설정 (프로덕션 보안을 위해 상세 로깅 제거)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('프로필 검색 설정 완료')
+    }
     
     // 성공 사례와 정확히 동일한 taskInput 구조
     const taskInput = {
@@ -1102,7 +1126,10 @@ async function handleProfileSearch(
       searchType: 'hashtag' // 성공 사례에 포함된 필드
     }
     
-    console.log('Apify 태스크 입력:', JSON.stringify(taskInput, null, 2))
+    // 외부 서비스 태스크 입력 (프로덕션 보안을 위해 상세 로깅 제거)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('외부 서비스 태스크 입력 준비 완료')
+    }
     
     // DB 대기열 시스템을 통한 안전한 실행
     const { getDatabaseQueueManager } = await import('@/lib/db-queue-manager')
@@ -1130,11 +1157,17 @@ async function handleProfileSearch(
     }
     
     const started = { runId: queueResult.runId! }
-    console.log('Apify 태스크 시작됨 - runId:', started.runId)
+    // 외부 서비스 태스크 시작 (프로덕션 보안을 위해 상세 로깅 제거)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('외부 서비스 태스크 시작됨')
+    }
     apifyRunIds.add(started.runId)
     
     const result = await waitForRunItems<IReelDetail>({ token, runId: started.runId })
-    console.log('Apify 태스크 완료 - 결과 개수:', result.items?.length || 0)
+    // 외부 서비스 태스크 완료 (프로덕션 보안을 위해 상세 로깅 제거)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('외부 서비스 태스크 완료 - 결과 개수:', result.items?.length || 0)
+    }
     
     const reels = result.items || []
     

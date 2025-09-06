@@ -28,7 +28,7 @@ export default function ApifyMonitoring() {
   // 일별 상세 데이터 가져오기
   const fetchDayDetail = async (date: string) => {
     try {
-      console.log(`📊 ${date} 상세 데이터 조회 중...`)
+      // 관리자 전용 상세 데이터 조회
       const res = await fetch(`/api/admin/apify/day-detail?date=${date}`, { cache: 'no-store' })
       if (!res.ok) throw new Error('일별 상세 데이터 로드 실패')
       const data = await res.json()

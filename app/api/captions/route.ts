@@ -22,9 +22,7 @@ export async function POST(req: Request) {
     const { data: { user } } = await ssr.auth.getUser()
     if (!user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
 
-    // 디버깅: 사용자 정보 로깅
-    console.log('🔍 Captions API - User ID:', user.id)
-    console.log('🔍 Captions API - User Email:', user.email)
+    // 사용자 인증 완료 (프로덕션 보안을 위해 상세 로깅 제거)
 
     // 사용자 정보 확인 (관리자 체크) - profiles 테이블 사용
     const { data: userData, error: userError } = await ssr
@@ -124,10 +122,11 @@ export async function POST(req: Request) {
     const { getDatabaseQueueManager } = await import('@/lib/db-queue-manager')
     const queueManager = getDatabaseQueueManager()
     
-    console.log(`🎬 [DEBUG] 자막 추출 시작:`)
-    console.log(`  - 사용자: ${user.id} (${user.email})`)
-    console.log(`  - URL: ${cleanUrl}`)
-    console.log(`  - TaskID: ${taskId}`)
+    // 자막 추출 디버그 정보 (프로덕션 보안을 위해 제거)
+    // 자막 추출 시작 (프로덕션 보안을 위해 상세 로깅 제거)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('자막 추출 작업 시작')
+    }
     
     let started: { runId: string }
     
@@ -161,7 +160,10 @@ export async function POST(req: Request) {
         }), { status: 202 }) // Accepted, 처리 중
       }
       
-      console.log(`✅ [DEBUG] 자막 추출 즉시 실행 성공: runId=${result.runId}`)
+      // 자막 추출 즉시 실행 성공 (프로덕션 보안을 위해 상세 로깅 제거)
+      if (process.env.NODE_ENV === 'development') {
+        console.log('자막 추출 즉시 실행 성공')
+      }
       started = { runId: result.runId! }
     } catch (error: any) {
       console.error('❌ [DEBUG] 자막 추출 실행 실패:', error)

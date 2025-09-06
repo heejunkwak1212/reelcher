@@ -43,9 +43,7 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  // 디버깅: 사용자 정보 로깅
-  console.log('🔍 TikTok API - User ID:', user.id)
-  console.log('🔍 TikTok API - User Email:', user.email)
+  // 사용자 인증 완료 (프로덕션 보안을 위해 상세 로깅 제거)
 
     // 요청 본문 파싱 및 검증 (에러 핸들링 추가)
     const body = await request.json().catch(() => ({}))
@@ -57,7 +55,10 @@ export async function POST(request: NextRequest) {
 
     // 대기열에서 완료된 runId가 있는 경우 해당 결과 사용
     if (validatedData.queuedRunId) {
-      console.log(`[Queued] 완료된 실행 결과 가져오기 시작: runId=${validatedData.queuedRunId}`)
+      // 완료된 실행 결과 가져오기 (프로덕션 보안을 위해 상세 로깅 제거)
+      if (process.env.NODE_ENV === 'development') {
+        console.log('완료 가져오기 시작')
+      }
       try {
         const { waitForRunItems } = await import('@/lib/apify')
         const token = process.env.APIFY_TOKEN!
@@ -102,7 +103,7 @@ export async function POST(request: NextRequest) {
           fromQueue: true
         })
       } catch (error) {
-        console.error('❌ TikTok 대기열 runId 결과 가져오기 실패:', error)
+        console.error('❌ TikTok 대기열 결과 가져오기 실패')
         return NextResponse.json({ error: '대기열 결과를 가져올 수 없습니다.' }, { status: 500 })
       }
     }
@@ -185,19 +186,20 @@ export async function POST(request: NextRequest) {
 
     try {
       // 새로운 TikTok Scraper Task 실행 (향상된 기능 포함)
-      console.log(`TikTok 검색 시작 - ${searchRequest.resultsLimit}개 요청 (새 Task: mlyTt5q6sAjY7z9ZV)`)
+      // TikTok 검색 시작 (프로덕션 보안을 위해 상세 로깅 제거)
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`TikTok 검색 시작 - ${searchRequest.resultsLimit}개 요청`)
+      }
       
       // 검색 타입에 따른 입력 설정
       const isUrlSearch = searchRequest.searchType === 'url' && searchRequest.query.includes('tiktok.com')
       const isProfileSearch = searchRequest.searchType === 'profile'
       const isKeywordSearch = searchRequest.searchType === 'keyword' || searchRequest.searchType === 'hashtag'
       
-      console.log(`🔍 [DEBUG] 검색 타입 분석:`)
-      console.log(`  - 원본 searchType: "${searchRequest.searchType}"`)
-      console.log(`  - isUrlSearch: ${isUrlSearch}`)
-      console.log(`  - isProfileSearch: ${isProfileSearch}`)
-      console.log(`  - isKeywordSearch: ${isKeywordSearch}`)
-      console.log(`  - 검색어: "${searchRequest.query}"`)
+      // 검색 타입 분석 (프로덕션 보안을 위해 상세 로깅 제거)
+      if (process.env.NODE_ENV === 'development') {
+        console.log('검색 타입 분석 완료')
+      }
       
       // 성공 사례 기반 기본 taskInput 구조
       const taskInput: any = {
@@ -340,19 +342,20 @@ export async function POST(request: NextRequest) {
       }
       
       // 실제 전송되는 taskInput 로깅 (디버깅용)
-      console.log('📋 TikTok API로 전송되는 최종 taskInput:', JSON.stringify(taskInput, null, 2))
+      // TikTok API 전송 데이터 (프로덕션 보안을 위해 상세 로깅 제거)
+      if (process.env.NODE_ENV === 'development') {
+        console.log('TikTok API 전송 데이터 준비 완료')
+      }
       
       // 검색 타입에 따라 다른 액터 사용
       const taskId = isProfileSearch 
         ? 'bold_argument/tiktok-scraper-task' // 프로필 검색용 기존 액터
         : 'bold_argument/tiktok-scraper-task-2' // 키워드/해시태그 검색용 새 액터
 
-      console.log(`🏷️ [DEBUG] 태스크 선택 로직:`)
-      console.log(`  - 검색 타입: ${searchRequest.searchType}`)
-      console.log(`  - URL 검색 여부: ${isUrlSearch}`)
-      console.log(`  - 프로필 검색 여부: ${isProfileSearch}`)
-      console.log(`  - 선택된 태스크: ${taskId}`)
-      console.log(`  - 검색어: "${searchRequest.query}"`)
+      // 태스크 선택 로직 (프로덕션 보안을 위해 상세 로깅 제거)
+      if (process.env.NODE_ENV === 'development') {
+        console.log('선택 완료')
+      }
       
       // DB 대기열 시스템을 통한 안전한 실행
       const { getDatabaseQueueManager } = await import('@/lib/db-queue-manager')
@@ -371,14 +374,10 @@ export async function POST(request: NextRequest) {
       )
       
       if (!result.success) {
-        console.log(`🔄 [DEBUG] TikTok 대기열 추가 상세:`)
-        console.log(`  - 사용자: ${user.id} (${user.email})`)
-        console.log(`  - 검색어: "${searchRequest.query}"`)
-        console.log(`  - 결과수: ${searchRequest.resultsLimit}`)
-        console.log(`  - 태스크ID: ${taskId}`)
-        console.log(`  - 대기열ID: ${result.queueId}`)
-        console.log(`  - 메시지: ${result.message}`)
-        console.log(`  - 응답: 202 Accepted (대기열 처리 중)`)
+        // 대기열 처리 (프로덕션 보안을 위해 상세 로깅 제거)
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`🔄 TikTok 대기열 추가: ${result.queueId}`)
+        }
         
         return Response.json({
           success: false,
@@ -394,16 +393,15 @@ export async function POST(request: NextRequest) {
       
       const started = { runId: result.runId! }
       
-      console.log(`TikTok Task 시작됨 - runId: ${started.runId}`)
-      
+      // 외부 서비스 처리 (프로덕션 보안을 위해 상세 로깅 제거)
       const run = await waitForRunItems({ token: process.env.APIFY_TOKEN!, runId: started.runId })
       const items = Array.isArray(run.items) ? run.items : []
       
-      console.log(`TikTok 검색 완료 - 반환된 아이템: ${items.length}개 (요청: ${searchRequest.resultsLimit}개)`)
-      
-      // 첫 번째 아이템 구조 디버깅
-      if (items.length > 0) {
-        console.log('TikTok 첫 번째 아이템 구조:', JSON.stringify(items[0], null, 2))
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`TikTok 검색 완료 - 반환된 아이템: ${items.length}개 (요청: ${searchRequest.resultsLimit}개)`)
+        if (items.length > 0) {
+          console.log('TikTok 첫 번째 아이템 구조:', JSON.stringify(items[0], null, 2))
+        }
       }
       
       // TikTok 데이터를 표준 형식으로 변환 (안전한 매핑)

@@ -4,9 +4,9 @@ import { cn } from '@/lib/utils'
 
 export function DemoHeading({ children }: { children: React.ReactNode }) {
   return (
-    <h1 className={cn('text-2xl font-bold')} style={{ color: 'var(--color-text-primary)' }}>
+    <h2 className={cn('text-2xl font-bold')} style={{ color: 'var(--color-text-primary)' }}>
       {children}
-    </h1>
+    </h2>
   )
 }
 

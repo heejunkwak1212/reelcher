@@ -188,7 +188,7 @@ const DigitalSerenity = () => {
 
           <div className="text-center max-w-5xl mx-auto relative">
             {/* Responsive Main Heading Sizes */}
-            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extralight leading-tight tracking-tight text-slate-50 text-decoration-animate">
+            <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extralight leading-tight tracking-tight text-slate-50 text-decoration-animate">
               <div className="mb-4 md:mb-6">
                 <span className="word-animate" data-delay="700">Find</span>
                 <span className="word-animate" data-delay="850">your</span>

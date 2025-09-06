@@ -1901,32 +1901,24 @@ function SearchTestPageContent() {
             throw new Error('프로필 URL 또는 사용자명을 입력해주세요.')
           }
           
-          // 디버깅: period 상태 확인
-          console.log('🔍 Instagram 프로필 검색 - 프론트엔드 period 상태:', period)
-          console.log('🔍 Instagram 프로필 검색 - period truthy 체크:', !!period)
-          console.log('🔍 Instagram 프로필 검색 - 전달할 filters:', period ? { period } : {})
-          
-          // filters 객체를 명시적으로 생성
+          // 프로필 검색 설정 (프로덕션 보안을 위해 상세 로깅 제거)
           const filters = period ? { period } : {}
-          console.log('🔍 Instagram 프로필 검색 - filters 객체:', filters)
           
           payload = { 
             searchType: 'profile',
             profileUrl,
             limit, 
-            debug: true,
+            debug: process.env.NODE_ENV === 'development',
             filters
           }
-          
-          console.log('🔍 Instagram 프로필 검색 - 최종 payload:', JSON.stringify(payload, null, 2))
         } else {
           // 키워드 검색 (기존)
           const list = keywords.map(s=>s.trim()).filter(Boolean).slice(0,3)
-          payload = { 
+            payload = { 
             searchType: 'keyword',
             keyword: (list[0] || '재테크'), 
             limit, 
-            debug: true 
+            debug: process.env.NODE_ENV === 'development'
           }
           if (list.length) payload.keywords = list
         }
@@ -1951,14 +1943,14 @@ function SearchTestPageContent() {
       
       if (!res.ok) {
         const j = await res.json().catch(() => ({}))
-        console.error('검색 API 오류:', {
-          status: res.status,
-          statusText: res.statusText,
-          platform,
-          payload,
-          response: j,
-          fullError: j
-        })
+        // 검색 API 오류 (프로덕션 보안을 위해 상세 로깅 제거)
+        if (process.env.NODE_ENV === 'development') {
+          console.error('검색 오류:', {
+            status: res.status,
+            statusText: res.statusText,
+            platform
+          })
+        }
         
         // 더 자세한 에러 메시지 구성
         let msg = `Request failed (${res.status})`

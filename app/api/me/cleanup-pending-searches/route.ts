@@ -13,7 +13,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '로그인이 필요합니다' }, { status: 401 })
     }
 
-    console.log(`🧹 사용자 ${user.id}의 pending 검색 정리 시작`)
+    // 사용자 pending 검색 정리 시작 (프로덕션 보안을 위해 사용자 ID 숨김)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('사용자 pending 검색 정리 시작')
+    }
 
     // 5분 이상 된 pending 상태 검색들을 조회
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString()

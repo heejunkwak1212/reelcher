@@ -87,7 +87,10 @@ export async function POST(req: NextRequest) {
     }
 
     // 자막 추출 시작 로깅
-    console.log(`[YouTube Subtitle] 시작 - User: ${user.id}, URL: ${url}`)
+    // YouTube 자막 추출 시작 (프로덕션 보안을 위해 사용자 정보 숨김)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[YouTube Subtitle] 시작')
+    }
     
     // lib/youtube-downloader.ts의 자막 추출 함수 사용
     const { extractYouTubeSubtitles } = await import('@/lib/youtube-downloader')
@@ -103,7 +106,10 @@ export async function POST(req: NextRequest) {
     }
 
     // 성공 로깅
-    console.log(`[YouTube Subtitle] 성공 - User: ${user.id}, Length: ${result.subtitles?.length || 0}자`)
+    // YouTube 자막 추출 성공 (프로덕션 보안을 위해 사용자 정보 숨김)
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[YouTube Subtitle] 성공 - Length: ${result.subtitles?.length || 0}자`)
+    }
 
     // 크레딧 차감 (관리자가 아닌 경우)
     if (!isAdmin && transactionId) {

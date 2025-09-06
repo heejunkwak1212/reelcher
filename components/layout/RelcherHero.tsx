@@ -160,6 +160,9 @@ export default function RelcherHero({ user }: RelcherHeroProps) {
         <div className="max-w-6xl mx-auto text-center">
 
 
+          {/* SEO H1 태그 - 화면에는 숨김 */}
+          <h1 className="sr-only">릴처: 릴스 검색 사이트 | 틱톡 유튜브 다운로드 - 인스타그램 릴스, 틱톡, 유튜브 쇼츠를 쉽게 검색하고 다운로드할 수 있는 사이트</h1>
+          
           {/* Main Title with GradualSpacing */}
           <div className="space-y-6 md:space-y-10">
             <div style={{ fontFamily: 'Pretendard Variable, Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif', color: '#3A3B3F' }}>

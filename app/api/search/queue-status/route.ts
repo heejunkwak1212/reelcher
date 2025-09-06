@@ -24,7 +24,10 @@ export async function GET(request: NextRequest) {
 
     console.log(`🔍 [DEBUG] DB 대기열 상태 조회 상세:`)
     console.log(`  - 대기열ID: ${queueId}`)
-    console.log(`  - 사용자: ${user.id} (${user.email})`)
+    // 사용자 정보 (프로덕션 보안을 위해 상세 로깅 제거)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('사용자 인증 확인됨')
+    }
     console.log(`  - 조회 결과:`, queueData)
 
     if (!queueData) {
@@ -57,10 +60,13 @@ export async function GET(request: NextRequest) {
           console.log(`📋 [DEBUG] 업데이트된 상태:`, updatedData)
           
           if (updatedData?.status === 'completed' && updatedData.result) {
-            console.log(`🎉 [DEBUG] 완료된 결과 반환:`)
+            console.log(`🎉 [DEBUG] 결과 반환:`)
             console.log(`  - 상태: ${updatedData.status}`)
             console.log(`  - 결과 있음: ${!!updatedData.result}`)
-            console.log(`  - Apify RunID: ${updatedData.apifyRunId}`)
+            // 외부 서비스 실행 ID (프로덕션 보안을 위해 상세 로깅 제거)
+            if (process.env.NODE_ENV === 'development') {
+              console.log('실행 확인됨')
+            }
             
             return Response.json({
               success: true,
@@ -190,14 +196,16 @@ export async function GET(request: NextRequest) {
       // runId가 있으면 실제 Apify 결과를 가져오기 (fallback)
       if (queueData.apifyRunId) {
         try {
-          console.log(`📥 Apify 결과 가져오기: runId=${queueData.apifyRunId}`)
+          // 외부 서비스 결과 가져오기 (프로덕션 보안을 위해 상세 로깅 제거)
           const { waitForRunItems } = await import('@/lib/apify')
           const result = await waitForRunItems({ 
             token: process.env.APIFY_TOKEN!, 
             runId: queueData.apifyRunId 
           })
           
-          console.log(`✅ Apify 결과 가져오기 성공: ${result.items?.length || 0}개`)
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`✅ 결과 가져오기 성공: ${result.items?.length || 0}개`)
+          }
           
           return Response.json({
             success: true,
@@ -210,14 +218,14 @@ export async function GET(request: NextRequest) {
             }
           })
         } catch (error) {
-          console.error(`❌ Apify 결과 가져오기 실패: ${queueData.apifyRunId}`, error)
+          console.error(`❌ 결과 가져오기 실패`, error)
           
           return Response.json({
             success: true,
             completed: true,
             result: {
               success: false,
-              error: 'Apify 결과를 가져올 수 없습니다.',
+              error: '결과를 가져올 수 없습니다.',
               runId: queueData.apifyRunId
             }
           })
