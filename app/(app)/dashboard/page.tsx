@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { BarChart, Bar, XAxis, YAxis } from 'recharts'
 import { toast } from 'sonner'
+import { useDashboardRefresh } from '@/hooks/use-dashboard-refresh'
 
 export default function DashboardPage() {
   const searchParams = useSearchParams()
@@ -238,6 +239,13 @@ export default function DashboardPage() {
       }
     }
 
+  // 🔄 최적화된 대시보드 새로고침 훅 사용
+  const { refresh: refreshDashboard, forceRefresh } = useDashboardRefresh({
+    onRefresh: loadDashboardData,
+    throttleMs: 5000,
+    enableStorageListener: true
+  })
+
   useEffect(() => {
     // 초기 로드
     loadDashboardData()
@@ -275,36 +283,6 @@ export default function DashboardPage() {
         sessionStorage.removeItem('billingPlan')
         console.log('✅ 결제 완료 후 sessionStorage 정리 완료')
       }, 1000)
-    }
-
-    // 🔄 실시간 업데이트를 위한 윈도우 포커스 이벤트 리스너
-    const handleFocus = () => {
-      console.log('🔄 대시보드 포커스 이벤트 - 데이터 새로고침')
-      loadDashboardData()
-    }
-
-    const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        console.log('🔄 대시보드 가시성 변경 - 데이터 새로고침')
-        loadDashboardData()
-      }
-    }
-
-    // 이벤트 리스너 등록
-    window.addEventListener('focus', handleFocus)
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-
-    // 주기적 업데이트 (30초마다)
-    const intervalId = setInterval(() => {
-      console.log('🔄 대시보드 주기적 업데이트 (30초)')
-      loadDashboardData()
-    }, 30000)
-
-    // 정리 함수
-    return () => {
-      window.removeEventListener('focus', handleFocus)
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-      clearInterval(intervalId)
     }
   }, [searchParams])
 
