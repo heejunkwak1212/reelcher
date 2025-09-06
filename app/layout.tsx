@@ -75,11 +75,21 @@ export const metadata: Metadata = {
   
   icons: {
     icon: [
-      { url: '/favicon.ico', sizes: '32x32' },
-      { url: '/logo.svg', type: 'image/svg+xml' }
+      { url: '/favicon.ico', sizes: '16x16 32x32' },
+      { url: '/logo.svg', type: 'image/svg+xml', sizes: 'any' }
     ],
-    shortcut: '/favicon.ico',
-    apple: '/logo.svg'
+    shortcut: ['/favicon.ico'],
+    apple: [
+      { url: '/logo.svg', sizes: '180x180', type: 'image/svg+xml' }
+    ],
+    other: [
+      {
+        rel: 'icon',
+        url: '/logo.svg',
+        type: 'image/svg+xml',
+        sizes: '16x16 32x32 48x48 64x64 128x128',
+      }
+    ]
   },
   manifest: '/site.webmanifest',
 

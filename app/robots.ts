@@ -36,6 +36,10 @@ export default function robots(): MetadataRoute.Robots {
           '/privacy',
           '/terms',
           '/contact',
+          '/*.css',   // CSS 파일 허용 (네이버 가이드 권장)
+          '/*.js',    // JavaScript 파일 허용
+          '/favicon.ico', // 파비콘 명시적 허용
+          '/logo.svg',    // 로고 파일 허용
         ],
         disallow: [
           '/dashboard',
