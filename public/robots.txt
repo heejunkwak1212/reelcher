@@ -1,8 +1,4 @@
-# Reelcher.com robots.txt
-# 네이버 검색엔진 최적화 가이드 준수
-# https://searchadvisor.naver.com/guide/seo-basic-robots
-
-# 네이버 검색봇 (Yeti) 우선 설정
+# 네이버 검색봇 (Yeti) 우선 설정 - 네이버 가이드 권장 순서
 User-agent: Yeti
 Allow: /
 Allow: /pricing
@@ -20,7 +16,6 @@ Disallow: /onboarding
 Disallow: /sign-in
 Disallow: /admin
 Disallow: /api
-Disallow: /_next/static
 
 # 모든 검색봇 기본 설정
 User-agent: *
@@ -55,5 +50,5 @@ Disallow: /
 User-agent: PerplexityBot
 Disallow: /
 
-# 사이트맵 위치 (네이버 가이드 권장)
+# 사이트맵 위치
 Sitemap: https://reelcher.com/sitemap.xml

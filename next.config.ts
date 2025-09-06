@@ -61,6 +61,8 @@ const nextConfig: NextConfig = {
         headers: [
           { key: 'Content-Type', value: 'text/plain; charset=utf-8' },
           { key: 'Cache-Control', value: 'public, max-age=3600' },
+          // Content-Disposition 제거 - 네이버 가이드: 순수한 text/plain 응답 필요
+          { key: 'Content-Disposition', value: '' },
         ],
       },
     ]
